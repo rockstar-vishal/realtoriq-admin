@@ -79,6 +79,16 @@ build if any model with a `firm_id` is missing the `FirmScoped` concern, and it
 pins the three ways associations interact with the fail-closed tenant scope.
 Read it before adding a firm-owned model.
 
+## Staging
+
+A separate `RAILS_ENV=staging` where sign-in codes are always **`888888`** and
+nothing is delivered — see **[docs/staging.md](docs/staging.md)** for the setup
+steps.
+
+It is its own environment rather than production-with-a-flag on purpose: a fixed
+code is a complete authentication bypass, so production refuses to boot with one
+and has no escape hatch. Keep the staging URL off the public internet.
+
 ## Sending one-time codes for real
 
 SMS and WhatsApp go through **MSG91**; email goes through Action Mailer. The
@@ -109,13 +119,13 @@ the API returns `delivery_failed` rather than pretending a code was sent.
 
 ## One-time codes in development
 
-**Every code is `888888` in development, and nothing is delivered.** Sign in as
-any broker by entering their mobile and that code.
+**Every code is `888888` in development and staging, and nothing is delivered.**
+Sign in as any broker by entering their mobile and that code.
 
 This is a complete authentication bypass — anyone who knows a registered mobile
-number can become that broker — so it is development-only and the application
-**refuses to boot in production** with `OTP_FIXED_CODE` set. A warning in a
-deploy log gets scrolled past; a failed boot does not.
+number can become that broker — so production has no default and **refuses to
+boot** with `OTP_FIXED_CODE` set. A warning in a deploy log gets scrolled past;
+a failed boot does not.
 
 Everything downstream is unchanged: the code is still hashed rather than stored,
 still expires after ten minutes, still burns after one use, and still locks the
@@ -142,8 +152,9 @@ loudly rather than quietly printing live codes into a log file.
 
 | Path | What |
 | --- | --- |
-| `docs/schema.md` | The data model, and the Phase 2 design the React app should expect |
-| `docs/postman/` | Postman collection for the broker API — chains its own tokens, 29 assertions |
+| `docs/schema.md` | The data model, and what is still designed but unbuilt |
+| `docs/staging.md` | Staging setup — fixed codes, nothing delivered |
+| `docs/postman/` | Postman collection for the broker API — chains its own tokens, 88 assertions |
 | `app/models/concerns/firm_scoped.rb` | Row-level tenancy. Fail-closed by design |
 | `app/models/current.rb` | Per-request tenant. Read the comment before touching `firm_scope_bypassed` |
 | `app/forms/admin/firm_form.rb` | Creates a firm, its channels and its super admin in one transaction |

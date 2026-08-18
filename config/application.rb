@@ -38,28 +38,30 @@ module KgenRealtoriqAdmin
       g.system_tests = nil
     end
 
-    # How one-time codes are delivered. Anywhere but production defaults to
-    # logging the code, so the auth flow is exercisable without an MSG91
-    # account; LogDeliverer refuses to run in production regardless.
+    # How one-time codes are delivered. Production is the only environment that
+    # talks to MSG91; development and staging log the code instead, so sign-in is
+    # exercisable without an MSG91 account or a DLT template, and never reaches a
+    # real phone. LogDeliverer refuses to run in production regardless.
     config.x.otp_delivery = ENV.fetch("OTP_DELIVERY") { Rails.env.production? ? "msg91" : "log" }
 
     # A fixed sign-in code, so testing doesn't mean reading a log for six digits.
     #
     # This is a complete authentication bypass: anyone who knows a registered
-    # mobile number can sign in as that broker. It is therefore development-only
-    # by default, and config/initializers/otp_fixed_code.rb refuses to let the
-    # application boot in production with it set — a warning would eventually be
-    # ignored, a failed boot cannot be.
+    # mobile number can sign in as that broker. Defaulted in development and
+    # staging so neither needs the variable set; production has no default, and
+    # config/initializers/otp_fixed_code.rb refuses to let it boot if one is
+    # supplied — a warning would eventually be ignored, a failed boot cannot be.
     #
     # Test deliberately keeps random codes so the specs exercise the real
     # generation, expiry and attempt-counting logic.
     config.x.otp_fixed_code =
-      ENV["OTP_FIXED_CODE"].presence || ("888888" if Rails.env.development?)
+      ENV["OTP_FIXED_CODE"].presence ||
+      ("888888" if Rails.env.development? || Rails.env.staging?)
 
     # Sign-in code requests allowed per IP per 5 minutes. Tight in production,
-    # where /auth/otp is the app's only unauthenticated write. Loose elsewhere,
-    # because one developer machine driving the whole test suite — or a Postman
-    # collection run — legitimately makes a dozen requests in a minute.
+    # where /auth/otp is the app's only unauthenticated write. Loose elsewhere:
+    # a developer machine, a Postman run or a QA pass legitimately makes a dozen
+    # requests from one address.
     config.x.otp_rate_limit = Rails.env.production? ? 12 : 100
   end
 end
