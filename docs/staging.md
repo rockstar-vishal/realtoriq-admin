@@ -51,8 +51,9 @@ Optional, with sensible defaults:
 | `APP_HOST` | `http://localhost:3000` | Public origin. **Set this** — file URLs are absolute |
 | `ALLOWED_HOSTS` | unset (any) | Comma-separated, e.g. `staging.realtoriq.in` |
 | `CORS_ORIGINS` | `http://localhost:5173` | Where the React app is served from |
-| `DATABASE_HOST` / `DATABASE_USERNAME` | `localhost` / `kgen_realtoriq_admin` | |
-| `KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD` | — | |
+| `DATABASE_HOST` | unset | **Leave unset** for a local Postgres — see below |
+| `DATABASE_USERNAME` | unset | Only for a remote database |
+| `KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD` | unset | Only for a remote database |
 | `STORAGE_SERVICE` | `local` | `amazon` once S3 is configured |
 | `FORCE_SSL` / `ASSUME_SSL` | `true` | Set both `false` if terminating plain HTTP |
 | `OTP_FIXED_CODE` | `888888` | Only to change the code; you do not need to set it |
@@ -63,6 +64,36 @@ point at production's.
 ```bash
 bin/rails db:prepare
 ```
+
+**Postgres on the same box needs no password.** Leave `DATABASE_HOST`,
+`DATABASE_USERNAME` and the password variable unset, and libpq connects over the
+local Unix socket as the OS user — which is what Ubuntu's default `peer`
+authentication expects.
+
+Naming a host, *even `localhost`*, forces a TCP connection instead, where
+`pg_hba.conf` requires a password and you get:
+
+```
+fe_sendauth: no password supplied
+```
+
+So the fix for that error is to remove `DATABASE_HOST`, not to add a password.
+Create a role matching your OS user once:
+
+```bash
+sudo -u postgres createuser --createdb ubuntu
+```
+
+Confirm you are on the socket:
+
+```bash
+bin/rails runner -e staging 'puts ActiveRecord::Base.connection.select_value("SELECT inet_server_addr()").inspect'
+```
+
+`nil` means Unix socket. An IP means TCP, and you will need credentials.
+
+Set `DATABASE_HOST` only when Postgres genuinely lives on another machine; then
+`DATABASE_USERNAME` and the password variable apply too.
 
 **3. Reference data and an admin.**
 

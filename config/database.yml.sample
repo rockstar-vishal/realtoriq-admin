@@ -85,9 +85,25 @@ staging:
   primary: &primary_staging
     <<: *default
     database: kgen_realtoriq_admin_staging
-    username: <%= ENV.fetch("DATABASE_USERNAME", "kgen_realtoriq_admin") %>
+    # host, username and password are emitted only when set, and that matters.
+    #
+    # With none of them, libpq connects over the local Unix socket as the OS
+    # user — which is what Ubuntu's default `peer` authentication expects, so no
+    # password is needed. Naming a host (even "localhost") forces TCP instead,
+    # where pg_hba.conf requires a password and you get:
+    #
+    #   fe_sendauth: no password supplied
+    #
+    # Set DATABASE_HOST only when Postgres is genuinely on another machine.
+<% if ENV["DATABASE_HOST"].present? %>
+    host: <%= ENV["DATABASE_HOST"] %>
+<% end %>
+<% if ENV["DATABASE_USERNAME"].present? %>
+    username: <%= ENV["DATABASE_USERNAME"] %>
+<% end %>
+<% if ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"].present? %>
     password: <%= ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"] %>
-    host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+<% end %>
   cache:
     <<: *primary_staging
     database: kgen_realtoriq_admin_staging_cache
