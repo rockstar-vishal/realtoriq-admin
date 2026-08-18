@@ -1,0 +1,24 @@
+$kind: http-request
+description: |-
+  Filters: `q`, `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `typology_ids[]`, `status`.
+
+  **Budget filtering matches a project if *any* of its typologies starts in the window** — a broker wants the project that has something sellable at that price, not one whose every configuration fits.
+url: "{{api_base}}/projects"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const projects = pm.response.json().projects;
+      if (projects.length) pm.collectionVariables.set("project_id", projects[0].id);
+
+      pm.test("carries derived bands", () => {
+        const withTypologies = projects.find((p) => p.price_band);
+        if (withTypologies) {
+          pm.expect(withTypologies.price_band).to.have.property("from");
+          pm.expect(withTypologies.area_band).to.have.property("to");
+        }
+      });
+    language: text/javascript
+order: 5000

@@ -1,0 +1,46 @@
+$kind: http-request
+description: |-
+  Counts down `details.attempts_left`. Three wrong codes lock sign-in for 30 minutes with `otp_locked`.
+
+  Self-contained: the pre-request script asks for a fresh code first, so this works in a full collection run where `request_id` has already been consumed.
+url: "{{api_base}}/auth/verify"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "request_id": "{{request_id}}",
+      "code": "000000"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: beforeRequest
+    code: |-
+      // A verified request_id is burned, so mint a fresh one to fail against.
+      pm.sendRequest({
+        url: pm.variables.replaceIn("{{api_base}}/auth/otp"),
+        method: "POST",
+        header: { "Content-Type": "application/json" },
+        body: {
+          mode: "raw",
+          raw: JSON.stringify({ mobile: pm.variables.replaceIn("{{super_admin_mobile}}") })
+        }
+      }, (err, res) => {
+        if (!err && res.code === 200) {
+          pm.collectionVariables.set("request_id", res.json().request_id);
+        }
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("401 with attempts remaining", () => {
+        pm.response.to.have.status(401);
+        const error = pm.response.json().error;
+        pm.expect(error.code).to.eql("invalid_code");
+        pm.expect(error.details.attempts_left).to.be.a("number");
+      });
+    language: text/javascript
+order: 2000

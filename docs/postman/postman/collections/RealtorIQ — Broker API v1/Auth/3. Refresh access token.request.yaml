@@ -1,0 +1,33 @@
+$kind: http-request
+description: |-
+  Refresh tokens **rotate on every use**: a stolen token is good for exactly one call, and using it invalidates the copy the real device holds — which surfaces the theft rather than hiding it.
+
+  Run this twice in a row and the second attempt returns 401. That is the design working, not a bug.
+url: "{{api_base}}/auth/refresh"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "refresh_token": "{{refresh_token}}"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const body = pm.response.json();
+      const previous = pm.collectionVariables.get("refresh_token");
+
+      pm.test("refresh token rotated", () => {
+        pm.expect(body.refresh_token).to.not.eql(previous);
+      });
+
+      pm.collectionVariables.set("access_token", body.access_token);
+      pm.collectionVariables.set("refresh_token", body.refresh_token);
+    language: text/javascript
+order: 3000

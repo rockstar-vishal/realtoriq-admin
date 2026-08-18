@@ -1,0 +1,49 @@
+$kind: http-request
+description: |-
+  The design's "Building not listed? Add new" modal, with the city pre-filled.
+
+  Amenities live here rather than on the listing — every flat in the building shares the pool. A locality outside the chosen city is rejected.
+
+  Name carries `{{$timestamp}}`: buildings are unique per firm and locality, so a fixed name would 422 on a re-run.
+url: "{{api_base}}/buildings"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "Aurum Heights {{$timestamp}}",
+      "city_id": "{{city_id}}",
+      "locality_id": "{{locality_id}}",
+      "has_pool": true,
+      "has_gym": true,
+      "lat": 19.04122,
+      "lng": 73.0674
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Pull real master ids so bodies don't hardcode uuids.
+      pm.sendRequest({
+        url: pm.variables.replaceIn("{{api_base}}/reference"),
+        method: "GET",
+        header: { Authorization: "Bearer " + pm.variables.replaceIn("{{access_token}}") }
+      }, (err, res) => {
+        if (err || res.code !== 200) { return; }
+        const ref = res.json();
+        const city = ref.cities.find((c) => c.name === "Navi Mumbai") || ref.cities[0];
+        const locality = ref.localities.find((l) => l.city_id === city.id) || ref.localities[0];
+        pm.collectionVariables.set("city_id", city.id);
+        pm.collectionVariables.set("locality_id", locality.id);
+        pm.collectionVariables.set("builder_id", ref.builders[0].id);
+        pm.collectionVariables.set("typology_id", (ref.typologies.find((t) => t.name === "2 BHK") || ref.typologies[0]).id);
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("201 Created", () => pm.response.to.have.status(201));
+
+      pm.collectionVariables.set("building_id", pm.response.json().building.id);
+    language: text/javascript
+order: 4000

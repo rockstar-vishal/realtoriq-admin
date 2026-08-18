@@ -1,0 +1,29 @@
+<%# Mirrors the booking-cancel pattern in the product design: a required reason,
+    and copy that says plainly what suspending does.
+
+    Built on the native <dialog> element, so ESC, focus trapping and the
+    backdrop come from the browser rather than from JavaScript we'd have to
+    maintain. %>
+<dialog id="suspend-firm-dialog"
+        class="dialog backdrop:bg-[color-mix(in_srgb,var(--color-neutral-900)_50%,transparent)]"
+        aria-labelledby="suspend-title">
+  <h2 id="suspend-title" class="font-heading font-extrabold text-[20px]">Suspend <%= firm.display_name %></h2>
+
+  <p class="text-[14px] text-[var(--color-neutral-800)]">
+    Every user at this firm is signed out and blocked from the app until it is reactivated.
+    Their data is untouched.
+  </p>
+
+  <%= form_with url: suspend_admin_firm_path(firm), method: :patch, scope: :firm, class: "flex flex-col gap-3" do |f| %>
+    <div class="field">
+      <%= f.label :suspension_reason, "Reason *" %>
+      <%= f.text_area :suspension_reason, class: "input", required: true,
+            placeholder: "Recorded against the firm and kept in the audit trail." %>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-1">
+      <button type="button" class="btn btn-secondary" data-action="dialog#close">Keep active</button>
+      <%= f.submit "Suspend firm", class: "btn btn-danger" %>
+    </div>
+  <% end %>
+</dialog>

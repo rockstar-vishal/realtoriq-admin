@@ -1,0 +1,18 @@
+<% content_for :title, "Edit #{@firm.display_name} · RealtorIQ Admin" %>
+
+<div class="mb-2">
+  <%= link_to "← #{@firm.display_name}", admin_firm_path(@firm),
+        class: "text-[13px] no-underline text-[var(--color-neutral-700)] hover:text-[var(--color-accent)]" %>
+</div>
+
+<h1 class="text-[32px] mb-1">Edit firm</h1>
+<p class="text-[13px] text-[var(--color-neutral-700)]">
+  Changing a contact channel clears its verification — a new address or number hasn't been proven yet.
+</p>
+
+<%= render "form",
+      form: @form,
+      url: admin_firm_path(@firm),
+      method: :patch,
+      submit_label: "Save changes",
+      cancel_path: admin_firm_path(@firm) %>

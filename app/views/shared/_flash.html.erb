@@ -1,0 +1,10 @@
+<% if flash.any? %>
+  <div class="mb-6 flex flex-col gap-2">
+    <% flash.each do |type, message| %>
+      <% next if message.blank? %>
+      <div class="px-4 py-3 text-[14px] border-l-[3px] <%= type.to_s == "alert" ? "border-[var(--color-accent)] bg-[var(--color-accent-100)] text-[var(--color-accent-800)]" : "border-[var(--color-ink)] bg-[var(--color-surface)]" %>">
+        <%= message %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

@@ -1,0 +1,18 @@
+<% content_for :title, "New firm · RealtorIQ Admin" %>
+
+<div class="mb-2">
+  <%= link_to "← Firms", admin_firms_path, class: "text-[13px] no-underline text-[var(--color-neutral-700)] hover:text-[var(--color-accent)]" %>
+</div>
+
+<h1 class="text-[32px] mb-1">New firm</h1>
+<p class="text-[13px] text-[var(--color-neutral-700)]">
+  Creates the firm, its three contact channels, its super admin and its first subscription in one
+  step — everything the broker needs to sign in.
+</p>
+
+<%= render "form",
+      form: @form,
+      url: admin_firms_path,
+      method: :post,
+      submit_label: "Create firm",
+      cancel_path: admin_firms_path %>

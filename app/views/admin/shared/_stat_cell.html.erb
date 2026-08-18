@@ -1,0 +1,17 @@
+<%# A single cell of the ruled stat grid. Renders as a link when given a path,
+    a plain cell otherwise. `emphasis` turns the figure red — used for counts
+    that mean someone has to do something. %>
+<% classes = "block px-5 py-6 border-r-2 border-b-2 border-[var(--color-divider)] no-underline text-[var(--color-ink)]" %>
+<% figure_classes = "font-heading font-extrabold text-[34px] leading-none #{'text-[var(--color-accent)]' if local_assigns[:emphasis] && value.to_i.positive?}" %>
+
+<% if local_assigns[:path].present? %>
+  <%= link_to path, class: "#{classes} hover:bg-[color-mix(in_srgb,var(--color-ink)_4%,transparent)]" do %>
+    <div class="<%= figure_classes %>"><%= value %></div>
+    <div class="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)]"><%= label %></div>
+  <% end %>
+<% else %>
+  <div class="<%= classes %>">
+    <div class="<%= figure_classes %>"><%= value %></div>
+    <div class="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)]"><%= label %></div>
+  </div>
+<% end %>

@@ -1,0 +1,42 @@
+<p class="text-[13px] text-[var(--color-neutral-700)] mb-4 max-w-[640px]">
+  Read-only. Brokers manage their own team from the app; the super admin is created here when the
+  firm is set up. Users have no verifiable channels of their own — the login code sent to their
+  mobile proves possession at sign-in, which is a different thing from the firm's verified contacts.
+</p>
+
+<hr class="rule mt-0">
+
+<% if users.any? %>
+  <table class="table max-w-[900px]">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Mobile</th>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Last seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% users.each do |user| %>
+        <tr>
+          <td class="font-heading font-extrabold text-[14px]"><%= user.name %></td>
+          <td>
+            <span class="tag <%= user.super_admin? ? "tag-accent" : "tag-neutral" %>">
+              <%= user.role.humanize %>
+            </span>
+          </td>
+          <td class="text-[13px]"><%= Phone.format_for_display(user.mobile) %></td>
+          <td class="text-[13px]"><%= blank_dash user.email %></td>
+          <td class="text-[13px]"><%= user.status.humanize %></td>
+          <td class="text-[13px] text-[var(--color-neutral-700)]">
+            <%= user.last_seen_at ? time_ago_in_words(user.last_seen_at) + " ago" : "Never signed in" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p class="py-8 text-[14px] text-[var(--color-neutral-700)]">No users yet.</p>
+<% end %>

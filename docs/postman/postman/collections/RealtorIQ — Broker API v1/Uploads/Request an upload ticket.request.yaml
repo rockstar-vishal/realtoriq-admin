@@ -1,0 +1,33 @@
+$kind: http-request
+description: |-
+  Purposes and caps: `booking_document` 2 MB (PDF/JPG/PNG), `project_brochure` 5 MB (PDF), `project_photo` and `property_photo` 5 MB (JPG/PNG/WebP), `firm_logo` 1 MB.
+
+  `checksum` is the base64 MD5 of the file — storage rejects the PUT if it doesn't match, which is the integrity check, not a bug.
+url: "{{api_base}}/uploads"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "purpose": "project_brochure",
+      "filename": "aurum-vista.pdf",
+      "byte_size": 1048576,
+      "checksum": "XrY7u+Ae7tCTyyK7j1rNww==",
+      "content_type": "application/pdf"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("201 Created", () => pm.response.to.have.status(201));
+
+      const body = pm.response.json();
+      pm.collectionVariables.set("signed_id", body.signed_id);
+
+      pm.test("returns somewhere to PUT the file", () => {
+        pm.expect(body.direct_upload.url).to.be.a("string");
+        pm.expect(body.direct_upload.headers).to.be.an("object");
+      });
+    language: text/javascript
+order: 1000

@@ -1,0 +1,63 @@
+$kind: http-request
+description: |-
+  **Name is optional** — brokers capture a number before anything else. Four fields are required: `mobile`, `transaction_type`, `budget`, and `property_type_id` *for sale leads only* — a rental lead carrying one is rejected, because the design's form never asks.
+
+  Mobiles are normalised to E.164, so `98201 44299` and `+919820144299` are the same number.
+
+  Duplicates are allowed (the design shows several leads on one number); the response carries `possible_duplicates` so the app can warn.
+
+  The pre-request script pulls a property type and typology id from /reference.
+url: "{{api_base}}/leads"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "Rhea Kapoor",
+      "mobile": "98201 44299",
+      "transaction_type": "sale",
+      "property_type_id": "{{property_type_id}}",
+      "budget_min": 12000000,
+      "budget_max": 16000000,
+      "typology_ids": [
+        "{{typology_id}}"
+      ]
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Grab real master ids so the body doesn't hardcode uuids.
+      pm.sendRequest({
+        url: pm.variables.replaceIn("{{api_base}}/reference"),
+        method: "GET",
+        header: { Authorization: "Bearer " + pm.variables.replaceIn("{{access_token}}") }
+      }, (err, res) => {
+        if (err || res.code !== 200) { return; }
+        const ref = res.json();
+        const underConstruction = ref.property_types.find((p) => /construction/i.test(p.name));
+        pm.collectionVariables.set("property_type_id", (underConstruction || ref.property_types[0]).id);
+        pm.collectionVariables.set("typology_id", ref.typologies[0].id);
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("201 Created", () => pm.response.to.have.status(201));
+
+      const body = pm.response.json();
+      pm.collectionVariables.set("lead_id", body.lead.id);
+
+      pm.test("gets a per-firm sequential code", () => {
+        pm.expect(body.lead.code).to.match(/^L-\d{4,}$/);
+      });
+
+      pm.test("opens its status history", () => {
+        pm.expect(body.lead.status_history.length).to.be.at.least(1);
+      });
+
+      pm.test("reports duplicates rather than refusing", () => {
+        pm.expect(body.possible_duplicates).to.be.an("array");
+      });
+    language: text/javascript
+order: 3000

@@ -1,0 +1,57 @@
+<%# Drives all seven master forms off the column definitions each controller
+    declares, so adding a master is a controller, not a view. %>
+<%= form_with model: record,
+      url: record.persisted? ? master_member_path(record) : master_index_path,
+      method: record.persisted? ? :patch : :post do |f| %>
+
+  <% if record.errors.any? %>
+    <div class="mb-5 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)] text-[13px] text-[var(--color-accent-800)]">
+      <%= record.errors.full_messages.to_sentence %>
+    </div>
+  <% end %>
+
+  <div class="grid grid-cols-2 gap-4">
+    <% master_columns.each do |col| %>
+      <% invalid = record.errors[col[:key]].any? %>
+
+      <% if col[:type] == :boolean %>
+        <label class="flex items-center gap-2 text-[14px] cursor-pointer self-end pb-2">
+          <%= f.check_box col[:key] %>
+          <%= col[:label] %>
+        </label>
+      <% else %>
+        <div class="field">
+          <%= f.label col[:key], "#{col[:label]}#{' *' if col[:required]}" %>
+
+          <% case col[:type] %>
+          <% when :association %>
+            <%= f.collection_select col[:key], col[:collection].call, :id, col[:display],
+                  { include_blank: "Select" }, class: "input #{'input-invalid' if invalid}" %>
+          <% when :select %>
+            <%= f.select col[:key], options_for_select(col[:options].map { |o| [o.humanize, o] }, record.public_send(col[:key])),
+                  {}, class: "input #{'input-invalid' if invalid}" %>
+          <% when :number %>
+            <%= f.number_field col[:key], class: "input #{'input-invalid' if invalid}" %>
+          <% when :decimal %>
+            <%= f.number_field col[:key], step: 0.5, class: "input #{'input-invalid' if invalid}" %>
+          <% else %>
+            <%= f.text_field col[:key], class: "input #{'input-invalid' if invalid}" %>
+          <% end %>
+
+          <% if invalid %>
+            <p class="field-error"><%= record.errors[col[:key]].first %></p>
+          <% elsif col[:hint].present? %>
+            <p class="text-[12px] text-[var(--color-neutral-600)] mt-1"><%= col[:hint] %></p>
+          <% end %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+
+  <div class="flex items-center gap-3 mt-6">
+    <%= f.submit record.persisted? ? "Save changes" : "Add #{master_label.downcase}", class: "btn btn-primary" %>
+    <% if record.persisted? %>
+      <%= link_to "Cancel", master_index_path, class: "btn btn-secondary" %>
+    <% end %>
+  </div>
+<% end %>

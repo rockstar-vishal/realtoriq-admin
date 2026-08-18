@@ -1,0 +1,8 @@
+$kind: collection
+description: |-
+  The firm's email, mobile and WhatsApp — the three rows behind Settings → Contact channels.
+
+  These belong to the **firm**, not to individual users. A user's own mobile receives the login code, but that is authentication (proving possession at sign-in), not channel verification.
+
+  Any user can read them; only the firm's `super_admin` can act on them.
+order: 3000

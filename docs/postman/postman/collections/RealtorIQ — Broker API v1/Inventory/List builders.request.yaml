@@ -1,0 +1,17 @@
+$kind: http-request
+description: "The platform's curated developers plus this firm's own. `global: false` marks the ones the firm added — those are theirs to correct; the global list is not."
+url: "{{api_base}}/builders"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const builders = pm.response.json().builders;
+      if (builders.length) pm.collectionVariables.set("builder_id", builders[0].id);
+
+      pm.test("marks which are the platform's", () => {
+        pm.expect(builders[0]).to.have.property("global");
+      });
+    language: text/javascript
+order: 1000

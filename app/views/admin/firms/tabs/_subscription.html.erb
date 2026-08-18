@@ -1,0 +1,140 @@
+<% current = firm.current_subscription %>
+<% plans = Plan.active.ordered %>
+
+<div class="max-w-[900px]">
+  <% if current %>
+    <div class="flex items-start gap-8 pb-6">
+      <div>
+        <div class="text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)] mb-1">Plan</div>
+        <div class="font-heading font-extrabold text-[24px] leading-none"><%= current.plan.name %></div>
+        <div class="text-[13px] text-[var(--color-neutral-700)] mt-1">
+          <%= rupees(current.amount) %> / <%= current.plan.interval %>
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)] mb-1">Status</div>
+        <span class="tag <%= current.entitled? ? "tag-accent" : "tag-solid" %>">
+          <%= current.entitled? ? current.status.humanize : "Lapsed" %>
+        </span>
+      </div>
+
+      <div>
+        <div class="text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)] mb-1">Renews</div>
+        <div class="text-[14px]"><%= current.current_period_end.strftime("%d %b %Y") %></div>
+        <div class="text-[12px] <%= current.days_remaining <= 7 ? "text-[var(--color-accent)]" : "text-[var(--color-neutral-700)]" %>">
+          <%= current.expired? ? "Expired" : "#{pluralize(current.days_remaining, 'day')} left" %>
+        </div>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        <%= button_to "Renew", renew_admin_firm_subscription_path(firm, current), method: :patch,
+              class: "btn btn-primary" %>
+        <button type="button" class="btn btn-secondary"
+                data-action="dialog#open" data-dialog-id-param="cancel-subscription-dialog">Cancel</button>
+      </div>
+    </div>
+  <% else %>
+    <p class="py-6 text-[14px] text-[var(--color-neutral-700)]">
+      No live subscription. The app will treat this firm as lapsed and block sign-in.
+    </p>
+  <% end %>
+
+  <hr class="rule">
+
+  <section>
+    <h2 class="section-title mb-3"><%= current ? "Change plan" : "Assign a plan" %></h2>
+
+    <% if plans.any? %>
+      <%= form_with url: admin_firm_subscriptions_path(firm), method: :post,
+            class: "flex flex-wrap items-end gap-4" do |f| %>
+        <div class="field w-[240px]">
+          <%= f.label :plan_id, "Plan" %>
+          <%= f.select :plan_id,
+                options_for_select(plans.map { |p| ["#{p.name} — #{rupees(p.price)}/#{p.interval}", p.id] },
+                                   current&.plan_id),
+                {}, class: "input" %>
+        </div>
+
+        <div class="field w-[190px]">
+          <%= f.label :starts_on, "Starts on" %>
+          <%= f.date_field :starts_on, value: Date.current, class: "input" %>
+        </div>
+
+        <%= f.submit current ? "Switch plan" : "Assign plan", class: "btn btn-primary" %>
+      <% end %>
+
+      <% if current %>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-2">
+          Switching supersedes the current subscription — it is kept as history, not overwritten.
+        </p>
+      <% end %>
+    <% else %>
+      <p class="py-4 text-[14px] text-[var(--color-neutral-700)]">
+        No active plans exist yet. <%= link_to "Create one", admin_plans_path, class: "text-[var(--color-accent)]" %> first.
+      </p>
+    <% end %>
+  </section>
+
+  <% history = firm.subscriptions.recent_first.includes(:plan) %>
+  <% if history.size > (current ? 1 : 0) %>
+    <section class="mt-10">
+      <h2 class="section-title mb-3">History</h2>
+      <hr class="rule mt-0 mb-0">
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th>Period</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% history.each do |subscription| %>
+            <tr>
+              <td class="text-[14px]"><%= subscription.plan.name %></td>
+              <td class="text-[13px] text-[var(--color-neutral-700)]">
+                <%= subscription.current_period_start.strftime("%d %b %Y") %> —
+                <%= subscription.current_period_end.strftime("%d %b %Y") %>
+              </td>
+              <td class="text-[13px]"><%= rupees(subscription.amount) %></td>
+              <td>
+                <span class="tag tag-neutral"><%= subscription.status.humanize %></span>
+                <% if subscription.cancel_reason.present? %>
+                  <div class="text-[12px] text-[var(--color-neutral-600)] mt-1"><%= subscription.cancel_reason %></div>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+</div>
+
+<% if current %>
+  <dialog id="cancel-subscription-dialog"
+          class="dialog backdrop:bg-[color-mix(in_srgb,var(--color-neutral-900)_50%,transparent)]"
+          aria-labelledby="cancel-sub-title">
+    <h2 id="cancel-sub-title" class="font-heading font-extrabold text-[20px]">Cancel subscription</h2>
+    <p class="text-[14px] text-[var(--color-neutral-800)]">
+      <%= firm.display_name %> keeps access until
+      <%= current.current_period_end.strftime("%d %b %Y") %>, then the app treats them as lapsed.
+    </p>
+
+    <%= form_with url: cancel_admin_firm_subscription_path(firm, current), method: :patch,
+          class: "flex flex-col gap-3" do |f| %>
+      <div class="field">
+        <%= f.label :cancel_reason, "Reason *" %>
+        <%= f.text_field :cancel_reason, class: "input", required: true %>
+      </div>
+
+      <div class="flex justify-end gap-2 mt-1">
+        <button type="button" class="btn btn-secondary" data-action="dialog#close">Keep it</button>
+        <%= f.submit "Cancel subscription", class: "btn btn-danger" %>
+      </div>
+    <% end %>
+  </dialog>
+<% end %>

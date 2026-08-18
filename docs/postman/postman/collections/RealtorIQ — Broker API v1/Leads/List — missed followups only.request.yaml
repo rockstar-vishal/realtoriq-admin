@@ -1,0 +1,16 @@
+$kind: http-request
+description: The design's "Missed f/u" tab. Not a status — `LEAD_STATUSES` has no such entry — but an overdue next action on a lead that isn't already dead or booked.
+url: "{{api_base}}/leads?status=missed_followup"
+method: GET
+queryParams:
+  status: missed_followup
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      pm.test("every result really is overdue", () => {
+        pm.response.json().leads.forEach((l) => pm.expect(l.overdue).to.be.true);
+      });
+    language: text/javascript
+order: 2000

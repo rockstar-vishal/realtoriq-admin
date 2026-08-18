@@ -1,0 +1,17 @@
+<%# A labelled input that renders its own error underneath, so a failed save
+    points at the field the admin actually typed into. %>
+<% invalid = form.errors[attribute].any? %>
+<% type = local_assigns.fetch(:type, :text_field) %>
+<% options = { class: "input #{'input-invalid' if invalid}", value: form.public_send(attribute) }
+     .merge(local_assigns.fetch(:html_options, {})) %>
+
+<div class="field">
+  <%= f.label attribute, label %>
+  <%= f.public_send(type, attribute, **options) %>
+
+  <% if invalid %>
+    <p class="field-error"><%= form.errors[attribute].first %></p>
+  <% elsif local_assigns[:hint].present? %>
+    <p class="text-[12px] text-[var(--color-neutral-600)] mt-1"><%= hint %></p>
+  <% end %>
+</div>

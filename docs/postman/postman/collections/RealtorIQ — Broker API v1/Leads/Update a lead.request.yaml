@@ -1,0 +1,18 @@
+$kind: http-request
+description: Partial update. Send `typology_ids` to replace the preferred configurations wholesale.
+url: "{{api_base}}/leads/{{lead_id}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "next_action_note": "Call back after the site visit",
+      "next_action_at": "2026-09-01T10:30:00+05:30"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test("200 OK", () => pm.response.to.have.status(200));
+    language: text/javascript
+order: 5000

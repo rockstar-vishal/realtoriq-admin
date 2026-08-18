@@ -1,0 +1,18 @@
+$kind: collection
+description: |-
+  Recording a sale and the brokerage on it.
+
+  **Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.
+
+  **Net income is computed server-side and stored:**
+
+  ```
+  round(agreement_value × commission_percent / 100) + kicker − passback
+  ```
+
+  The design's own example is the fixture: ₹1,56,00,000 at 4.5% is ₹7,02,000, plus a ₹50,000 kicker, minus a ₹66,000 passback = **₹6,86,000** — the "₹6.86 L" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.
+
+  **Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.
+
+  **Cancelling** sets the booking's status and nothing else — the lead is untouched and invoices already raised stay on record.
+order: 7000

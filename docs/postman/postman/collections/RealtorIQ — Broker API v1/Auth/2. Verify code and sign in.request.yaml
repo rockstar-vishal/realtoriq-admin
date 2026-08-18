@@ -1,0 +1,48 @@
+$kind: http-request
+description: |-
+  `device` is optional but recommended. `device_id` identifies the physical device, so reinstalling reclaims that slot rather than consuming another. Past the plan's device limit the **oldest** session is signed out and the newest device gets in.
+
+  Saves `access_token` and `refresh_token`.
+url: "{{api_base}}/auth/verify"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "request_id": "{{request_id}}",
+      "code": "{{otp_code}}",
+      "device": {
+        "device_id": "postman-1",
+        "device_name": "Postman",
+        "platform": "web",
+        "app_version": "dev"
+      }
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const body = pm.response.json();
+      pm.collectionVariables.set("access_token", body.access_token);
+      pm.collectionVariables.set("refresh_token", body.refresh_token);
+
+      pm.test("returns both tokens", () => {
+        pm.expect(body.access_token).to.be.a("string").and.not.empty;
+        pm.expect(body.refresh_token).to.be.a("string").and.not.empty;
+      });
+
+      pm.test("access token is short-lived", () => {
+        pm.expect(body.expires_in).to.eql(900);
+      });
+
+      pm.test("carries the firm and its entitlement", () => {
+        pm.expect(body.firm.code).to.match(/^CP-/);
+        pm.expect(body.subscription.entitled).to.be.true;
+      });
+    language: text/javascript
+order: 2000

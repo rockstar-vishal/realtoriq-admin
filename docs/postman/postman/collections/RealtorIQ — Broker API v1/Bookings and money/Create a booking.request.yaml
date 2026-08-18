@@ -1,0 +1,55 @@
+$kind: http-request
+description: |-
+  Every booking carries a lead — the design's flow finds one by phone first, which is just `GET /leads?q=<digits>`; no separate endpoint.
+
+  `customer_name` and `customer_mobile` are **snapshotted** from the lead unless you send them: correcting the lead's name a year later must not rewrite what was booked.
+
+  The pre-request script picks a lead so the body doesn't hardcode an id.
+url: "{{api_base}}/bookings"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "lead_id": "{{lead_id}}",
+      "booked_on": "2026-08-01",
+      "agreement_value": 15600000,
+      "commission_percent": 4.5,
+      "kicker": 50000,
+      "passback": 66000,
+      "builder_ref_no": "AV/BK/1184",
+      "unit_no": "B-1104",
+      "carpet_area_sqft": 1340,
+      "other_details": "10:80:10 plan \u00b7 two covered parkings"
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Grab a lead to book against.
+      pm.sendRequest({
+        url: pm.variables.replaceIn("{{api_base}}/leads"),
+        method: "GET",
+        header: { Authorization: "Bearer " + pm.variables.replaceIn("{{access_token}}") }
+      }, (err, res) => {
+        if (!err && res.code === 200 && res.json().leads.length) {
+          pm.collectionVariables.set("lead_id", res.json().leads[0].id);
+        }
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("201 Created", () => pm.response.to.have.status(201));
+
+      const b = pm.response.json().booking;
+      pm.collectionVariables.set("booking_id", b.id);
+
+      pm.test("net income matches the design's worked example", () => {
+        pm.expect(b.revenue.commission_amount).to.eql(702000);
+        pm.expect(b.revenue.net_income).to.eql(686000);
+      });
+
+      pm.test("gets a per-firm code", () => pm.expect(b.code).to.match(/^B-\d{4,}$/));
+    language: text/javascript
+order: 1000

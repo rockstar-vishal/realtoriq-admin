@@ -1,0 +1,25 @@
+$kind: http-request
+description: Booking documents are capped at 2 MB on the design's own screen.
+url: "{{api_base}}/uploads"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "purpose": "booking_document",
+      "filename": "huge.pdf",
+      "byte_size": 99999999,
+      "checksum": "XrY7u+Ae7tCTyyK7j1rNww==",
+      "content_type": "application/pdf"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("422 file_too_large", () => {
+        pm.response.to.have.status(422);
+        pm.expect(pm.response.json().error.code).to.eql("file_too_large");
+      });
+    language: text/javascript
+order: 2000

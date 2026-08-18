@@ -1,0 +1,66 @@
+$kind: http-request
+description: |-
+  Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.
+
+  `possession_on` may be replaced by `possession_label` ("Ready") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.
+url: "{{api_base}}/projects"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "Aurum Vista II",
+      "builder_id": "{{builder_id}}",
+      "city_id": "{{city_id}}",
+      "locality_id": "{{locality_id}}",
+      "starting_budget": 14200000,
+      "possession_on": "2027-12-01",
+      "brokerage_percent": 4.5,
+      "rera_number": "P51700054218",
+      "promo_text": "Extra 1% on 3 BHK bookings",
+      "promo_ends_on": "2026-12-31",
+      "typologies": [
+        {
+          "typology_id": "{{typology_id}}",
+          "starting_price": 14200000,
+          "starting_carpet_sqft": 720
+        }
+      ]
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Pull real master ids so bodies don't hardcode uuids.
+      pm.sendRequest({
+        url: pm.variables.replaceIn("{{api_base}}/reference"),
+        method: "GET",
+        header: { Authorization: "Bearer " + pm.variables.replaceIn("{{access_token}}") }
+      }, (err, res) => {
+        if (err || res.code !== 200) { return; }
+        const ref = res.json();
+        const city = ref.cities.find((c) => c.name === "Navi Mumbai") || ref.cities[0];
+        const locality = ref.localities.find((l) => l.city_id === city.id) || ref.localities[0];
+        pm.collectionVariables.set("city_id", city.id);
+        pm.collectionVariables.set("locality_id", locality.id);
+        pm.collectionVariables.set("builder_id", ref.builders[0].id);
+        pm.collectionVariables.set("typology_id", (ref.typologies.find((t) => t.name === "2 BHK") || ref.typologies[0]).id);
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("201 Created", () => pm.response.to.have.status(201));
+
+      const project = pm.response.json().project;
+      pm.collectionVariables.set("project_id", project.id);
+
+      pm.test("band derives from the typologies", () => {
+        pm.expect(project.price_band.from).to.eql(14200000);
+      });
+
+      pm.test("created as the firm's own, not catalog", () => {
+        pm.expect(project.source).to.eql("own");
+      });
+    language: text/javascript
+order: 6000

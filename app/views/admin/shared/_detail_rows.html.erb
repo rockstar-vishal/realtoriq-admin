@@ -1,0 +1,12 @@
+<%# Label/value pairs on 1px rules, labels flush left in the small uppercase
+    treatment the system uses for table headers. %>
+<dl class="text-[14px]">
+  <% rows.each do |label, value| %>
+    <div class="flex gap-4 py-2 border-b border-[var(--color-divider)]">
+      <dt class="w-[140px] shrink-0 text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)] pt-[3px]">
+        <%= label %>
+      </dt>
+      <dd class="flex-1"><%= blank_dash value %></dd>
+    </div>
+  <% end %>
+</dl>

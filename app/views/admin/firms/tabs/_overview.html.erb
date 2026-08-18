@@ -1,0 +1,60 @@
+<div class="grid md:grid-cols-2 gap-x-10 gap-y-8 max-w-[900px]">
+  <section>
+    <h2 class="section-title mb-3">Firm</h2>
+    <hr class="rule mt-0 mb-0">
+    <%= render "admin/shared/detail_rows", rows: {
+          "Trading name" => firm.name,
+          "Legal name" => firm.legal_name,
+          "Firm code" => firm.code,
+          "Slug" => firm.slug
+        } %>
+  </section>
+
+  <section>
+    <h2 class="section-title mb-3">Compliance</h2>
+    <hr class="rule mt-0 mb-0">
+    <%= render "admin/shared/detail_rows", rows: {
+          "RERA number" => firm.rera_number,
+          "RERA valid till" => firm.rera_valid_till&.strftime("%d %b %Y"),
+          "PAN" => firm.pan,
+          "GST number" => firm.gst_number
+        } %>
+  </section>
+
+  <section>
+    <h2 class="section-title mb-3">Address</h2>
+    <hr class="rule mt-0 mb-0">
+    <%= render "admin/shared/detail_rows", rows: {
+          "Address" => [firm.address_line1, firm.address_line2].compact_blank.join(", "),
+          "City" => firm.city&.display_name,
+          "Locality" => firm.locality&.name,
+          "Pincode" => firm.pincode
+        } %>
+  </section>
+
+  <section>
+    <h2 class="section-title mb-3">Bank account</h2>
+    <hr class="rule mt-0 mb-0">
+    <% account = firm.primary_bank_account %>
+    <% if account %>
+      <%= render "admin/shared/detail_rows", rows: {
+            "Account" => account.masked_account_number,
+            "IFSC" => account.ifsc,
+            "Bank" => account.bank_name,
+            "Holder" => account.holder_name
+          } %>
+    <% else %>
+      <p class="py-4 text-[13px] text-[var(--color-neutral-700)]">
+        Not set. The broker adds this from Settings — it prints on the invoices they raise.
+      </p>
+    <% end %>
+  </section>
+</div>
+
+<% if firm.internal_notes.present? %>
+  <section class="mt-10 max-w-[900px]">
+    <h2 class="section-title mb-3">Internal notes</h2>
+    <hr class="rule mt-0 mb-3">
+    <p class="text-[14px] whitespace-pre-line"><%= firm.internal_notes %></p>
+  </section>
+<% end %>

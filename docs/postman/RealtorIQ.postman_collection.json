@@ -1,0 +1,2297 @@
+{
+  "info": {
+    "_postman_id": "b7f1e4a2-9c3d-4f8a-b512-6a0d9e4c1f77",
+    "name": "RealtorIQ — Broker API v1",
+    "description": "The JSON API the React broker app talks to.\n\n**The flow chains itself.** Run the Auth folder top to bottom: `Request sign-in code` saves `request_id`, `Verify code` saves `access_token` and `refresh_token`, and every other request picks the token up from collection auth. Nothing needs copy-pasting.\n\n**Prerequisites**\n\n1. `bin/rails db:seed` — reference data\n2. `bin/rails demo:seed` — a firm you can sign into (Sethi Realty)\n3. `bin/dev` — the server on :3000\n\n**Sign-in codes are `888888` in development.** Nothing is delivered. That is a development-only bypass; the app refuses to boot in production with it set.\n\n**Error shape.** Every failure is `{ \"error\": { \"code\", \"message\", \"details\" } }`. Switch on `code`, never on the prose. The codes are: `not_registered`, `account_disabled`, `otp_locked`, `invalid_code`, `account_suspended`, `subscription_lapsed`, `device_limit_reached`, `forbidden_role`, `rate_limited`, `delivery_failed`, `unauthorized`, `not_found`, `invalid_request`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "api_base",
+      "value": "{{base_url}}/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "super_admin_mobile",
+      "value": "9820144210",
+      "type": "string"
+    },
+    {
+      "key": "manager_mobile",
+      "value": "9820144211",
+      "type": "string"
+    },
+    {
+      "key": "agent_mobile",
+      "value": "9820144212",
+      "type": "string"
+    },
+    {
+      "key": "otp_code",
+      "value": "888888",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "channel_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agent_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lead_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "property_type_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "typology_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "signed_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "city_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "locality_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "builder_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "building_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "project_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "property_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "booking_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invoice_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "No passwords and no self-signup. Ops create the account; possession of the mobile is the credential.",
+      "item": [
+        {
+          "name": "1. Request sign-in code",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/otp",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{super_admin_mobile}}\"\n}"
+            },
+            "description": "Accepts any format of the number — `9820144210`, `+91 98201 44210`, `098201 44210` all resolve to the same user, because mobiles are normalised to E.164 and are globally unique.\n\nSaves `request_id` for the next request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"request_id\", body.request_id);",
+                  "",
+                  "pm.test(\"returns a request_id to verify against\", () => {",
+                  "  pm.expect(body.request_id).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"masks the destination, for the OTP screen's copy\", () => {",
+                  "  pm.expect(body.sent_to).to.include(\"xxx\");",
+                  "});",
+                  "",
+                  "pm.test(\"code has not already expired\", () => {",
+                  "  pm.expect(body.expires_in).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Verify code and sign in",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/verify",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{request_id}}\",\n  \"code\": \"{{otp_code}}\",\n  \"device\": {\n    \"device_id\": \"postman-1\",\n    \"device_name\": \"Postman\",\n    \"platform\": \"web\",\n    \"app_version\": \"dev\"\n  }\n}"
+            },
+            "description": "`device` is optional but recommended. `device_id` identifies the physical device, so reinstalling reclaims that slot rather than consuming another. Past the plan's device limit the **oldest** session is signed out and the newest device gets in.\n\nSaves `access_token` and `refresh_token`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"access_token\", body.access_token);",
+                  "pm.collectionVariables.set(\"refresh_token\", body.refresh_token);",
+                  "",
+                  "pm.test(\"returns both tokens\", () => {",
+                  "  pm.expect(body.access_token).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.refresh_token).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test(\"access token is short-lived\", () => {",
+                  "  pm.expect(body.expires_in).to.eql(900);",
+                  "});",
+                  "",
+                  "pm.test(\"carries the firm and its entitlement\", () => {",
+                  "  pm.expect(body.firm.code).to.match(/^CP-/);",
+                  "  pm.expect(body.subscription.entitled).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Refresh access token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/refresh",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "description": "Refresh tokens **rotate on every use**: a stolen token is good for exactly one call, and using it invalidates the copy the real device holds — which surfaces the theft rather than hiding it.\n\nRun this twice in a row and the second attempt returns 401. That is the design working, not a bug."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "const previous = pm.collectionVariables.get(\"refresh_token\");",
+                  "",
+                  "pm.test(\"refresh token rotated\", () => {",
+                  "  pm.expect(body.refresh_token).to.not.eql(previous);",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set(\"access_token\", body.access_token);",
+                  "pm.collectionVariables.set(\"refresh_token\", body.refresh_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Session",
+      "item": [
+        {
+          "name": "Who am I",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/me",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.\n\nThis is also where the blocked states surface — suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"resolves permissions server-side\", () => {",
+                  "  pm.expect(body.permissions).to.have.property(\"verify_contact_channels\");",
+                  "});",
+                  "",
+                  "pm.test(\"reports the device limit from the plan\", () => {",
+                  "  pm.expect(body.limits.devices).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reference data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/reference",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "reference"
+              ]
+            },
+            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test(\"carries every master the app needs\", () => {",
+                  "  [\"cities\", \"localities\", \"builders\", \"typologies\",",
+                  "   \"lead_sources\", \"lead_statuses\", \"property_types\"].forEach((key) => {",
+                  "    pm.expect(body[key], key).to.be.an(\"array\").that.is.not.empty;",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test(\"lead statuses carry the report flags\", () => {",
+                  "  pm.expect(body.lead_statuses.some((s) => s.is_dead)).to.be.true;",
+                  "  pm.expect(body.lead_statuses.some((s) => s.is_booked)).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"is cacheable\", () => {",
+                  "  // Header lookup is case-sensitive in Newman, and Puma emits `etag`.",
+                  "  const etag = pm.response.headers.get(\"ETag\") || pm.response.headers.get(\"etag\");",
+                  "  pm.expect(etag).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Firm contact channels",
+      "description": "The firm's email, mobile and WhatsApp — the three rows behind Settings → Contact channels.\n\nThese belong to the **firm**, not to individual users. A user's own mobile receives the login code, but that is authentication (proving possession at sign-in), not channel verification.\n\nAny user can read them; only the firm's `super_admin` can act on them.",
+      "item": [
+        {
+          "name": "List channels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/firm/contact_channels",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "firm",
+                "contact_channels"
+              ]
+            },
+            "description": "`can_verify` tells the client whether to render the verify actions at all.\n\nSaves an **unverified** channel's id for the next two requests — `demo:seed` leaves WhatsApp unverified on purpose so the flow is walkable on a fresh database."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "// Prefer an unverified channel: sending a code to an already-verified",
+                  "// one is refused, which would make a second collection run fail.",
+                  "const target = body.channels.find((c) => !c.verified) || body.channels[0];",
+                  "if (target) pm.collectionVariables.set(\"channel_id\", target.id);",
+                  "",
+                  "pm.test(\"returns one channel of each kind\", () => {",
+                  "  pm.expect(body.channels.map((c) => c.kind).sort())",
+                  "    .to.eql([\"email\", \"mobile\", \"whatsapp\"]);",
+                  "});",
+                  "",
+                  "pm.test(\"tells the client whether this user may verify\", () => {",
+                  "  pm.expect(body.can_verify).to.be.a(\"boolean\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send verification code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/firm/contact_channels/{{channel_id}}/request_code",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "firm",
+                "contact_channels",
+                "{{channel_id}}",
+                "request_code"
+              ]
+            },
+            "description": "Routes by channel kind: email through Action Mailer, mobile and WhatsApp through MSG91.\n\nThere is a 60-second resend cooldown — call it twice quickly and the second returns 422 `code_not_sent`. An already-verified channel is refused the same way, which is why the assertions below accept both outcomes: it keeps repeat runs honest instead of green-by-luck."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"code sent, or refused for a stated reason\", () => {",
+                  "  pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test(\"channel moves to pending\", () => {",
+                  "    pm.expect(pm.response.json().channel.state).to.eql(\"pending\");",
+                  "  });",
+                  "} else {",
+                  "  pm.test(\"refusal is typed\", () => {",
+                  "    pm.expect(pm.response.json().error.code).to.eql(\"code_not_sent\");",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/firm/contact_channels/{{channel_id}}/verify",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "firm",
+                "contact_channels",
+                "{{channel_id}}",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{otp_code}}\"\n}"
+            },
+            "description": "Records **who** verified it, so the admin panel can show \"verified by Tanmay Sethi\" rather than just a green badge.\n\nA wrong code returns 422 `invalid_code` with `details.attempts_left`; the channel fails after five.\n\nRe-run `bin/rails demo:seed` to put the demo firm's WhatsApp channel back to unverified."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"verified, or no live code to verify against\", () => {",
+                  "  pm.expect([200, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test(\"channel is verified, and by whom\", () => {",
+                  "    const channel = pm.response.json().channel;",
+                  "    pm.expect(channel.verified).to.be.true;",
+                  "    pm.expect(channel.verified_at).to.not.be.null;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Leads",
+      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Two filter semantics worth knowing.** `status=missed_followup` is a *derived* tab, not a status: it means an overdue `next_action_at` on a non-terminal lead. And budget filtering is **overlap**, not containment — `budget_min`/`budget_max` return leads whose own range intersects your window.\n\nMoney is raw integer rupees throughout; the client formats lakh/crore.",
+      "item": [
+        {
+          "name": "List leads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads"
+              ]
+            },
+            "description": "Default sort is a worklist: overdue followups first, then by when the next action is due.\n\nFilters: `q`, `status`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`, `budget_max`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`, `sort`, `page`, `per_page` (max 50).\n\nSaves the first lead's id for the requests below."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "if (body.leads.length) pm.collectionVariables.set(\"lead_id\", body.leads[0].id);",
+                  "",
+                  "pm.test(\"paginated\", () => {",
+                  "  pm.expect(body.meta).to.have.property(\"total_count\");",
+                  "  pm.expect(body.meta.per_page).to.eql(25);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List — missed followups only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads?status=missed_followup",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads?status=missed_followup"
+              ]
+            },
+            "description": "The design's \"Missed f/u\" tab. Not a status — `LEAD_STATUSES` has no such entry — but an overdue next action on a lead that isn't already dead or booked."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"every result really is overdue\", () => {",
+                  "  pm.response.json().leads.forEach((l) => pm.expect(l.overdue).to.be.true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads"
+              ]
+            },
+            "description": "**Name is optional** — brokers capture a number before anything else. Four fields are required: `mobile`, `transaction_type`, `budget`, and `property_type_id` *for sale leads only* — a rental lead carrying one is rejected, because the design's form never asks.\n\nMobiles are normalised to E.164, so `98201 44299` and `+919820144299` are the same number.\n\nDuplicates are allowed (the design shows several leads on one number); the response carries `possible_duplicates` so the app can warn.\n\nThe pre-request script pulls a property type and typology id from /reference.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rhea Kapoor\",\n  \"mobile\": \"98201 44299\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 12000000,\n  \"budget_max\": 16000000,\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Grab real master ids so the body doesn't hardcode uuids.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/reference\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 200) { return; }",
+                  "  const ref = res.json();",
+                  "  const underConstruction = ref.property_types.find((p) => /construction/i.test(p.name));",
+                  "  pm.collectionVariables.set(\"property_type_id\", (underConstruction || ref.property_types[0]).id);",
+                  "  pm.collectionVariables.set(\"typology_id\", ref.typologies[0].id);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"lead_id\", body.lead.id);",
+                  "",
+                  "pm.test(\"gets a per-firm sequential code\", () => {",
+                  "  pm.expect(body.lead.code).to.match(/^L-\\d{4,}$/);",
+                  "});",
+                  "",
+                  "pm.test(\"opens its status history\", () => {",
+                  "  pm.expect(body.lead.status_history.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test(\"reports duplicates rather than refusing\", () => {",
+                  "  pm.expect(body.possible_duplicates).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a lead",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}"
+              ]
+            },
+            "description": "Detail payload: the lead, its typologies, its recent timeline and its full status history.\n\nNote the lead **detail screen was never designed** — this shape is inferred from the list card and the new-lead form, and will likely change when that screen exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"carries the timeline and history\", () => {",
+                  "  const lead = pm.response.json().lead;",
+                  "  pm.expect(lead.activities).to.be.an(\"array\");",
+                  "  pm.expect(lead.status_history).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update a lead",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}"
+              ]
+            },
+            "description": "Partial update. Send `typology_ids` to replace the preferred configurations wholesale.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"next_action_note\": \"Call back after the site visit\",\n  \"next_action_at\": \"2026-09-01T10:30:00+05:30\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log a call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/activities",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "activities"
+              ]
+            },
+            "description": "Kinds: `call`, `whatsapp`, `visit`, `note`. `status_change` is system-only and refused here — pipeline movement goes through the status endpoint, which also writes the reporting record.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"call\",\n  \"body\": \"Discussed the 3 BHK; wants a Saturday visit\",\n  \"outcome\": \"interested\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log a visit — sets the visited badge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/activities",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "activities"
+              ]
+            },
+            "description": "A visit is what makes the design's \"visited\" badge true. It's derived from the timeline rather than set separately, so the two can't disagree. The response returns the updated lead so the client can refresh without a second request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"visit\",\n  \"body\": \"Site visit to Aurum Vista\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test(\"the lead now reads as visited\", () => {",
+                  "  pm.expect(pm.response.json().lead.visited).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Timeline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/activities",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "activities"
+              ]
+            },
+            "description": "Newest first. `system: true` marks rows the app wrote itself, so the client can render them differently from something a person typed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark dead — reason required",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/status",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "status"
+              ]
+            },
+            "description": "Deliberately refused. A lead marked dead with no reason is a lead nobody can learn from, and the dead-leads report exists to answer \"why\".",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"dead\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 reason_required\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"reason_required\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark dead — with a reason",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/status",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "status"
+              ]
+            },
+            "description": "Writes three things in one transaction: the lead's status, a `lead_status_changes` row (which is what the dead-leads report groups by month), and a timeline entry.\n\nReviving the lead afterwards clears `dead_reason` and `dead_at`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"dead\",\n  \"reason\": \"Bought through another channel partner\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"records the reason and the history\", () => {",
+                  "  const lead = pm.response.json().lead;",
+                  "  pm.expect(lead.dead_reason).to.be.a(\"string\");",
+                  "  pm.expect(lead.dead_at).to.not.be.null;",
+                  "  pm.expect(lead.status_history.length).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revive it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/status",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "status"
+              ]
+            },
+            "description": "Clears the death details — otherwise a revived lead still reads as dead everywhere it's shown.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"hot\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"death details cleared\", () => {",
+                  "  const lead = pm.response.json().lead;",
+                  "  pm.expect(lead.dead_reason).to.be.null;",
+                  "  pm.expect(lead.dead_at).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Uploads",
+      "description": "Direct upload: ask for a ticket, PUT the file straight to storage, then pass the returned `signed_id` when creating the record it belongs to.\n\nLimits are enforced **when the ticket is issued**, per purpose — after that the browser talks to storage and this is the last point we control. Rails' own `/rails/active_storage/direct_uploads` is shadowed with a 404, since it sits outside this auth and enforces none of these rules.",
+      "item": [
+        {
+          "name": "Request an upload ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/uploads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "uploads"
+              ]
+            },
+            "description": "Purposes and caps: `booking_document` 2 MB (PDF/JPG/PNG), `project_brochure` 5 MB (PDF), `project_photo` and `property_photo` 5 MB (JPG/PNG/WebP), `firm_logo` 1 MB.\n\n`checksum` is the base64 MD5 of the file — storage rejects the PUT if it doesn't match, which is the integrity check, not a bug.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"project_brochure\",\n  \"filename\": \"aurum-vista.pdf\",\n  \"byte_size\": 1048576,\n  \"checksum\": \"XrY7u+Ae7tCTyyK7j1rNww==\",\n  \"content_type\": \"application/pdf\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"signed_id\", body.signed_id);",
+                  "",
+                  "pm.test(\"returns somewhere to PUT the file\", () => {",
+                  "  pm.expect(body.direct_upload.url).to.be.a(\"string\");",
+                  "  pm.expect(body.direct_upload.headers).to.be.an(\"object\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Oversize file is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/uploads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "uploads"
+              ]
+            },
+            "description": "Booking documents are capped at 2 MB on the design's own screen.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"booking_document\",\n  \"filename\": \"huge.pdf\",\n  \"byte_size\": 99999999,\n  \"checksum\": \"XrY7u+Ae7tCTyyK7j1rNww==\",\n  \"content_type\": \"application/pdf\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 file_too_large\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"file_too_large\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong type is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/uploads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "uploads"
+              ]
+            },
+            "description": "A brochure is a PDF. Each purpose carries its own allow-list.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"project_brochure\",\n  \"filename\": \"photo.png\",\n  \"byte_size\": 1000,\n  \"checksum\": \"XrY7u+Ae7tCTyyK7j1rNww==\",\n  \"content_type\": \"image/png\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 unsupported_type\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"unsupported_type\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "description": "Projects are developer stock a broker sells on commission. Properties are resale and rental listings. Buildings hold properties and are **firm-owned** — brokers create them inline from the property form, so one firm's typo never reaches another's dropdown.\n\n**Inventory is firm-wide**, unlike leads: everyone in the firm sees all of it.\n\n**Money is raw rupees.** The design's inputs read \"₹ lakh\" — that is a client-side unit, converted before it gets here.\n\n**Price and area bands are derived**, not stored: min/max across a project's typologies. A stored band could disagree with its own rows.",
+      "item": [
+        {
+          "name": "List builders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/builders",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "builders"
+              ]
+            },
+            "description": "The platform's curated developers plus this firm's own. `global: false` marks the ones the firm added — those are theirs to correct; the global list is not."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const builders = pm.response.json().builders;",
+                  "if (builders.length) pm.collectionVariables.set(\"builder_id\", builders[0].id);",
+                  "",
+                  "pm.test(\"marks which are the platform's\", () => {",
+                  "  pm.expect(builders[0]).to.have.property(\"global\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a builder inline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/builders",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "builders"
+              ]
+            },
+            "description": "The design puts this on the project form so a broker is never blocked by a missing developer.\n\nWhat they add belongs to their firm alone — it does not join the global list, and a firm may reuse a name the platform already has.\n\nThe name carries `{{$timestamp}}` so the collection is re-runnable — builder names are unique per firm, and a fixed one would 422 on the second pass.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sethi Preferred {{$timestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test(\"belongs to the firm, not the platform\", () => {",
+                  "  pm.expect(pm.response.json().builder.global).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List buildings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/buildings",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "buildings"
+              ]
+            },
+            "description": "Firm-owned. `q` searches by name — this is what backs the property form's building picker."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const buildings = pm.response.json().buildings;",
+                  "if (buildings.length) pm.collectionVariables.set(\"building_id\", buildings[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a building",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/buildings",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "buildings"
+              ]
+            },
+            "description": "The design's \"Building not listed? Add new\" modal, with the city pre-filled.\n\nAmenities live here rather than on the listing — every flat in the building shares the pool. A locality outside the chosen city is rejected.\n\nName carries `{{$timestamp}}`: buildings are unique per firm and locality, so a fixed name would 422 on a re-run.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"has_pool\": true,\n  \"has_gym\": true,\n  \"lat\": 19.04122,\n  \"lng\": 73.0674\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pull real master ids so bodies don't hardcode uuids.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/reference\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 200) { return; }",
+                  "  const ref = res.json();",
+                  "  const city = ref.cities.find((c) => c.name === \"Navi Mumbai\") || ref.cities[0];",
+                  "  const locality = ref.localities.find((l) => l.city_id === city.id) || ref.localities[0];",
+                  "  pm.collectionVariables.set(\"city_id\", city.id);",
+                  "  pm.collectionVariables.set(\"locality_id\", locality.id);",
+                  "  pm.collectionVariables.set(\"builder_id\", ref.builders[0].id);",
+                  "  pm.collectionVariables.set(\"typology_id\", (ref.typologies.find((t) => t.name === \"2 BHK\") || ref.typologies[0]).id);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.collectionVariables.set(\"building_id\", pm.response.json().building.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Filters: `q`, `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `typology_ids[]`, `status`.\n\n**Budget filtering matches a project if *any* of its typologies starts in the window** — a broker wants the project that has something sellable at that price, not one whose every configuration fits."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const projects = pm.response.json().projects;",
+                  "if (projects.length) pm.collectionVariables.set(\"project_id\", projects[0].id);",
+                  "",
+                  "pm.test(\"carries derived bands\", () => {",
+                  "  const withTypologies = projects.find((p) => p.price_band);",
+                  "  if (withTypologies) {",
+                  "    pm.expect(withTypologies.price_band).to.have.property(\"from\");",
+                  "    pm.expect(withTypologies.area_band).to.have.property(\"to\");",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a project",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/projects",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            },
+            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aurum Vista II\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-01\",\n  \"brokerage_percent\": 4.5,\n  \"rera_number\": \"P51700054218\",\n  \"promo_text\": \"Extra 1% on 3 BHK bookings\",\n  \"promo_ends_on\": \"2026-12-31\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pull real master ids so bodies don't hardcode uuids.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/reference\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 200) { return; }",
+                  "  const ref = res.json();",
+                  "  const city = ref.cities.find((c) => c.name === \"Navi Mumbai\") || ref.cities[0];",
+                  "  const locality = ref.localities.find((l) => l.city_id === city.id) || ref.localities[0];",
+                  "  pm.collectionVariables.set(\"city_id\", city.id);",
+                  "  pm.collectionVariables.set(\"locality_id\", locality.id);",
+                  "  pm.collectionVariables.set(\"builder_id\", ref.builders[0].id);",
+                  "  pm.collectionVariables.set(\"typology_id\", (ref.typologies.find((t) => t.name === \"2 BHK\") || ref.typologies[0]).id);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const project = pm.response.json().project;",
+                  "pm.collectionVariables.set(\"project_id\", project.id);",
+                  "",
+                  "pm.test(\"band derives from the typologies\", () => {",
+                  "  pm.expect(project.price_band.from).to.eql(14200000);",
+                  "});",
+                  "",
+                  "pm.test(\"created as the firm's own, not catalog\", () => {",
+                  "  pm.expect(project.source).to.eql(\"own\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}"
+              ]
+            },
+            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const project = pm.response.json().project;",
+                  "",
+                  "pm.test(\"shareable hides what the broker earns\", () => {",
+                  "  pm.expect(project).to.have.property(\"brokerage_percent\");",
+                  "  pm.expect(project.shareable).to.not.have.property(\"brokerage_percent\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties"
+              ]
+            },
+            "description": "Filters: `q`, `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `status`.\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const properties = pm.response.json().properties;",
+                  "if (properties.length) pm.collectionVariables.set(\"property_id\", properties[0].id);",
+                  "",
+                  "pm.test(\"no confidential note in a list\", () => {",
+                  "  properties.forEach((p) => pm.expect(p).to.not.have.property(\"confidential_note\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a property",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/properties",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties"
+              ]
+            },
+            "description": "Required: `building_id`, `typology_id`, `listing_for`, `price`. The city comes through the building.\n\n`confidential_note` holds owner details and negotiating room. The design puts it behind a reveal so it can't appear on a client's screen by accident — the API keeps it out of every list payload and out of `shareable`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"floor_band\": \"middle\",\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"Corner flat, cross-ventilated.\",\n  \"confidential_note\": \"Owner: Mr R. Bhatt \\u00b7 negotiable to \\u20b91.14 Cr\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const property = pm.response.json().property;",
+                  "pm.collectionVariables.set(\"property_id\", property.id);",
+                  "",
+                  "pm.test(\"derives the title and the rate\", () => {",
+                  "  pm.expect(property.title).to.be.a(\"string\");",
+                  "  pm.expect(property.rate_per_sqft).to.eql(17101);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}"
+              ]
+            },
+            "description": "The only response that carries `confidential_note`. `shareable` holds exactly what may go to a client — build share text from it and the note cannot leak by accident."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const property = pm.response.json().property;",
+                  "",
+                  "pm.test(\"detail carries the note\", () => {",
+                  "  pm.expect(property).to.have.property(\"confidential_note\");",
+                  "});",
+                  "",
+                  "pm.test(\"shareable does not\", () => {",
+                  "  pm.expect(property.shareable).to.not.have.property(\"confidential_note\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach a photo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/photos",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}",
+                "photos"
+              ]
+            },
+            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`.\n\nThe pre-request script does the first two steps, so this request works on its own.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ticket, then PUT the file — what a client does before attaching.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"property_photo\", filename: \"flat.txt\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"image/png\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const ticket = res.json();",
+                  "  pm.collectionVariables.set(\"signed_id\", ticket.signed_id);",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: ticket.direct_upload.url,",
+                  "    method: \"PUT\",",
+                  "    header: ticket.direct_upload.headers,",
+                  "    body: { mode: \"raw\", raw: \"hello world\" }",
+                  "  }, () => {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test(\"photo is attached and becomes the cover\", () => {",
+                  "  const property = pm.response.json().property;",
+                  "  pm.expect(property.photo_count).to.be.above(0);",
+                  "  pm.expect(property.cover_photo_url).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bookings and money",
+      "description": "Recording a sale and the brokerage on it.\n\n**Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.\n\n**Net income is computed server-side and stored:**\n\n```\nround(agreement_value × commission_percent / 100) + kicker − passback\n```\n\nThe design's own example is the fixture: ₹1,56,00,000 at 4.5% is ₹7,02,000, plus a ₹50,000 kicker, minus a ₹66,000 passback = **₹6,86,000** — the \"₹6.86 L\" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.\n\n**Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.\n\n**Cancelling** sets the booking's status and nothing else — the lead is untouched and invoices already raised stay on record.",
+      "item": [
+        {
+          "name": "Create a booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "description": "Every booking carries a lead — the design's flow finds one by phone first, which is just `GET /leads?q=<digits>`; no separate endpoint.\n\n`customer_name` and `customer_mobile` are **snapshotted** from the lead unless you send them: correcting the lead's name a year later must not rewrite what was booked.\n\nThe pre-request script picks a lead so the body doesn't hardcode an id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"other_details\": \"10:80:10 plan \\u00b7 two covered parkings\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Grab a lead to book against.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/leads\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200 && res.json().leads.length) {",
+                  "    pm.collectionVariables.set(\"lead_id\", res.json().leads[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const b = pm.response.json().booking;",
+                  "pm.collectionVariables.set(\"booking_id\", b.id);",
+                  "",
+                  "pm.test(\"net income matches the design's worked example\", () => {",
+                  "  pm.expect(b.revenue.commission_amount).to.eql(702000);",
+                  "  pm.expect(b.revenue.net_income).to.eql(686000);",
+                  "});",
+                  "",
+                  "pm.test(\"gets a per-firm code\", () => pm.expect(b.code).to.match(/^B-\\d{4,}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "description": "Cancelled bookings are excluded unless you ask for them — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q`, `client_phone`, `project_id`, `booked_from`, `booked_to`, `status`.\n\n`totals` carries the firm's live agreement value and net income for the header."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test(\"carries live totals\", () => {",
+                  "  pm.expect(pm.response.json().totals).to.have.property(\"net_income\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get a booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}"
+              ]
+            },
+            "description": "The detail the design's tabs are built from: the itemised `revenue` block, documents, invoices and collections, plus `invoiced` / `collected` / `outstanding`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Raise an invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/invoices",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "invoices"
+              ]
+            },
+            "description": "The number is **entered by the broker**, not generated, so it matches the invoice they actually raised. Unique per firm.\n\nCapped at net income — see the next request.\n\nThe number carries `{{$timestamp}}` because it is unique per firm. A fixed one 422s on the second run — and because each run creates a fresh booking, that left the next request with nothing invoiced and the over-invoicing check passed when it should have failed. Exactly the cascade running the collection is meant to catch.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"INV-{{$timestamp}}\",\n  \"issued_on\": \"2026-08-04\",\n  \"amount\": 686000,\n  \"comment\": \"full brokerage\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"invoice_id\", body.invoice.id);",
+                  "",
+                  "pm.test(\"the booking now shows it as invoiced\", () => {",
+                  "  pm.expect(body.booking.invoiced).to.eql(686000);",
+                  "  pm.expect(body.booking.outstanding).to.eql(686000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Over-invoicing is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/invoices",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "invoices"
+              ]
+            },
+            "description": "A firm cannot invoice more than it earned. The refusal carries `net_income`, `already_invoiced`, `attempted` and `available`, so the app can say how much is left rather than just refusing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"INV-2026-042\",\n  \"issued_on\": \"2026-08-05\",\n  \"amount\": 100000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 over_invoiced with the arithmetic\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.code).to.eql(\"over_invoiced\");",
+                  "  pm.expect(e.details).to.have.property(\"available\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record a collection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/collections",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "collections"
+              ]
+            },
+            "description": "Modes: `neft_rtgs`, `upi`, `cheque`, `cash`.\n\n`invoice_id` is optional — omit it for the design's \"Unlinked payment\". Attach proof by passing `proof_signed_id` from `POST /uploads` with purpose `collection_proof`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"received_on\": \"2026-08-18\",\n  \"amount\": 400000,\n  \"transaction_no\": \"8842190\",\n  \"mode\": \"neft_rtgs\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const b = pm.response.json().booking;",
+                  "pm.test(\"outstanding is invoiced minus collected\", () => {",
+                  "  pm.expect(b.collected).to.eql(400000);",
+                  "  pm.expect(b.outstanding).to.eql(b.invoiced - b.collected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Over-collecting is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/collections",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "collections"
+              ]
+            },
+            "description": "Collected can never exceed invoiced. A payment naming a specific invoice is checked twice — against the booking's total and against that invoice's own amount, which is what catches a payment filed against the wrong invoice (`over_collected_for_invoice`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"received_on\": \"2026-08-19\",\n  \"amount\": 99000000,\n  \"mode\": \"cash\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 over_collected\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"over_collected\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelling needs a reason",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/cancel",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Refused deliberately. A cancelled booking with no reason is one nobody can learn from.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 reason_required\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"reason_required\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error states",
+      "description": "The blocked states the React app has to render. Each returns a typed `error.code`; two more — `account_suspended` and `subscription_lapsed` — are produced by suspending the firm or lapsing its subscription in the admin panel, then calling `Who am I`.",
+      "item": [
+        {
+          "name": "Unregistered mobile → not_registered",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/otp",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"9000000000\"\n}"
+            },
+            "description": "Said plainly, because there is no self-signup: a stranger learning a number isn't registered gains nothing they can act on. The design's \"This number isn't registered\" wall."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"404 with a typed code\", () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"not_registered\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong code → invalid_code",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/verify",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{request_id}}\",\n  \"code\": \"000000\"\n}"
+            },
+            "description": "Counts down `details.attempts_left`. Three wrong codes lock sign-in for 30 minutes with `otp_locked`.\n\nSelf-contained: the pre-request script asks for a fresh code first, so this works in a full collection run where `request_id` has already been consumed."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A verified request_id is burned, so mint a fresh one to fail against.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/auth/otp\"),",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: {",
+                  "    mode: \"raw\",",
+                  "    raw: JSON.stringify({ mobile: pm.variables.replaceIn(\"{{super_admin_mobile}}\") })",
+                  "  }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200) {",
+                  "    pm.collectionVariables.set(\"request_id\", res.json().request_id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 with attempts remaining\", () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  const error = pm.response.json().error;",
+                  "  pm.expect(error.code).to.eql(\"invalid_code\");",
+                  "  pm.expect(error.details.attempts_left).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No token → unauthorized",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/me",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Also what a revoked session returns — the session is checked on every request, so signing a device out takes effect immediately rather than when its JWT expires."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"401 unauthorized\", () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"unauthorized\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agent verifying a channel → forbidden_role",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{agent_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/firm/contact_channels/{{channel_id}}/request_code",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "firm",
+                "contact_channels",
+                "{{channel_id}}",
+                "request_code"
+              ]
+            },
+            "description": "Only the firm's `super_admin` may act on channels. Reading them still works for everyone — the split is enforced server-side, not in the client.\n\nSelf-contained: the pre-request script signs in as the agent and uses that token, so this holds in a full collection run where you are otherwise the super admin."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Sign in as the agent, so this request is genuinely made by one.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const mobile = pm.variables.replaceIn(\"{{agent_mobile}}\");",
+                  "const code = pm.variables.replaceIn(\"{{otp_code}}\");",
+                  "",
+                  "const json = (body) => ({",
+                  "  mode: \"raw\", raw: JSON.stringify(body)",
+                  "});",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: api + \"/auth/otp\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\" },",
+                  "  body: json({ mobile })",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 200) { return; }",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: api + \"/auth/verify\",",
+                  "    method: \"POST\",",
+                  "    header: { \"Content-Type\": \"application/json\" },",
+                  "    body: json({ request_id: res.json().request_id, code })",
+                  "  }, (err2, res2) => {",
+                  "    if (!err2 && res2.code === 200) {",
+                  "      pm.collectionVariables.set(\"agent_access_token\", res2.json().access_token);",
+                  "    }",
+                  "  });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"403 forbidden_role when not the super admin\", () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"forbidden_role\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sign out",
+      "description": "Deliberately last. Signing out revokes the session, so anything after it would get 401 — which is exactly what an earlier draft of this collection did to itself.",
+      "item": [
+        {
+          "name": "Sign out",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/auth/session",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "auth",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "description": "Always 204, whether or not that token was live — whether a token exists is not something an unauthenticated caller needs told.\n\nRevokes the session, so the access token stops working on the very next request rather than when it expires."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

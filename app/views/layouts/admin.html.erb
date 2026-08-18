@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "RealtorIQ Admin" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= yield :head %>
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <nav class="flex items-center gap-8 px-6 py-3 border-b-2 border-[var(--color-divider)]">
+      <%= link_to admin_root_path, class: "font-heading font-extrabold text-[18px] no-underline text-[var(--color-ink)]" do %>
+        RealtorIQ<span class="text-[var(--color-accent)]">.</span>Admin
+      <% end %>
+
+      <div class="flex items-center gap-6">
+        <% [["Firms", admin_firms_path], ["Plans", admin_plans_path], ["Masters", admin_masters_cities_path]].each do |label, path| %>
+          <%= link_to label, path,
+                class: "text-[14px] no-underline hover:text-[var(--color-accent)] #{'text-[var(--color-accent)]' if current_page_section?(path)}" %>
+        <% end %>
+      </div>
+
+      <div class="ml-auto flex items-center gap-4 text-[13px]">
+        <span class="text-[var(--color-neutral-700)]"><%= current_admin.display_name %></span>
+        <%= button_to "Sign out", admin_session_path, method: :delete, class: "btn btn-secondary" %>
+      </div>
+    </nav>
+
+    <main class="max-w-[1200px] px-6 py-8">
+      <%= render "shared/flash" %>
+      <%= yield %>
+    </main>
+  </body>
+</html>

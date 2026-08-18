@@ -1,0 +1,77 @@
+<% content_for :title, "#{master_label.pluralize} · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Masters</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]">
+    Platform-wide reference data — every firm sees the same list.
+  </span>
+</div>
+
+<hr class="rule">
+
+<div class="flex gap-10 items-start">
+  <nav class="w-[190px] shrink-0">
+    <% [
+         ["Cities", admin_masters_cities_path],
+         ["Localities", admin_masters_localities_path],
+         ["Builders", admin_masters_builders_path],
+         ["Typologies", admin_masters_typologies_path],
+         ["Lead sources", admin_masters_lead_sources_path],
+         ["Lead statuses", admin_masters_lead_statuses_path],
+         ["Property types", admin_masters_property_types_path]
+       ].each do |label, path| %>
+      <%= link_to label, path,
+            class: "block py-2 text-[13px] no-underline border-b border-[var(--color-divider)] #{current_page_section?(path) ? "text-[var(--color-accent)] font-extrabold" : "text-[var(--color-neutral-800)] hover:text-[var(--color-ink)]"}" %>
+    <% end %>
+
+    <p class="mt-4 text-[12px] text-[var(--color-neutral-600)] leading-relaxed">
+      Buildings aren't here — those belong to each firm, so one broker's typo can't reach anyone
+      else's dropdown.
+    </p>
+  </nav>
+
+  <div class="flex-1 min-w-0">
+    <div class="flex items-baseline gap-3 mb-4">
+      <h2 class="section-title"><%= master_label.pluralize %></h2>
+      <span class="text-[12px] text-[var(--color-neutral-600)]"><%= @records.size %></span>
+    </div>
+
+    <hr class="rule mt-0 mb-0">
+
+    <% if @records.any? %>
+      <table class="table">
+        <thead>
+          <tr>
+            <% master_columns.each { |col| %><th><%= col[:label] %></th><% } %>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @records.each do |record| %>
+            <tr>
+              <% master_columns.each do |col| %>
+                <td class="text-[14px]"><%= master_cell_value(record, col) %></td>
+              <% end %>
+              <td class="text-right whitespace-nowrap">
+                <%= link_to "Edit", master_edit_path(record), class: "btn btn-ghost" %>
+                <%= button_to "Delete", master_member_path(record), method: :delete,
+                      class: "btn btn-ghost",
+                      form: { class: "inline", data: { turbo_confirm: "Delete #{record.name}?" } } %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p class="py-8 text-[14px] text-[var(--color-neutral-700)]">Nothing here yet.</p>
+    <% end %>
+
+    <section class="mt-10 max-w-[640px]">
+      <h2 class="section-title mb-3">
+        <%= @record.persisted? ? "Edit #{master_label.downcase}" : "Add a #{master_label.downcase}" %>
+      </h2>
+      <hr class="rule mt-0 mb-5">
+      <%= render "admin/masters/form", record: @record %>
+    </section>
+  </div>
+</div>

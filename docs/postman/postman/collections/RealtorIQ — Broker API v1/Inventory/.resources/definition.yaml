@@ -1,0 +1,10 @@
+$kind: collection
+description: |-
+  Projects are developer stock a broker sells on commission. Properties are resale and rental listings. Buildings hold properties and are **firm-owned** — brokers create them inline from the property form, so one firm's typo never reaches another's dropdown.
+
+  **Inventory is firm-wide**, unlike leads: everyone in the firm sees all of it.
+
+  **Money is raw rupees.** The design's inputs read "₹ lakh" — that is a client-side unit, converted before it gets here.
+
+  **Price and area bands are derived**, not stored: min/max across a project's typologies. A stored band could disagree with its own rows.
+order: 6000

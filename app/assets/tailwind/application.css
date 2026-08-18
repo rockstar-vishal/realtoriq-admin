@@ -1,0 +1,232 @@
+/* Archivo at the three weights the system uses: body, semibold, and the 800
+   that every heading and button label is set in. CSS requires @import rules to
+   precede everything else, so this sits above the Tailwind import. */
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap");
+@import "tailwindcss";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Modernist — the product's design system, expressed as Tailwind v4 theme
+   tokens. Flat and architectural: Archivo throughout, a single red accent on a
+   light ground, zero corner radius, and 2px rules instead of shadows.
+
+   The ramps are the system's own OKLCH-derived steps — the same step of any
+   role carries the same visual weight. Take colors from these tokens; never
+   hard-code a hex in a view.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* — roles — */
+  --color-ground: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-ink: #201e1d;
+  --color-accent: #ec3013;
+
+  /* Dividers carry the structure in this system, so they get their own token
+     rather than being borrowed from the neutral ramp. */
+  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  /* — type — */
+  --font-heading: "Archivo", system-ui, sans-serif;
+  --font-body: "Archivo", system-ui, sans-serif;
+  --font-sans: "Archivo", system-ui, sans-serif;
+
+  /* — radius —
+     Zero everywhere, on purpose. Clearing the default scale means a stray
+     `rounded-lg` in a view resolves to nothing rather than quietly breaking
+     the system. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+}
+
+@layer base {
+  body {
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+  }
+
+  /* Themed focus, never the browser default blue. */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+}
+
+@layer components {
+  /* — buttons —
+     Labels are flush left, including inside a button wider than its text.
+     That is a rule of the system, not an oversight. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1.2;
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    color: var(--color-ink);
+    text-decoration: none;
+    /* Flexbox doesn't reach the text inside an <input type="submit">, which
+       centres by default — so set it here too, or every form's primary action
+       silently breaks the flush-left rule. */
+    text-align: left;
+  }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-primary { background: var(--color-accent); color: var(--color-ground); }
+  .btn-primary:hover { background: var(--color-accent-600); }
+  .btn-primary:active { background: var(--color-accent-700); }
+
+  .btn-secondary { border-color: var(--color-divider); }
+  .btn-secondary:hover { background: color-mix(in srgb, var(--color-ink) 7%, transparent); }
+  .btn-secondary:active { background: color-mix(in srgb, var(--color-ink) 14%, transparent); }
+
+  .btn-ghost { color: var(--color-accent); padding-inline: 4px; }
+  .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+
+  .btn-danger { background: var(--color-accent-700); color: var(--color-ground); }
+  .btn-danger:hover { background: var(--color-accent-800); }
+
+  /* — forms — */
+  .field { display: block; }
+  .field > label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+  }
+  .input {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--color-ink);
+    caret-color: var(--color-accent);
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+  }
+  .input:hover { border-color: color-mix(in srgb, var(--color-ink) 45%, transparent); }
+  .input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+  textarea.input { min-height: 90px; resize: vertical; }
+
+  .field-error {
+    font-size: 12px;
+    margin-top: 4px;
+    color: var(--color-accent-700);
+  }
+  .input-invalid { border-color: var(--color-accent); }
+
+  /* — tags — */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+  .tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+  .tag-neutral { background: var(--color-neutral-200); color: var(--color-neutral-800); }
+  .tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+  .tag-solid { background: var(--color-ink); color: var(--color-ground); }
+
+  /* — tables — */
+  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .table th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+    padding: 8px;
+    border-bottom: 2px solid var(--color-divider);
+    white-space: nowrap;
+  }
+  .table td { padding: 10px 8px; border-bottom: 1px solid var(--color-divider); }
+  .table tbody tr:hover { background: color-mix(in srgb, var(--color-ink) 4%, transparent); }
+
+  /* — structure —
+     2px rules do the organising work that shadows and cards do elsewhere. */
+  .rule { height: 2px; border: 0; background: var(--color-divider); }
+
+  .section-title {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* — dialog — */
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    z-index: 50;
+    background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+  }
+  .dialog {
+    width: min(480px, 100%);
+    /* A native <dialog> centres itself with `margin: auto`, which Tailwind's
+       reset zeroes out — without this it pins to the top-left corner. */
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+    background: var(--color-ground);
+    border: 2px solid var(--color-ink);
+  }
+
+  /* The `display: flex` above beats the UA stylesheet's `display: none` for a
+     closed <dialog>, which renders every modal inline on page load. Put it
+     back for the closed state. */
+  dialog.dialog:not([open]) { display: none; }
+
+  /* Every content photograph prints black and white. */
+  .grayscale-img { filter: grayscale(1) contrast(1.08); }
+}

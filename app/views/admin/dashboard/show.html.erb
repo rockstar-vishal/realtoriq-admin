@@ -1,0 +1,65 @@
+<% content_for :title, "Dashboard · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Dashboard</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]"><%= Date.current.strftime("%a %d %b %Y") %></span>
+</div>
+
+<hr class="rule">
+
+<%# The design's leads grid: equal cells, rules doing the organising, no cards.
+    Six stats across three columns so both rows fill exactly. %>
+<div class="grid grid-cols-2 md:grid-cols-3 border-l-2 border-[var(--color-divider)]">
+  <%= render "admin/shared/stat_cell", label: "Total firms", value: @total_firms,
+        path: admin_firms_path %>
+  <%= render "admin/shared/stat_cell", label: "Active", value: @firms_by_status["active"].to_i,
+        path: admin_firms_path(status: "active") %>
+  <%= render "admin/shared/stat_cell", label: "Pending", value: @firms_by_status["pending"].to_i,
+        path: admin_firms_path(status: "pending") %>
+  <%= render "admin/shared/stat_cell", label: "Suspended", value: @firms_by_status["suspended"].to_i,
+        path: admin_firms_path(status: "suspended") %>
+  <%= render "admin/shared/stat_cell", label: "Added this month", value: @added_this_month %>
+  <%= render "admin/shared/stat_cell", label: "Channels unverified", value: @unverified_firms,
+        path: admin_firms_path(verification: "incomplete"), emphasis: true %>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-3 border-l-2 border-[var(--color-divider)]">
+  <%= render "admin/shared/stat_cell", label: "Renewals due in 30 days",
+        value: @expiring_subscriptions, emphasis: true %>
+</div>
+
+<section class="mt-10">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="section-title">Recently added</h2>
+    <%= link_to "All firms", admin_firms_path, class: "btn btn-ghost" %>
+  </div>
+
+  <hr class="rule mt-0 mb-0">
+
+  <% if @recent_firms.any? %>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Firm</th>
+          <th>Code</th>
+          <th>Status</th>
+          <th>Added</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @recent_firms.each do |firm| %>
+          <tr>
+            <td><%= link_to firm.display_name, admin_firm_path(firm), class: "no-underline text-[var(--color-ink)] hover:text-[var(--color-accent)]" %></td>
+            <td class="text-[var(--color-neutral-700)]"><%= firm.code %></td>
+            <td><%= firm_status_tag(firm) %></td>
+            <td class="text-[var(--color-neutral-700)]"><%= firm.created_at.strftime("%d %b %Y") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="py-8 text-[14px] text-[var(--color-neutral-700)]">
+      No firms yet. <%= link_to "Create the first one", new_admin_firm_path, class: "text-[var(--color-accent)]" %>.
+    </p>
+  <% end %>
+</section>

@@ -1,0 +1,55 @@
+<%= form_with model: plan, url: url, method: method do |f| %>
+  <% if plan.errors.any? %>
+    <div class="mb-5 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)] text-[13px] text-[var(--color-accent-800)]">
+      <%= plan.errors.full_messages.to_sentence %>
+    </div>
+  <% end %>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="field">
+      <%= f.label :name, "Name *" %>
+      <%= f.text_field :name, class: "input", placeholder: "Growth" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :code, "Code" %>
+      <%= f.text_field :code, class: "input", placeholder: "Generated from the name if blank" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :price, "Price (₹, whole rupees) *" %>
+      <%= f.number_field :price, class: "input", min: 0, step: 1 %>
+    </div>
+
+    <div class="field">
+      <%= f.label :interval, "Billing interval *" %>
+      <%= f.select :interval, options_for_select(Plan::INTERVALS.map { |i| ["#{i.humanize}ly", i] }, plan.interval),
+            {}, class: "input" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :max_users, "Max users" %>
+      <%= f.number_field :max_users, class: "input", min: 1, placeholder: "Blank for unlimited" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :max_devices, "Max devices per user *" %>
+      <%= f.number_field :max_devices, class: "input", min: 1 %>
+    </div>
+
+    <div class="field">
+      <%= f.label :sort_order, "Sort order" %>
+      <%= f.number_field :sort_order, class: "input" %>
+    </div>
+
+    <label class="flex items-center gap-2 text-[14px] cursor-pointer self-end pb-2">
+      <%= f.check_box :active %>
+      Available to assign
+    </label>
+  </div>
+
+  <div class="flex items-center gap-3 mt-6">
+    <%= f.submit submit_label, class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_plans_path, class: "btn btn-secondary" %>
+  </div>
+<% end %>

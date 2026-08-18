@@ -1,0 +1,14 @@
+<%# One titled block of the form. The 2px rule above each section is what
+    separates them — no cards, no shadows. %>
+<section class="pt-6 <%= local_assigns[:last] ? "" : "pb-2" %>">
+  <hr class="rule mt-0 mb-5">
+
+  <div class="mb-4">
+    <h2 class="section-title"><%= title %></h2>
+    <% if local_assigns[:note].present? %>
+      <p class="text-[12px] text-[var(--color-neutral-700)] mt-1"><%= note %></p>
+    <% end %>
+  </div>
+
+  <%= yield %>
+</section>

@@ -1,0 +1,58 @@
+<% content_for :title, "Plans · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Plans</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]"><%= pluralize(@plans.size, "plan") %></span>
+</div>
+
+<hr class="rule">
+
+<% if @plans.any? %>
+  <table class="table max-w-[1000px]">
+    <thead>
+      <tr>
+        <th>Plan</th>
+        <th>Price</th>
+        <th>Interval</th>
+        <th>Users</th>
+        <th>Devices</th>
+        <th>Firms on it</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @plans.each do |plan| %>
+        <tr>
+          <td>
+            <div class="font-heading font-extrabold text-[14px]"><%= plan.name %></div>
+            <div class="text-[12px] text-[var(--color-neutral-600)]"><%= plan.code %></div>
+          </td>
+          <td class="text-[14px]"><%= rupees(plan.price) %></td>
+          <td class="text-[13px]"><%= plan.interval.humanize %>ly</td>
+          <td class="text-[13px]"><%= plan.max_users || "Unlimited" %></td>
+          <td class="text-[13px]"><%= plan.max_devices %></td>
+          <td class="text-[13px]"><%= @subscription_counts[plan.id].to_i %></td>
+          <td>
+            <span class="tag <%= plan.active? ? "tag-accent" : "tag-neutral" %>">
+              <%= plan.active? ? "Active" : "Retired" %>
+            </span>
+          </td>
+          <td class="text-right">
+            <%= link_to "Edit", edit_admin_plan_path(plan), class: "btn btn-ghost" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p class="py-8 text-[14px] text-[var(--color-neutral-700)]">
+    No plans yet. Add one below — a firm can't be given a subscription until at least one exists.
+  </p>
+<% end %>
+
+<section class="mt-10 max-w-[820px]">
+  <h2 class="section-title mb-3">Add a plan</h2>
+  <hr class="rule mt-0 mb-5">
+  <%= render "form", plan: @new_plan, url: admin_plans_path, method: :post, submit_label: "Add plan" %>
+</section>

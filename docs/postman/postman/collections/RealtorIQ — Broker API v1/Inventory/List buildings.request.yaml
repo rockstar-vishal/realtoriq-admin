@@ -1,0 +1,13 @@
+$kind: http-request
+description: Firm-owned. `q` searches by name — this is what backs the property form's building picker.
+url: "{{api_base}}/buildings"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const buildings = pm.response.json().buildings;
+      if (buildings.length) pm.collectionVariables.set("building_id", buildings[0].id);
+    language: text/javascript
+order: 3000

@@ -1,0 +1,23 @@
+$kind: http-request
+description: |-
+  What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.
+
+  This is also where the blocked states surface — suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`.
+url: "{{api_base}}/me"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const body = pm.response.json();
+
+      pm.test("resolves permissions server-side", () => {
+        pm.expect(body.permissions).to.have.property("verify_contact_channels");
+      });
+
+      pm.test("reports the device limit from the plan", () => {
+        pm.expect(body.limits.devices).to.be.a("number");
+      });
+    language: text/javascript
+order: 1000

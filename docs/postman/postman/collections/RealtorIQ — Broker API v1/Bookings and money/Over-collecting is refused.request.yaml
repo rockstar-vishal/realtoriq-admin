@@ -1,0 +1,23 @@
+$kind: http-request
+description: Collected can never exceed invoiced. A payment naming a specific invoice is checked twice — against the booking's total and against that invoice's own amount, which is what catches a payment filed against the wrong invoice (`over_collected_for_invoice`).
+url: "{{api_base}}/bookings/{{booking_id}}/collections"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "received_on": "2026-08-19",
+      "amount": 99000000,
+      "mode": "cash"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("422 over_collected", () => {
+        pm.response.to.have.status(422);
+        pm.expect(pm.response.json().error.code).to.eql("over_collected");
+      });
+    language: text/javascript
+order: 7000

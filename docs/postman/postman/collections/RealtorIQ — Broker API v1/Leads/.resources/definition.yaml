@@ -1,0 +1,10 @@
+$kind: collection
+description: |-
+  The core CRM object.
+
+  **Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.
+
+  **Two filter semantics worth knowing.** `status=missed_followup` is a *derived* tab, not a status: it means an overdue `next_action_at` on a non-terminal lead. And budget filtering is **overlap**, not containment — `budget_min`/`budget_max` return leads whose own range intersects your window.
+
+  Money is raw integer rupees throughout; the client formats lakh/crore.
+order: 4000

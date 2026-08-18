@@ -1,0 +1,14 @@
+name: RealtorIQ — Local
+values:
+  - key: base_url
+    value: 'http://localhost:3000'
+  - key: api_base
+    value: '{{base_url}}/api/v1'
+  - key: super_admin_mobile
+    value: '9820144210'
+  - key: manager_mobile
+    value: '9820144211'
+  - key: agent_mobile
+    value: '9820144212'
+  - key: otp_code
+    value: '888888'

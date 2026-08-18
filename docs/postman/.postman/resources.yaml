@@ -1,0 +1,13 @@
+# Use this workspace to collaborate
+workspace:
+  id: dc444004-6353-4891-8895-98cd4a66b6ce
+
+localResources:
+  collections:
+    - ../RealtorIQ.postman_collection.json
+  environments:
+    - ../RealtorIQ.local.postman_environment.json
+
+cloudResources:
+  collections:
+    ../postman/collections/RealtorIQ — Broker API v1: dab03ec7-f248-4194-a9b3-2ddf1f03774a

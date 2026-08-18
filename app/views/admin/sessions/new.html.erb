@@ -1,0 +1,27 @@
+<% content_for :title, "Sign in · RealtorIQ Admin" %>
+
+<div class="mb-8">
+  <div class="font-heading font-extrabold text-[22px] leading-tight">
+    RealtorIQ<span class="text-[var(--color-accent)]">.</span>Admin
+  </div>
+  <p class="mt-2 text-[13px] text-[var(--color-neutral-700)]">
+    Internal panel. Broker accounts sign in through the app, not here.
+  </p>
+</div>
+
+<hr class="rule mb-6">
+
+<%= form_with url: admin_session_path, method: :post, class: "flex flex-col gap-4" do |f| %>
+  <div class="field">
+    <%= f.label :email, "Email" %>
+    <%= f.email_field :email, value: @email, class: "input", autofocus: true,
+          autocomplete: "username", required: true %>
+  </div>
+
+  <div class="field">
+    <%= f.label :password, "Password" %>
+    <%= f.password_field :password, class: "input", autocomplete: "current-password", required: true %>
+  </div>
+
+  <%= f.submit "Sign in", class: "btn btn-primary btn-block mt-2 w-full justify-start" %>
+<% end %>

@@ -1,0 +1,168 @@
+<%# Sections separated by 2px rules rather than cards — the system organises
+    with alignment and dividers, never with elevation. %>
+
+<%= form_with model: form, url: url, method: method, class: "max-w-[820px]" do |f| %>
+  <% if form.errors.any? %>
+    <div class="mb-6 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)]">
+      <p class="font-heading font-extrabold text-[13px] text-[var(--color-accent-800)] mb-1">
+        <%= pluralize(form.errors.count, "problem") %> stopped this from saving
+      </p>
+      <ul class="text-[13px] text-[var(--color-accent-800)] list-disc pl-5">
+        <% form.errors.full_messages.uniq.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Firm" do %>
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: form, attribute: :name, label: "Trading name *" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :legal_name, label: "Legal name" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :code, label: "Firm code",
+            hint: "Generated automatically if left blank." %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :slug, label: "Slug",
+            hint: "Used in admin URLs. Generated from the name if blank." %>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Contact",
+        note: "These become the firm's three verifiable channels." do %>
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: form, attribute: :primary_contact_name, label: "Contact person" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :contact_email, label: "Email *", type: :email_field %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :contact_mobile, label: "Mobile *",
+            hint: "10 digits, or with +91." %>
+
+      <div data-controller="mirror-field">
+        <%= render "admin/shared/field", f: f, form: form, attribute: :contact_whatsapp, label: "WhatsApp",
+              html_options: { data: { mirror_field_target: "destination" } } %>
+        <label class="flex items-center gap-2 mt-2 text-[12px] cursor-pointer">
+          <%= f.check_box :whatsapp_same_as_mobile,
+                data: { mirror_field_target: "toggle", action: "change->mirror-field#sync" } %>
+          Same as mobile
+        </label>
+      </div>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Compliance" do %>
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: form, attribute: :rera_number, label: "RERA number" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :rera_valid_till, label: "RERA valid till", type: :date_field %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :pan, label: "PAN" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :gst_number, label: "GST number" %>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Address" do %>
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: form, attribute: :address_line1, label: "Address line 1" %>
+      <%= render "admin/shared/field", f: f, form: form, attribute: :address_line2, label: "Address line 2" %>
+
+      <div class="field">
+        <%= f.label :city_id, "City" %>
+        <%= f.collection_select :city_id, City.active.alphabetical, :id, :display_name,
+              { include_blank: "Select a city" }, class: "input" %>
+      </div>
+
+      <div class="field">
+        <%= f.label :locality_id, "Locality" %>
+        <%= f.collection_select :locality_id, Locality.active.alphabetical.includes(:city), :id, :display_name,
+              { include_blank: "Select a locality" }, class: "input" %>
+      </div>
+
+      <%= render "admin/shared/field", f: f, form: form, attribute: :pincode, label: "Pincode" %>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Branding",
+        note: "Stored now; the broker app doesn't consume it yet." do %>
+    <div data-controller="image-preview" class="flex items-start gap-5">
+      <div class="w-20 h-20 bg-[var(--color-neutral-200)] grid place-items-center shrink-0">
+        <% if form.firm.logo.attached? %>
+          <%= image_tag form.firm.logo.variant(:thumb), class: "w-20 h-20 object-cover",
+                data: { image_preview_target: "image" }, alt: "" %>
+        <% else %>
+          <img data-image-preview-target="image" class="w-20 h-20 object-cover hidden" alt="">
+          <span data-image-preview-target="placeholder" class="text-[11px] text-[var(--color-neutral-600)]">No logo</span>
+        <% end %>
+      </div>
+
+      <div class="field flex-1">
+        <%= f.label :logo, "Logo" %>
+        <%= f.file_field :logo, accept: "image/png,image/jpeg,image/svg+xml,image/webp",
+              class: "input", data: { image_preview_target: "input", action: "change->image-preview#show" } %>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">PNG, JPG, SVG or WebP. Up to 1 MB.</p>
+        <% if form.errors[:logo].any? %>
+          <p class="field-error"><%= form.errors[:logo].first %></p>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <% if form.creating? %>
+    <%= render "admin/firms/form_section", title: "Super admin",
+          note: "The firm's first user. They sign in with a one-time code to this mobile — there is no invite email and no password." do %>
+      <div class="grid grid-cols-2 gap-4">
+        <%= render "admin/shared/field", f: f, form: form, attribute: :owner_name, label: "Name *" %>
+        <%= render "admin/shared/field", f: f, form: form, attribute: :owner_email, label: "Email", type: :email_field %>
+        <%= render "admin/shared/field", f: f, form: form, attribute: :owner_mobile, label: "Mobile *",
+              hint: "Must be unique across the whole platform." %>
+      </div>
+    <% end %>
+  <% end %>
+
+  <% if form.creating? %>
+    <%= render "admin/firms/form_section", title: "Subscription",
+          note: "Without a live plan the broker app signs them straight back out, so this is part of creating the firm rather than a later visit." do %>
+      <% plans = Plan.active.ordered %>
+
+      <% if plans.any? %>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="field">
+            <%= f.label :plan_id, "Plan *" %>
+            <%= f.select :plan_id,
+                  options_for_select(plans.map { |p| ["#{p.name} — #{rupees(p.price)}/#{p.interval}", p.id] }, form.plan_id),
+                  { include_blank: "Select a plan" },
+                  class: "input #{'input-invalid' if form.errors[:plan_id].any?}" %>
+            <% if form.errors[:plan_id].any? %>
+              <p class="field-error"><%= form.errors[:plan_id].first %></p>
+            <% end %>
+          </div>
+
+          <div class="field">
+            <%= f.label :subscription_starts_on, "Starts on" %>
+            <%= f.date_field :subscription_starts_on, value: form.subscription_starts_on, class: "input" %>
+            <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">
+              The period end is worked out from the plan's interval.
+            </p>
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 mt-4 text-[14px] cursor-pointer">
+          <%= f.check_box :activate_immediately, checked: form.activate_immediately %>
+          Activate the firm now
+        </label>
+      <% else %>
+        <p class="text-[14px] text-[var(--color-neutral-700)]">
+          No plans exist yet, so this firm will be created without one and its broker won't be able
+          to sign in. <%= link_to "Create a plan", admin_plans_path, class: "text-[var(--color-accent)]" %>,
+          then set it from this firm's Subscription tab.
+        </p>
+      <% end %>
+    <% end %>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Internal notes", last: true do %>
+    <div class="field">
+      <%= f.text_area :internal_notes, value: form.internal_notes, class: "input",
+            placeholder: "Only ops can see this." %>
+    </div>
+  <% end %>
+
+  <div class="flex items-center gap-3 mt-8">
+    <%= f.submit submit_label, class: "btn btn-primary" %>
+    <%= link_to "Cancel", cancel_path, class: "btn btn-secondary" %>
+  </div>
+<% end %>

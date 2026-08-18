@@ -1,0 +1,48 @@
+<%# One channel. Wrapped in a turbo_frame so an action swaps just this row
+    rather than reloading the page and losing the admin's place. %>
+<%= turbo_frame_tag dom_id(channel) do %>
+  <div class="flex items-center gap-4 py-4 border-b border-[var(--color-divider)]">
+    <div class="w-[110px] shrink-0 text-[11px] uppercase tracking-[0.08em] text-[var(--color-neutral-700)]">
+      <%= channel.kind.humanize %>
+    </div>
+
+    <div class="flex-1 min-w-0">
+      <div class="text-[14px] truncate"><%= channel.display_value %></div>
+      <div class="text-[12px] text-[var(--color-neutral-600)]">
+        <% if channel.verified? %>
+          Verified <%= channel.verified_at&.strftime("%d %b %Y") %><%=
+            " by #{channel.verified_by_user.name}" if channel.verified_by_user %>
+        <% elsif channel.verification_pending? %>
+          Code sent <%= time_ago_in_words(channel.last_code_sent_at) %> ago
+        <% elsif channel.verification_failed? %>
+          Verification failed — too many wrong codes
+        <% else %>
+          Not verified yet
+        <% end %>
+      </div>
+    </div>
+
+    <div class="shrink-0">
+      <span class="tag <%= channel.verified? ? "tag-accent" : "tag-neutral" %>">
+        <%= channel.verification_state.humanize %>
+      </span>
+    </div>
+
+    <div class="flex items-center gap-2 shrink-0">
+      <% unless channel.verified? %>
+        <%= button_to "Send code", send_code_admin_firm_contact_channel_path(firm, channel),
+              method: :post, class: "btn btn-secondary",
+              disabled: channel.resend_throttled?,
+              form: { data: { turbo_frame: dom_id(channel) } } %>
+
+        <%= button_to "Mark verified", mark_verified_admin_firm_contact_channel_path(firm, channel),
+              method: :patch, class: "btn btn-primary",
+              form: { data: { turbo_frame: dom_id(channel) } } %>
+      <% else %>
+        <%= button_to "Reset", reset_admin_firm_contact_channel_path(firm, channel),
+              method: :patch, class: "btn btn-secondary",
+              form: { data: { turbo_frame: dom_id(channel), turbo_confirm: "Clear this channel's verified status?" } } %>
+      <% end %>
+    </div>
+  </div>
+<% end %>

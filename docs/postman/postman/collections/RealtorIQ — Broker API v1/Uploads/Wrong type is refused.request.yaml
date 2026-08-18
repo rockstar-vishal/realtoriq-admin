@@ -1,0 +1,25 @@
+$kind: http-request
+description: A brochure is a PDF. Each purpose carries its own allow-list.
+url: "{{api_base}}/uploads"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "purpose": "project_brochure",
+      "filename": "photo.png",
+      "byte_size": 1000,
+      "checksum": "XrY7u+Ae7tCTyyK7j1rNww==",
+      "content_type": "image/png"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("422 unsupported_type", () => {
+        pm.response.to.have.status(422);
+        pm.expect(pm.response.json().error.code).to.eql("unsupported_type");
+      });
+    language: text/javascript
+order: 3000

@@ -1,0 +1,80 @@
+<% content_for :title, "#{@firm.display_name} · RealtorIQ Admin" %>
+
+<div class="mb-2">
+  <%= link_to "← Firms", admin_firms_path, class: "text-[13px] no-underline text-[var(--color-neutral-700)] hover:text-[var(--color-accent)]" %>
+</div>
+
+<%# The dialog controller wraps both the Suspend button and the dialog itself —
+    Stimulus actions and targets only resolve inside the controller's element. %>
+<div data-controller="dialog">
+
+<div class="flex items-start gap-4">
+  <% if @firm.logo.attached? %>
+    <%= image_tag @firm.logo.variant(:thumb), class: "w-14 h-14 object-cover shrink-0", alt: "" %>
+  <% else %>
+    <div class="w-14 h-14 bg-[var(--color-neutral-200)] grid place-items-center shrink-0 font-extrabold text-[var(--color-neutral-700)]">
+      <%= @firm.name.to_s.first(2).upcase %>
+    </div>
+  <% end %>
+
+  <div class="flex-1">
+    <h1 class="text-[32px] leading-none"><%= @firm.display_name %></h1>
+    <div class="flex items-center gap-2 mt-2">
+      <span class="text-[13px] text-[var(--color-neutral-700)]"><%= @firm.code %></span>
+      <%= firm_status_tag(@firm) %>
+      <% if (subscription = @firm.current_subscription) %>
+        <span class="tag <%= subscription.entitled? ? "tag-neutral" : "tag-solid" %>">
+          <%= subscription.plan.name %><%= " · lapsed" unless subscription.entitled? %>
+        </span>
+      <% else %>
+        <span class="tag tag-solid">No plan</span>
+      <% end %>
+      <% if @firm.fully_verified? %>
+        <span class="tag tag-accent">All channels verified</span>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <%= link_to "Edit", edit_admin_firm_path(@firm), class: "btn btn-secondary" %>
+
+    <% if @firm.suspended? || @firm.pending? %>
+      <%= button_to "Activate", activate_admin_firm_path(@firm), method: :patch, class: "btn btn-primary" %>
+    <% else %>
+      <button type="button" class="btn btn-secondary"
+              data-action="dialog#open" data-dialog-id-param="suspend-firm-dialog">Suspend</button>
+    <% end %>
+  </div>
+</div>
+
+<% if @firm.suspended? %>
+  <div class="mt-5 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)] text-[13px] text-[var(--color-accent-800)]">
+    Suspended <%= @firm.suspended_at&.strftime("%d %b %Y") %> — <%= @firm.suspension_reason %>
+  </div>
+<% end %>
+
+<div class="mt-8 grid grid-cols-2 md:grid-cols-4 border-l-2 border-[var(--color-divider)]">
+  <%= render "admin/shared/stat_cell", label: "Users", value: @users.size %>
+  <%= render "admin/shared/stat_cell", label: "Channels verified",
+        value: "#{@channels.count(&:verified?)}/#{ContactChannel::KINDS.size}" %>
+  <%= render "admin/shared/stat_cell", label: "Added", value: @firm.created_at.strftime("%d %b %Y") %>
+  <%= render "admin/shared/stat_cell", label: "Activated",
+        value: @firm.activated_at&.strftime("%d %b %Y") || "—" %>
+</div>
+
+<nav class="flex gap-6 mt-8 border-b-2 border-[var(--color-divider)]">
+  <% { "overview" => "Overview", "verification" => "Contacts & verification",
+       "users" => "Users", "subscription" => "Subscription" }.each do |key, label| %>
+    <%= link_to label, admin_firm_path(@firm, tab: key),
+          class: "pb-3 -mb-[2px] text-[13px] no-underline border-b-2 #{@tab == key ? "border-[var(--color-accent)] text-[var(--color-accent)] font-extrabold" : "border-transparent text-[var(--color-neutral-700)] hover:text-[var(--color-ink)]"}" %>
+  <% end %>
+</nav>
+
+<div class="mt-6">
+  <%= render "admin/firms/tabs/#{@tab}", firm: @firm, channels: @channels, users: @users %>
+</div>
+
+<%= render "admin/firms/suspend_dialog", firm: @firm %>
+
+</div>
+

@@ -1,0 +1,23 @@
+$kind: http-request
+description: |-
+  Default sort is a worklist: overdue followups first, then by when the next action is due.
+
+  Filters: `q`, `status`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`, `budget_max`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`, `sort`, `page`, `per_page` (max 50).
+
+  Saves the first lead's id for the requests below.
+url: "{{api_base}}/leads"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("200 OK", () => pm.response.to.have.status(200));
+
+      const body = pm.response.json();
+      if (body.leads.length) pm.collectionVariables.set("lead_id", body.leads[0].id);
+
+      pm.test("paginated", () => {
+        pm.expect(body.meta).to.have.property("total_count");
+        pm.expect(body.meta.per_page).to.eql(25);
+      });
+    language: text/javascript
+order: 1000
