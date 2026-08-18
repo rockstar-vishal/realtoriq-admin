@@ -51,10 +51,24 @@ RSpec.describe "Environment guarantees" do
     end
 
     it "has its own databases, so it can never point at production's" do
-      config = YAML.load_file(Rails.root.join("config/database.yml"), aliases: true)
+      # Read through Rails rather than YAML.load_file: database.yml carries ERB
+      # conditionals, so raw YAML parsing would choke on them.
+      primary = ActiveRecord::Base.configurations
+        .configs_for(env_name: "staging", name: "primary").configuration_hash
 
-      expect(config["staging"]["primary"]["database"]).to include("staging")
-      expect(config["staging"]["primary"]["database"]).not_to include("production")
+      expect(primary[:database]).to include("staging")
+      expect(primary[:database]).not_to include("production")
+    end
+
+    it "connects over the Unix socket by default, so no password is needed" do
+      # Naming a host — even "localhost" — forces TCP, where Ubuntu's pg_hba.conf
+      # demands a password and you get "fe_sendauth: no password supplied".
+      # Emitting no host at all is what makes peer authentication work.
+      primary = ActiveRecord::Base.configurations
+        .configs_for(env_name: "staging", name: "primary").configuration_hash
+
+      expect(primary[:host]).to be_nil
+      expect(primary[:username]).to be_nil
     end
   end
 

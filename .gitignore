@@ -37,3 +37,4 @@ Gemfile.lock
 !/app/assets/builds/.keep
 .claude/*
 tmp/*
+config/database.yml
