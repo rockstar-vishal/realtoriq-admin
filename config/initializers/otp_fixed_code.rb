@@ -2,7 +2,8 @@
 
 # A fixed one-time code turns sign-in into "know a mobile number, become that
 # broker". It exists so testing doesn't mean grepping a log for six digits, and
-# it must never survive to production.
+# it must never survive to production. Development and staging may use one;
+# production may not, and refuses to boot rather than warn.
 #
 # The check is a failed boot rather than a warning: a warning scrolls past in a
 # deploy log, and the failure mode here is silent and total.
@@ -25,8 +26,11 @@ if fixed_code.present?
     raise "OTP_FIXED_CODE must be exactly 6 digits, got #{fixed_code.inspect}"
   end
 
+  # Deliberately loud, and repeated at every boot: on a reachable staging box
+  # this is the difference between a demo environment and an open door.
   Rails.logger.warn(
     "[otp] Sign-in codes are FIXED at #{fixed_code} (#{Rails.env}). " \
-    "Nothing is delivered. Anyone who knows a registered mobile can sign in."
+    "Nothing is delivered. Anyone who knows a registered mobile can sign in " \
+    "as that broker — keep this host off the public internet."
   )
 end

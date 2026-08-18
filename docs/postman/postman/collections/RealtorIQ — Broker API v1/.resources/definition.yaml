@@ -1,4 +1,5 @@
 $kind: collection
+name: RealtorIQ — Broker API v1
 description: |-
   The JSON API the React broker app talks to.
 

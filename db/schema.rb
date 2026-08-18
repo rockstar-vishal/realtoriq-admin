@@ -115,7 +115,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["booking_id"], name: "index_booking_documents_on_booking_id"
     t.index ["firm_id"], name: "index_booking_documents_on_firm_id"
     t.index ["uploaded_by_user_id"], name: "index_booking_documents_on_uploaded_by_user_id"
-    t.check_constraint "slot::text = ANY (ARRAY['application_form'::character varying, 'tagging_confirmation'::character varying, 'lead_source_proof'::character varying, 'other'::character varying]::text[])", name: "booking_documents_slot_check"
+    t.check_constraint "slot::text = ANY (ARRAY['application_form'::character varying::text, 'tagging_confirmation'::character varying::text, 'lead_source_proof'::character varying::text, 'other'::character varying::text])", name: "booking_documents_slot_check"
   end
 
   create_table "bookings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -153,7 +153,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.check_constraint "agreement_value >= 0", name: "bookings_agreement_value_check"
     t.check_constraint "client_paid_percent IS NULL OR client_paid_percent >= 0 AND client_paid_percent <= 100", name: "bookings_client_paid_percent_check"
     t.check_constraint "commission_percent >= 0::numeric AND commission_percent <= 100::numeric", name: "bookings_commission_percent_check"
-    t.check_constraint "status::text = ANY (ARRAY['live'::character varying, 'cancelled'::character varying]::text[])", name: "bookings_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['live'::character varying::text, 'cancelled'::character varying::text])", name: "bookings_status_check"
   end
 
   create_table "builders", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -219,7 +219,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["firm_id"], name: "index_collections_on_firm_id"
     t.index ["invoice_id"], name: "index_collections_on_invoice_id"
     t.check_constraint "amount > 0", name: "collections_amount_check"
-    t.check_constraint "mode::text = ANY (ARRAY['neft_rtgs'::character varying, 'upi'::character varying, 'cheque'::character varying, 'cash'::character varying]::text[])", name: "collections_mode_check"
+    t.check_constraint "mode::text = ANY (ARRAY['neft_rtgs'::character varying::text, 'upi'::character varying::text, 'cheque'::character varying::text, 'cash'::character varying::text])", name: "collections_mode_check"
   end
 
   create_table "contact_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -300,7 +300,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["firm_id", "number"], name: "index_invoices_on_firm_id_and_number", unique: true
     t.index ["firm_id"], name: "index_invoices_on_firm_id"
     t.check_constraint "amount > 0", name: "invoices_amount_check"
-    t.check_constraint "status::text = ANY (ARRAY['raised'::character varying, 'cancelled'::character varying]::text[])", name: "invoices_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['raised'::character varying::text, 'cancelled'::character varying::text])", name: "invoices_status_check"
   end
 
   create_table "lead_activities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
