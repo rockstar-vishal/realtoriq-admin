@@ -63,7 +63,7 @@ The two error-state requests that need their own setup carry pre-request scripts
 npx newman run docs/postman/RealtorIQ.postman_collection.json -e docs/postman/RealtorIQ.local.postman_environment.json
 ```
 
-117 assertions on a freshly seeded database. It is safe to re-run without
+127 assertions on a freshly seeded database. It is safe to re-run without
 reseeding: the channel assertions accept both "code sent" and "already verified",
 so a second pass stays honest rather than green by luck. Re-run `demo:seed` to
 reset the demo firm's WhatsApp channel to unverified.

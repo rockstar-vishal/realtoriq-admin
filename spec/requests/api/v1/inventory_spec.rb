@@ -334,16 +334,66 @@ RSpec.describe "API v1 inventory" do
       expect(response).to have_http_status(:bad_request)
     end
 
-    it "detaches a photo" do
+    # Sourced from the response, not from property.photos.attachments — an
+    # earlier version of this spec read the id off the model, which is a door
+    # the API never opened. It passed while DELETE was uncallable by any real
+    # client, because the test knew something no client could learn.
+    it "detaches a photo, addressed by the id the API handed back" do
       headers = auth
       post "/api/v1/properties/#{property.id}/photos",
         params: { photo_signed_ids: [ signed_id_for ] }, headers: headers, as: :json
-      attachment_id = property.reload.photos.attachments.first.id
+
+      attachment_id = response.parsed_body.dig("property", "photos", 0, "id")
+      expect(attachment_id).to be_present
 
       delete "/api/v1/properties/#{property.id}/photos/#{attachment_id}", headers: headers
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body.dig("property", "photo_count")).to eq(0)
+      expect(response.parsed_body.dig("property", "photos")).to eq([])
+    end
+
+    it "carries the same ids on the detail, so a later visit can still delete" do
+      headers = auth
+      post "/api/v1/properties/#{property.id}/photos",
+        params: { photo_signed_ids: [ signed_id_for ] }, headers: headers, as: :json
+
+      get "/api/v1/properties/#{property.id}", headers: headers
+
+      photos = response.parsed_body.dig("property", "photos")
+      expect(photos.length).to eq(1)
+      expect(photos.first["id"]).to be_present
+      expect(photos.first["url"]).to be_present
+      # photo_urls stays alongside it — clients already read that.
+      expect(response.parsed_body.dig("property", "photo_urls")).to eq([ photos.first["url"] ])
+    end
+
+    it "keeps ids out of the shareable payload, which gets pasted to a client" do
+      headers = auth
+      post "/api/v1/properties/#{property.id}/photos",
+        params: { photo_signed_ids: [ signed_id_for ] }, headers: headers, as: :json
+
+      get "/api/v1/properties/#{property.id}", headers: headers
+
+      shareable = response.parsed_body.dig("property", "shareable")
+      expect(shareable).not_to have_key("photos")
+      expect(shareable["photo_urls"]).to be_present
+    end
+
+    it "does the same for a project" do
+      headers = auth
+      project = create(:project, firm:, city:, locality:)
+      post "/api/v1/projects/#{project.id}/photos",
+        params: { photo_signed_ids: [ signed_id_for(purpose: "project_photo") ] },
+        headers: headers, as: :json
+
+      attachment_id = response.parsed_body.dig("project", "photos", 0, "id")
+      expect(attachment_id).to be_present
+
+      delete "/api/v1/projects/#{project.id}/photos/#{attachment_id}", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("project", "photo_count")).to eq(0)
     end
 
     it "404s on a photo that isn't there" do

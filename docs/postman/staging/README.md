@@ -11,7 +11,7 @@ npx newman run docs/postman/staging/RealtorIQ.postman_collection.json \
 
 | File | What | Size |
 | --- | --- | --- |
-| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 56 requests, 117 assertions |
+| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 58 requests, 127 assertions |
 | `RealtorIQ.staging-checks.postman_collection.json` | Post-deploy health check only | 11 requests, 30 assertions |
 | `RealtorIQ.staging.postman_environment.json` | The environment both use | — |
 
@@ -28,20 +28,14 @@ npx newman run docs/postman/staging/RealtorIQ.staging-checks.postman_collection.
 
 ## Coverage
 
-**49 of 51 routes.** The two that are missing are missing because no client can
-call them:
+**51 of 51 routes.** Every endpoint the API exposes has at least one request.
 
-- `DELETE /api/v1/projects/:id/photos/:photo_id`
-- `DELETE /api/v1/properties/:id/photos/:photo_id`
-
-Both take an **attachment id**, and no response anywhere returns one — the
-project and property serializers expose `photo_urls`, `photo_count` and
-`cover_photo_url`, never the id. The signed blob URL encodes the *blob* id,
-which is a different thing, so it cannot be scraped out either. Verified against
-staging: attaching a photo succeeds, and every subsequent delete is a 404.
-
-The fix is in the serializers, not here — return photos as
-`[{ id, url }]` alongside `photo_urls`. Add the two requests once it lands.
+The two photo deletes were unreachable until recently — they take an
+**attachment id**, and no response returned one. The project and property
+details now carry `photos: [{ id, url }]` alongside `photo_urls`, which is what
+makes `Remove a project photo` and `Remove a property photo` possible. `shareable`
+deliberately still carries only the bare urls: an id is of no use to a client,
+and that payload is built to be pasted into a message.
 
 ## Re-running
 
