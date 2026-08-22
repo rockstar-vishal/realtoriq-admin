@@ -1,0 +1,17 @@
+$kind: http-request
+description: Rails mounts this itself. It sits outside our JWT auth and enforces none of the per-purpose size or type rules, so it is deliberately shadowed with a 404 in config/routes.rb. If this ever returns 200, anyone can mint upload tickets against our storage.
+url: "{{base_url}}/rails/active_storage/direct_uploads"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"blob":{"filename":"x.png","byte_size":1,"checksum":"x","content_type":"image/png"}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('404 — /api/v1/uploads is the only way to get an upload ticket', () => {
+        pm.response.to.have.status(404);
+      });
+    language: text/javascript
+order: 1000

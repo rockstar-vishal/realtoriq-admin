@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{base_url}}/admin/firms"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('redirects to sign in rather than rendering', () => pm.response.to.have.status(302));
+      pm.test('and points at the sign-in page', () => {
+        pm.expect(pm.response.headers.get('location')).to.include('/admin/session/new');
+      });
+    language: text/javascript
+settings:
+  followRedirects: false
+order: 3000

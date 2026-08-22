@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{api_base}}/auth/verify"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"request_id":"{{check_request_id}}","code":"{{otp_code}}","device":{"device_name":"staging-checks","platform":"newman"}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('200 — OTP_FIXED_CODE is in effect on this box', () => pm.response.to.have.status(200));
+      const b = pm.response.json();
+      pm.collectionVariables.set('check_access_token', b.access_token);
+      pm.test('a firm comes back', () => pm.expect(b.firm.name).to.be.a('string'));
+      pm.test('the subscription is live, or the app signs them straight back out', () => {
+        pm.expect(b.subscription.entitled).to.eql(true);
+      });
+    language: text/javascript
+order: 2000

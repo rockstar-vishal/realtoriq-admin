@@ -37,6 +37,7 @@ module Api
             # The only response that carries it. The design puts it behind a
             # reveal so it can't appear on a client's screen by accident.
             confidential_note: property.confidential_note,
+            photos: photos(property),
             photo_urls: photo_urls(property),
             building: building_detail(property.building),
             shareable: shareable(property),
@@ -89,9 +90,17 @@ module Api
 
         # Attachment ids are UUIDv7, so ordering by id is creation order and the
         # first is the cover. The design shows no reordering, so none exists.
-        def photo_urls(property)
-          property.photos.attachments.sort_by(&:id).map { |a| BlobUrl.call(a) }
+        def photo_attachments(property) = property.photos.attachments.sort_by(&:id)
+
+        # Carries the attachment id, which `photo_urls` does not — and without
+        # it DELETE /properties/:id/photos/:photo_id was uncallable. Detail
+        # only: `shareable` keeps the bare urls, since an id is of no use to a
+        # client and that payload is built to be pasted into a message.
+        def photos(property)
+          photo_attachments(property).map { |a| { id: a.id, url: BlobUrl.call(a) } }
         end
+
+        def photo_urls(property) = photo_attachments(property).map { |a| BlobUrl.call(a) }
       end
     end
   end

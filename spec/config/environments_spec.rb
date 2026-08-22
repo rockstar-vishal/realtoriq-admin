@@ -16,6 +16,14 @@ RSpec.describe "Environment guarantees" do
     }
   end
 
+  # Mirrors config/initializers/cors.rb without booting a second app.
+  def cors_origins_for(env, configured = nil)
+    origins = configured.to_s.split(",").map(&:strip).compact_blank
+    return origins if origins.any?
+
+    [ env == "staging" ? "*" : "http://localhost:5173" ]
+  end
+
   around do |example|
     original = ENV.to_hash
     ENV.delete("OTP_FIXED_CODE")
@@ -70,6 +78,15 @@ RSpec.describe "Environment guarantees" do
       expect(primary[:host]).to be_nil
       expect(primary[:username]).to be_nil
     end
+
+    it "answers any origin, so a preview build can talk to it unannounced" do
+      expect(cors_origins_for("staging")).to eq([ "*" ])
+    end
+
+    it "still takes an explicit list when one is given" do
+      expect(cors_origins_for("staging", "https://app.realtoriq.com"))
+        .to eq([ "https://app.realtoriq.com" ])
+    end
   end
 
   describe "production" do
@@ -90,6 +107,31 @@ RSpec.describe "Environment guarantees" do
 
       expect(source).to include("Rails.env.production?")
       expect(source).to match(/raise/)
+    end
+
+    it "does not inherit staging's open CORS" do
+      expect(cors_origins_for("production")).not_to include("*")
+    end
+  end
+
+  describe "CORS" do
+    it "never covers the admin panel, which runs on a cookie session" do
+      # A wildcard origin is only tolerable because /api/* carries no ambient
+      # authority. The admin panel does, so it must stay outside the resource.
+      source = Rails.root.join("config/initializers/cors.rb").read
+
+      expect(source).to include('resource "/api/*"')
+      expect(source).not_to include('resource "/admin')
+      expect(source).not_to match(/resource ["']\*["']/)
+    end
+
+    it "never sends credentials, which is what keeps the wildcard safe" do
+      # rack-cors 3 defaults credentials to false and refuses to combine `true`
+      # with `*` at all. Asserted because re-adding it would be silent here and
+      # loud in production.
+      source = Rails.root.join("config/initializers/cors.rb").read
+
+      expect(source).not_to match(/credentials:\s*true/)
     end
   end
 

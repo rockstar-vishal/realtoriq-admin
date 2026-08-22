@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{base_url}}/up"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('200 OK', () => pm.response.to.have.status(200));
+      pm.test('served over https', () => pm.expect(pm.request.url.protocol).to.eql('https'));
+      pm.test('HSTS is set — a staging URL still leaks sign-in codes over http', () => {
+        pm.expect(pm.response.headers.get('strict-transport-security')).to.be.a('string');
+      });
+    language: text/javascript
+order: 1000

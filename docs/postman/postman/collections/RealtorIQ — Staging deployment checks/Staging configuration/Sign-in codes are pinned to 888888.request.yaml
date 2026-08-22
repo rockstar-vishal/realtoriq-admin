@@ -1,0 +1,18 @@
+$kind: http-request
+description: The one fact that makes staging usable without a phone. It is also a complete authentication bypass — anyone who knows a registered mobile can sign in as that broker — so production refuses to boot with OTP_FIXED_CODE set, and this collection must never be pointed at production.
+url: "{{api_base}}/auth/otp"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: '{"mobile":"{{super_admin_mobile}}"}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('code requested', () => pm.response.to.have.status(200));
+      const b = pm.response.json();
+      pm.test('the mobile is masked in the response', () => pm.expect(b.sent_to).to.match(/x{3}$/));
+      pm.collectionVariables.set('check_request_id', b.request_id);
+    language: text/javascript
+order: 1000

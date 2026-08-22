@@ -1,12 +1,17 @@
 # Postman collection — Broker API v1
 
-Two files:
-
 - `RealtorIQ.postman_collection.json` — the requests, with tests
 - `RealtorIQ.local.postman_environment.json` — where to point them
+- **[`staging/`](staging/)** — the same collection against
+  `https://staging.realtoriq.kgen.tech` (symlinked, so there is one copy), plus a
+  deployment-check collection
 
-Import both (Postman → Import → Files), pick **RealtorIQ — Local** from the
-environment dropdown, and run the folders top to bottom.
+Import them (Postman → Import → Files), pick an environment from the dropdown,
+and run the folders top to bottom.
+
+**One collection, several environments.** Every request is built from
+`{{api_base}}`, so switching between local and staging is a dropdown, not a
+second copy of the file. A copied collection drifts, and it drifts silently.
 
 ## Before you run it
 
@@ -58,7 +63,7 @@ The two error-state requests that need their own setup carry pre-request scripts
 npx newman run docs/postman/RealtorIQ.postman_collection.json -e docs/postman/RealtorIQ.local.postman_environment.json
 ```
 
-29 assertions on a freshly seeded database. It is safe to re-run without
+117 assertions on a freshly seeded database. It is safe to re-run without
 reseeding: the channel assertions accept both "code sent" and "already verified",
 so a second pass stays honest rather than green by luck. Re-run `demo:seed` to
 reset the demo firm's WhatsApp channel to unverified.
