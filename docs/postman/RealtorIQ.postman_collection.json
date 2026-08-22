@@ -130,6 +130,14 @@
       "key": "invoice_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "document_id",
+      "value": ""
     }
   ],
   "item": [
@@ -763,6 +771,66 @@
           ]
         },
         {
+          "name": "Reassign a lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/assign",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "assign"
+              ]
+            },
+            "description": "Managers and the super admin only — an agent gets `forbidden_role`.\n\nReassigning matters more than it looks: agents can only see leads assigned to them, so moving a lead is what makes it appear in — or vanish from — someone's worklist. Send `assigned_user_id: null` to unassign, which hides it from every agent.\n\nThe pre-request script reads the signed-in user's own id, so the body hardcodes nothing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_user_id\": \"{{user_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Assign the lead to whoever is signed in.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/me\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200) { pm.collectionVariables.set(\"user_id\", res.json().user.id); }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const lead = pm.response.json().lead;",
+                  "pm.test(\"the lead now has an owner\", () => {",
+                  "  pm.expect(lead.assigned_user.id).to.eql(pm.collectionVariables.get(\"user_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Log a call",
           "request": {
             "method": "POST",
@@ -1314,6 +1382,47 @@
           ]
         },
         {
+          "name": "Update a building",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/buildings/{{building_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "buildings",
+                "{{building_id}}"
+              ]
+            },
+            "description": "Amenities live on the **building**, not the listing — every flat in it shares the same pool, so setting `has_pool` here changes what every property in the building reports.\n\nBuildings are firm-owned and unique on `(firm_id, name, locality_id)`: renaming one onto another building's name in the same locality is a 422.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"has_gym\": true,\n  \"address\": \"Off Linking Road\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json().building;",
+                  "pm.test(\"amenity flipped\", () => pm.expect(b.has_gym).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "List projects",
           "request": {
             "method": "GET",
@@ -1460,6 +1569,132 @@
           ]
         },
         {
+          "name": "Update a project",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}"
+              ]
+            },
+            "description": "Send only what changed. Omitting `typologies` leaves them alone; sending the key at all **replaces the whole set**, so a partial list silently drops the rest.\n\nPrice and area bands are derived from the typologies on read, never stored, so they move on their own once a typology changes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"brokerage_percent\": 2.75\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const p = pm.response.json().project;",
+                  "",
+                  "// `promo` is an object and appears only while the promo is live — an expired",
+                  "// one is omitted entirely rather than sent with a past date for the client to",
+                  "// check. That is why the body sets promo_ends_on too.",
+                  "pm.test(\"the promo is live and carries the new text\", () => {",
+                  "  pm.expect(p.promo).to.be.an(\"object\");",
+                  "  pm.expect(p.promo.text).to.eql(\"Launch pricing till month end\");",
+                  "});",
+                  "pm.test(\"brokerage is a number, not a string\", () => {",
+                  "  pm.expect(p.brokerage_percent).to.eql(2.75);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add project photos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/photos",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "photos"
+              ]
+            },
+            "description": "Photos live on the detail screen, not the create form.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. The pre-request script does the first two, so this request stands alone.\n\n**Note:** there is no matching request for `DELETE /projects/:id/photos/:photo_id` because no response returns an attachment id — only `photo_urls`. The endpoint exists but no client can address it. See the README.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ticket, then PUT the file — what a client does before attaching.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"project_photo\", filename: \"tower.png\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"image/png\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const ticket = res.json();",
+                  "  pm.collectionVariables.set(\"signed_id\", ticket.signed_id);",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: ticket.direct_upload.url,",
+                  "    method: \"PUT\",",
+                  "    header: ticket.direct_upload.headers,",
+                  "    body: { mode: \"raw\", raw: \"hello world\" }",
+                  "  }, () => {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const p = pm.response.json().project;",
+                  "pm.test(\"the photo is on the project\", () => pm.expect(p.photo_count).to.be.above(0));",
+                  "pm.test(\"and a cover url comes back\", () => pm.expect(p.cover_photo_url).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "List properties",
           "request": {
             "method": "GET",
@@ -1572,6 +1807,53 @@
                   "",
                   "pm.test(\"shareable does not\", () => {",
                   "  pm.expect(property.shareable).to.not.have.property(\"confidential_note\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update a property",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}"
+              ]
+            },
+            "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 12400000,\n  \"confidential_note\": \"Owner will close at 1.21 Cr\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const p = pm.response.json().property;",
+                  "pm.test(\"price updated\", () => pm.expect(p.price).to.eql(12400000));",
+                  "pm.test(\"rate per sqft follows the new price\", () => {",
+                  "  pm.expect(Math.round(p.rate_per_sqft)).to.eql(Math.round(12400000 / p.carpet_area_sqft));",
+                  "});",
+                  "pm.test(\"the confidential note never reaches shareable\", () => {",
+                  "  pm.expect(p.shareable).to.not.have.property(\"confidential_note\");",
                   "});"
                 ]
               }
@@ -1788,6 +2070,58 @@
           ]
         },
         {
+          "name": "Update a booking",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}"
+              ]
+            },
+            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"commission_percent\": 5.0,\n  \"unit_no\": \"B-1204\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json().booking;",
+                  "",
+                  "// The itemised money lives under `revenue` — the design's screen breaks it",
+                  "// down that way so the client never recomputes it.",
+                  "pm.test(\"net income was recomputed, not left stale\", () => {",
+                  "  const r = b.revenue;",
+                  "  const expected = Math.round(b.agreement_value * 5.0 / 100) + r.kicker - r.passback;",
+                  "  pm.expect(r.net_income).to.eql(expected);",
+                  "  pm.expect(b.net_income).to.eql(expected);",
+                  "});",
+                  "pm.test(\"commission percent came back as sent\", () => {",
+                  "  pm.expect(b.revenue.commission_percent).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Raise an invoice",
           "request": {
             "method": "POST",
@@ -1828,6 +2162,50 @@
                   "pm.test(\"the booking now shows it as invoiced\", () => {",
                   "  pm.expect(body.booking.invoiced).to.eql(686000);",
                   "  pm.expect(body.booking.outstanding).to.eql(686000);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List invoices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/invoices",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "invoices"
+              ]
+            },
+            "description": "Everything raised against this booking, with what is still outstanding on each.\n\nInvoice numbers are entered by the broker (`INV-2026-041`) so they match what was raised outside the system, and are unique per firm. Cancelling an invoice is not built — the design shows no control for it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the invoice just raised is here\", () => pm.expect(body.invoices.length).to.be.above(0));",
+                  "",
+                  "// `totals` is the server's arithmetic, not the client's. Checking the rows",
+                  "// sum to it is what would catch a serializer drifting from the model.",
+                  "pm.test(\"the rows sum to the invoiced total\", () => {",
+                  "  const summed = body.invoices.reduce((s, i) => s + i.amount, 0);",
+                  "  pm.expect(summed).to.eql(body.totals.invoiced);",
+                  "});",
+                  "pm.test(\"invoiced never exceeds net income — the hard block holds\", () => {",
+                  "  pm.expect(body.totals.invoiced).to.be.at.most(body.totals.net_income);",
+                  "  pm.expect(body.totals.invoiceable_balance).to.eql(body.totals.net_income - body.totals.invoiced);",
                   "});"
                 ]
               }
@@ -1917,6 +2295,167 @@
                   "pm.test(\"outstanding is invoiced minus collected\", () => {",
                   "  pm.expect(b.collected).to.eql(400000);",
                   "  pm.expect(b.outstanding).to.eql(b.invoiced - b.collected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List collections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/collections",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "collections"
+              ]
+            },
+            "description": "Money actually received. A collection may name an invoice or stand alone — the design offers \"Unlinked payment\" as a first-class choice."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the collection just recorded is here\", () => {",
+                  "  pm.expect(body.collections.length).to.be.above(0);",
+                  "});",
+                  "pm.test(\"the rows sum to the collected total\", () => {",
+                  "  const summed = body.collections.reduce((s, x) => s + x.amount, 0);",
+                  "  pm.expect(summed).to.eql(body.totals.collected);",
+                  "});",
+                  "pm.test(\"collected never exceeds invoiced, and outstanding is the difference\", () => {",
+                  "  pm.expect(body.totals.collected).to.be.at.most(body.totals.invoiced);",
+                  "  pm.expect(body.totals.outstanding).to.eql(body.totals.invoiced - body.totals.collected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Attach a booking document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/documents",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "documents"
+              ]
+            },
+            "description": "Four slots from the design: `application_form`, `tagging_confirmation`, `lead_source_proof`, `other`. Only **`other`** may hold more than one file — a second file in a named slot is `slot_taken` rather than a silent overwrite.\n\n`{{$timestamp}}` in the label keeps re-runs distinguishable.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slot\": \"other\",\n  \"label\": \"Allotment letter {{$timestamp}}\",\n  \"signed_id\": \"{{signed_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ticket, then PUT the file.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\",",
+                  "  method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"booking_document\", filename: \"allotment.pdf\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"application/pdf\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const ticket = res.json();",
+                  "  pm.collectionVariables.set(\"signed_id\", ticket.signed_id);",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: ticket.direct_upload.url,",
+                  "    method: \"PUT\",",
+                  "    header: ticket.direct_upload.headers,",
+                  "    body: { mode: \"raw\", raw: \"hello world\" }",
+                  "  }, () => {});",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const docs = pm.response.json().booking.documents;",
+                  "pm.test(\"the document is on the booking\", () => pm.expect(docs.length).to.be.above(0));",
+                  "",
+                  "// Unlike photos, documents come back with an id — which is what makes",
+                  "// the DELETE below reachable at all.",
+                  "pm.collectionVariables.set(\"document_id\", docs[docs.length - 1].id);",
+                  "pm.test(\"it carries an id the client can address\", () => {",
+                  "  pm.expect(docs[docs.length - 1].id).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove a booking document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings/{{booking_id}}/documents/{{document_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings",
+                "{{booking_id}}",
+                "documents",
+                "{{document_id}}"
+              ]
+            },
+            "description": "Purges the blob as well as the row — an unreferenced file would sit in storage being paid for forever."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const docs = pm.response.json().booking.documents;",
+                  "pm.test(\"it is gone from the booking\", () => {",
+                  "  const id = pm.collectionVariables.get(\"document_id\");",
+                  "  pm.expect(docs.map(d => d.id)).to.not.include(id);",
                   "});"
                 ]
               }

@@ -1,0 +1,22 @@
+$kind: collection
+description: |-
+  Asserts the things that are true of a correctly configured *staging* box, which the main Broker API collection deliberately does not test because they are environment facts rather than API behaviour.
+
+  Run it after every deploy. It creates no data.
+
+  What it pins:
+  - the app is up and served over TLS with HSTS
+  - the admin panel is reachable and closed to anonymous callers
+  - Active Storage's own direct-upload endpoint stays shadowed
+  - the API refuses unauthenticated callers
+  - **sign-in codes are pinned to 888888** — the single fact that makes staging usable and that must never be true of production
+  - the reference data is seeded, so a broker signing in has a usable app
+
+  Pair it with `RealtorIQ — Staging` as the environment.
+variables:
+  base_url: https://staging.realtoriq.kgen.tech
+  api_base: "{{base_url}}/api/v1"
+  super_admin_mobile: "9820144210"
+  otp_code: "888888"
+  check_request_id: ""
+  check_access_token: ""

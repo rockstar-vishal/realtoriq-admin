@@ -1,0 +1,20 @@
+$kind: http-request
+description: A broker signing into an unseeded box gets empty dropdowns and cannot create a lead at all — the property type is required on a sale.
+url: "{{api_base}}/reference"
+method: GET
+headers:
+  Authorization: Bearer {{check_access_token}}
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('200', () => pm.response.to.have.status(200));
+      const b = pm.response.json();
+      ['cities','localities','builders','typologies','lead_sources','lead_statuses','property_types'].forEach(k => {
+        pm.test(`${k} seeded`, () => pm.expect(b[k].length, k).to.be.above(0));
+      });
+      pm.test('lead statuses carry the report flags', () => {
+        pm.expect(b.lead_statuses.some(s => s.is_dead), 'a dead status').to.eql(true);
+        pm.expect(b.lead_statuses.some(s => s.is_booked), 'a booked status').to.eql(true);
+      });
+    language: text/javascript
+order: 3000

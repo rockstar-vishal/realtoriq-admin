@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{base_url}}/admin/session/new"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('sign-in page renders', () => pm.response.to.have.status(200));
+      pm.test('nosniff', () => pm.expect(pm.response.headers.get('x-content-type-options')).to.eql('nosniff'));
+      pm.test('framing restricted', () => pm.expect(pm.response.headers.get('x-frame-options')).to.eql('SAMEORIGIN'));
+      pm.test('referrer policy set', () => pm.expect(pm.response.headers.get('referrer-policy')).to.be.a('string'));
+      pm.test('session cookie is secure and httponly', () => {
+        const c = pm.response.headers.get('set-cookie') || '';
+        pm.expect(c.toLowerCase()).to.include('secure');
+        pm.expect(c.toLowerCase()).to.include('httponly');
+      });
+    language: text/javascript
+order: 2000

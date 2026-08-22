@@ -8,6 +8,8 @@ localResources:
   environments:
     - ../RealtorIQ.local.postman_environment.json
 
+# Each entry here maps a local resource to one or more corresponding objects in Postman Cloud
+
 cloudResources:
   collections:
-    ../postman/collections/RealtorIQ — Broker API v1: dab03ec7-f248-4194-a9b3-2ddf1f03774a
+    ../postman/collections/RealtorIQ — Staging deployment checks: ea50303d-aed2-4dea-a427-c63218cf838c

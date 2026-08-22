@@ -1,3 +1,0 @@
-$kind: collection
-description: The blocked states the React app has to render. Each returns a typed `error.code`; two more — `account_suspended` and `subscription_lapsed` — are produced by suspending the firm or lapsing its subscription in the admin panel, then calling `Who am I`.
-order: 8000

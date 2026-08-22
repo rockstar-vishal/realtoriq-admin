@@ -37,6 +37,7 @@ module Api
             lng: project.lng&.to_f,
             google_place_id: project.google_place_id,
             typologies: project.project_typologies.map { |pt| typology(pt) },
+            photos: photos(project),
             photo_urls: photo_urls(project),
             brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil,
             external_ref: project.external_ref,
@@ -81,9 +82,21 @@ module Api
           }
         end
 
-        def photo_urls(project)
-          project.photos.attachments.sort_by(&:id).map { |a| BlobUrl.call(a) }
+        # Attachment ids are UUIDv7, so ordering by id is creation order and the
+        # first is the cover. The design shows no reordering, so none exists.
+        def photo_attachments(project) = project.photos.attachments.sort_by(&:id)
+
+        # Carries the attachment id, which `photo_urls` does not — and without
+        # it DELETE /projects/:id/photos/:photo_id was uncallable: the id
+        # appeared in no response, and the signed blob URL encodes the *blob*
+        # id, which is a different record. Detail only. `shareable` keeps the
+        # bare urls, because an id is of no use to a client and share payloads
+        # get pasted into WhatsApp.
+        def photos(project)
+          photo_attachments(project).map { |a| { id: a.id, url: BlobUrl.call(a) } }
         end
+
+        def photo_urls(project) = photo_attachments(project).map { |a| BlobUrl.call(a) }
       end
     end
   end

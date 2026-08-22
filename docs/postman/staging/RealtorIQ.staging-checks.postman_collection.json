@@ -1,0 +1,188 @@
+{
+  "info": {
+    "_postman_id": "c4a71e58-9b02-4d3f-a6e1-58f0c2d9b471",
+    "name": "RealtorIQ — Staging deployment checks",
+    "description": "Asserts the things that are true of a correctly configured *staging* box, which the main Broker API collection deliberately does not test because they are environment facts rather than API behaviour.\n\nRun it after every deploy. It creates no data.\n\nWhat it pins:\n- the app is up and served over TLS with HSTS\n- the admin panel is reachable and closed to anonymous callers\n- Active Storage's own direct-upload endpoint stays shadowed\n- the API refuses unauthenticated callers\n- **sign-in codes are pinned to 888888** — the single fact that makes staging usable and that must never be true of production\n- the reference data is seeded, so a broker signing in has a usable app\n\nPair it with `RealtorIQ — Staging` as the environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://staging.realtoriq.kgen.tech" },
+    { "key": "api_base", "value": "{{base_url}}/api/v1" },
+    { "key": "super_admin_mobile", "value": "9820144210" },
+    { "key": "otp_code", "value": "888888" },
+    { "key": "check_request_id", "value": "" },
+    { "key": "check_access_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Reachability",
+      "item": [
+        {
+          "name": "Health check",
+          "request": { "method": "GET", "url": "{{base_url}}/up" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('served over https', () => pm.expect(pm.request.url.protocol).to.eql('https'));",
+            "pm.test('HSTS is set — a staging URL still leaks sign-in codes over http', () => {",
+            "  pm.expect(pm.response.headers.get('strict-transport-security')).to.be.a('string');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "Security headers",
+          "request": { "method": "GET", "url": "{{base_url}}/admin/session/new" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('sign-in page renders', () => pm.response.to.have.status(200));",
+            "pm.test('nosniff', () => pm.expect(pm.response.headers.get('x-content-type-options')).to.eql('nosniff'));",
+            "pm.test('framing restricted', () => pm.expect(pm.response.headers.get('x-frame-options')).to.eql('SAMEORIGIN'));",
+            "pm.test('referrer policy set', () => pm.expect(pm.response.headers.get('referrer-policy')).to.be.a('string'));",
+            "pm.test('session cookie is secure and httponly', () => {",
+            "  const c = pm.response.headers.get('set-cookie') || '';",
+            "  pm.expect(c.toLowerCase()).to.include('secure');",
+            "  pm.expect(c.toLowerCase()).to.include('httponly');",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "Admin panel is closed to anonymous callers",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": { "method": "GET", "url": "{{base_url}}/admin/firms" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('redirects to sign in rather than rendering', () => pm.response.to.have.status(302));",
+            "pm.test('and points at the sign-in page', () => {",
+            "  pm.expect(pm.response.headers.get('location')).to.include('/admin/session/new');",
+            "});"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Closed doors",
+      "item": [
+        {
+          "name": "Active Storage direct upload stays shadowed",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"blob\":{\"filename\":\"x.png\",\"byte_size\":1,\"checksum\":\"x\",\"content_type\":\"image/png\"}}" },
+            "url": "{{base_url}}/rails/active_storage/direct_uploads",
+            "description": "Rails mounts this itself. It sits outside our JWT auth and enforces none of the per-purpose size or type rules, so it is deliberately shadowed with a 404 in config/routes.rb. If this ever returns 200, anyone can mint upload tickets against our storage."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 — /api/v1/uploads is the only way to get an upload ticket', () => {",
+            "  pm.response.to.have.status(404);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "API refuses an unauthenticated caller",
+          "request": { "method": "GET", "url": "{{api_base}}/me" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('401', () => pm.response.to.have.status(401));",
+            "pm.test('typed error code', () => pm.expect(pm.response.json().error.code).to.eql('unauthorized'));"
+          ]}}]
+        },
+        {
+          "name": "API refuses a garbage token",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer not.a.real.jwt" }],
+            "url": "{{api_base}}/me"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('401', () => pm.response.to.have.status(401));"
+          ]}}]
+        },
+        {
+          "name": "Unregistered mobile is turned away",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"mobile\":\"9999999999\"}" },
+            "url": "{{api_base}}/auth/otp"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 not_registered — there is no self-signup', () => {",
+            "  pm.response.to.have.status(404);",
+            "  pm.expect(pm.response.json().error.code).to.eql('not_registered');",
+            "});"
+          ]}}]
+        }
+      ]
+    },
+    {
+      "name": "Staging configuration",
+      "item": [
+        {
+          "name": "Sign-in codes are pinned to 888888",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"mobile\":\"{{super_admin_mobile}}\"}" },
+            "url": "{{api_base}}/auth/otp",
+            "description": "The one fact that makes staging usable without a phone. It is also a complete authentication bypass — anyone who knows a registered mobile can sign in as that broker — so production refuses to boot with OTP_FIXED_CODE set, and this collection must never be pointed at production."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('code requested', () => pm.response.to.have.status(200));",
+            "const b = pm.response.json();",
+            "pm.test('the mobile is masked in the response', () => pm.expect(b.sent_to).to.match(/x{3}$/));",
+            "pm.collectionVariables.set('check_request_id', b.request_id);"
+          ]}}]
+        },
+        {
+          "name": "…and the fixed code actually signs in",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"request_id\":\"{{check_request_id}}\",\"code\":\"{{otp_code}}\",\"device\":{\"device_name\":\"staging-checks\",\"platform\":\"newman\"}}" },
+            "url": "{{api_base}}/auth/verify"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 — OTP_FIXED_CODE is in effect on this box', () => pm.response.to.have.status(200));",
+            "const b = pm.response.json();",
+            "pm.collectionVariables.set('check_access_token', b.access_token);",
+            "pm.test('a firm comes back', () => pm.expect(b.firm.name).to.be.a('string'));",
+            "pm.test('the subscription is live, or the app signs them straight back out', () => {",
+            "  pm.expect(b.subscription.entitled).to.eql(true);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "Reference data is seeded",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{check_access_token}}" }],
+            "url": "{{api_base}}/reference",
+            "description": "A broker signing into an unseeded box gets empty dropdowns and cannot create a lead at all — the property type is required on a sale."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200', () => pm.response.to.have.status(200));",
+            "const b = pm.response.json();",
+            "['cities','localities','builders','typologies','lead_sources','lead_statuses','property_types'].forEach(k => {",
+            "  pm.test(`${k} seeded`, () => pm.expect(b[k].length, k).to.be.above(0));",
+            "});",
+            "pm.test('lead statuses carry the report flags', () => {",
+            "  pm.expect(b.lead_statuses.some(s => s.is_dead), 'a dead status').to.eql(true);",
+            "  pm.expect(b.lead_statuses.some(s => s.is_booked), 'a booked status').to.eql(true);",
+            "});"
+          ]}}]
+        },
+        {
+          "name": "Sign out again — leaves no session behind",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{check_access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{api_base}}/auth/session"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204', () => pm.response.to.have.status(204));"
+          ]}}]
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,0 @@
-$kind: collection
-description: Deliberately last. Signing out revokes the session, so anything after it would get 401 — which is exactly what an earlier draft of this collection did to itself.
-order: 9000

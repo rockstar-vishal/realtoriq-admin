@@ -1,6 +1,0 @@
-$kind: collection
-description: |-
-  Direct upload: ask for a ticket, PUT the file straight to storage, then pass the returned `signed_id` when creating the record it belongs to.
-
-  Limits are enforced **when the ticket is issued**, per purpose — after that the browser talks to storage and this is the last point we control. Rails' own `/rails/active_storage/direct_uploads` is shadowed with a 404, since it sits outside this auth and enforces none of these rules.
-order: 5000

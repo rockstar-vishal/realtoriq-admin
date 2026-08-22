@@ -1,7 +1,7 @@
 # Staging
 
-Production in every respect except three, each chosen so the environment can be
-exercised without reaching a real broker or a real rupee:
+Production in every respect except the rows below, each chosen so the
+environment can be exercised without reaching a real broker or a real rupee:
 
 | | Staging | Production |
 | --- | --- | --- |
@@ -9,6 +9,7 @@ exercised without reaching a real broker or a real rupee:
 | Delivery | Written to the log. MSG91 is never called | MSG91 (SMS/WhatsApp) + Action Mailer |
 | OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
 | Email | `delivery_method = :test` — nothing leaves | Real SMTP |
+| CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
 
 Everything else — eager loading, caching, SSL, Solid Queue/Cache/Cable, the four
 databases — matches production.
@@ -24,10 +25,48 @@ So staging is `RAILS_ENV=staging`, not production with a flag. Running your
 staging box as `RAILS_ENV=production` will fail to boot the moment you set the
 fixed code, and that is the intended behaviour.
 
-**Treat the staging URL as sensitive.** Keep it off the public internet — VPN, IP
-allowlist, or HTTP basic auth in front of it. Anyone who reaches it and knows a
-broker's mobile number is that broker. The app logs a warning to this effect on
-every boot.
+**Treat the staging URL as sensitive.** Anyone who reaches it and knows a
+broker's mobile number *is* that broker — no password, and the code is always
+`888888`. The app logs a warning to this effect on every boot.
+
+> **`https://staging.realtoriq.kgen.tech` is currently reachable from the open
+> internet with nothing in front of it.** Verified by signing in from outside any
+> VPN. Put one of these in front of it before the broker list is real data:
+>
+> - HTTP basic auth in the nginx server block (quickest — one `auth_basic` pair)
+> - an IP allowlist, if the team's addresses are stable
+> - a VPN or Tailscale, if you want it invisible
+>
+> Basic auth is enough. The threat is a stranger who guesses the hostname, not a
+> targeted attacker, and it costs two lines of nginx config.
+
+`public/robots.txt` is the stock Rails one and carries no `Disallow`, so the host
+is also crawlable. Basic auth solves that too — a crawler gets a 401 and indexes
+nothing.
+
+## CORS is open on staging
+
+Staging answers a preflight from **any** origin. A React build on a laptop, a
+Vercel preview URL or a teammate's machine can point at it without anyone
+redeploying the box to add an origin to a list.
+
+What makes that a convenience rather than a hole: `/api/*` is
+`ActionController::API` with no cookie session, and `AuthenticatedController`
+accepts only a verified JWT from the `Authorization` header. Nothing travels
+ambiently with the browser, so a hostile page that reaches the API has no token
+and gets a 401 — it gains nothing it could not already do with `curl`.
+`credentials` stays off, and the CORS resource covers `/api/*` only, so the
+admin panel's cookie session is never reachable cross-origin.
+
+To close it down again — a shared staging box, or one that outlives its
+audience — name the origins:
+
+```bash
+export CORS_ORIGINS=https://app.realtoriq.com,http://localhost:5173
+```
+
+An explicit list always wins over the wildcard. Production has no wildcard
+default; setting one there works but logs a warning at boot.
 
 ## Setup
 
@@ -50,7 +89,7 @@ Optional, with sensible defaults:
 | --- | --- | --- |
 | `APP_HOST` | `http://localhost:3000` | Public origin. **Set this** — file URLs are absolute |
 | `ALLOWED_HOSTS` | unset (any) | Comma-separated, e.g. `staging.realtoriq.in` |
-| `CORS_ORIGINS` | `http://localhost:5173` | Where the React app is served from |
+| `CORS_ORIGINS` | **`*`** on staging | Set a comma-separated list to close it down again |
 | `DATABASE_HOST` | unset | **Leave unset** for a local Postgres — see below |
 | `DATABASE_USERNAME` | unset | Only for a remote database |
 | `KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD` | unset | Only for a remote database |
