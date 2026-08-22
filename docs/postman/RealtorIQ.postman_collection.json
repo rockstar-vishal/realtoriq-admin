@@ -138,6 +138,14 @@
     {
       "key": "document_id",
       "value": ""
+    },
+    {
+      "key": "project_photo_id",
+      "value": ""
+    },
+    {
+      "key": "property_photo_id",
+      "value": ""
     }
   ],
   "item": [
@@ -1688,7 +1696,57 @@
                   "",
                   "const p = pm.response.json().project;",
                   "pm.test(\"the photo is on the project\", () => pm.expect(p.photo_count).to.be.above(0));",
-                  "pm.test(\"and a cover url comes back\", () => pm.expect(p.cover_photo_url).to.be.a(\"string\"));"
+                  "pm.test(\"and a cover url comes back\", () => pm.expect(p.cover_photo_url).to.be.a(\"string\"));",
+                  "",
+                  "// `photos` carries the attachment id; `photo_urls` does not. The id is",
+                  "// what DELETE /photos/:photo_id takes — the signed blob URL encodes the",
+                  "// blob id, a different record, so it cannot be scraped from the url.",
+                  "pm.collectionVariables.set(\"project_photo_id\", p.photos[p.photos.length - 1].id);",
+                  "pm.test(\"each photo comes back with an addressable id\", () => {",
+                  "  pm.expect(p.photos[0].id).to.be.a(\"string\");",
+                  "  pm.expect(p.photos[0].url).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"but the shareable payload carries no ids\", () => {",
+                  "  pm.expect(p.shareable).to.not.have.property(\"photos\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove a project photo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/photos/{{project_photo_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "photos",
+                "{{project_photo_id}}"
+              ]
+            },
+            "description": "Takes the **attachment** id from `photos[].id` on the project detail.\n\nPurges the blob as well as detaching it — an unreferenced file would sit in storage being paid for forever."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const p = pm.response.json().project;",
+                  "pm.test(\"the photo is gone\", () => {",
+                  "  const id = pm.collectionVariables.get(\"project_photo_id\");",
+                  "  pm.expect(p.photos.map(x => x.id)).to.not.include(id);",
+                  "});",
+                  "pm.test(\"and the count follows\", () => pm.expect(p.photo_count).to.eql(p.photos.length));"
                 ]
               }
             }
@@ -1931,7 +1989,59 @@
                   "  const property = pm.response.json().property;",
                   "  pm.expect(property.photo_count).to.be.above(0);",
                   "  pm.expect(property.cover_photo_url).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "const p = pm.response.json().property;",
+                  "",
+                  "// `photos` carries the attachment id; `photo_urls` does not. The id is",
+                  "// what DELETE /photos/:photo_id takes — the signed blob URL encodes the",
+                  "// blob id, a different record, so it cannot be scraped from the url.",
+                  "pm.collectionVariables.set(\"property_photo_id\", p.photos[p.photos.length - 1].id);",
+                  "pm.test(\"each photo comes back with an addressable id\", () => {",
+                  "  pm.expect(p.photos[0].id).to.be.a(\"string\");",
+                  "  pm.expect(p.photos[0].url).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"but the shareable payload carries no ids\", () => {",
+                  "  pm.expect(p.shareable).to.not.have.property(\"photos\");",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove a property photo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/photos/{{property_photo_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}",
+                "photos",
+                "{{property_photo_id}}"
+              ]
+            },
+            "description": "Same as the project one. A photo id that isn't on this property is a 404, not a 403 — consistent with how every other not-yours lookup answers."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const p = pm.response.json().property;",
+                  "pm.test(\"the photo is gone\", () => {",
+                  "  const id = pm.collectionVariables.get(\"property_photo_id\");",
+                  "  pm.expect(p.photos.map(x => x.id)).to.not.include(id);",
+                  "});",
+                  "pm.test(\"and the count follows\", () => pm.expect(p.photo_count).to.eql(p.photos.length));"
                 ]
               }
             }

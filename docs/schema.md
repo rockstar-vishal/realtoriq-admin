@@ -157,6 +157,12 @@ carries only `starting_price` and `starting_carpet_sqft`. The `price_to` /
 `area_to_sqft` pair was dropped — the design has one price and one area per
 typology, and the bands come from the set.
 
+**Photos.** A detail carries both `photos` — `[{ id, url }]` — and `photo_urls`.
+The id is the Active Storage **attachment** id, and it exists because
+`DELETE /projects/:id/photos/:photo_id` takes one: with only `photo_urls` the
+endpoint was uncallable, since the signed blob URL encodes the *blob* id, a
+different record. `shareable` keeps the bare urls only.
+
 **Share payloads.** The client composes share text, so every project and
 property detail carries a **`shareable`** object holding exactly the fields that
 may go to a client. Building a message from `shareable` cannot reach the
