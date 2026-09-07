@@ -38,3 +38,4 @@ Gemfile.lock
 .claude/*
 tmp/*
 config/database.yml
+.DS_Store

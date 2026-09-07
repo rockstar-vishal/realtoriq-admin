@@ -1,5 +1,7 @@
 # Postman collection — Broker API v1
 
+Prose reference: **[docs/api.md](../api.md)**.
+
 - `RealtorIQ.postman_collection.json` — the requests, with tests
 - `RealtorIQ.local.postman_environment.json` — where to point them
 - **[`staging/`](staging/)** — the same collection against
@@ -63,7 +65,7 @@ The two error-state requests that need their own setup carry pre-request scripts
 npx newman run docs/postman/RealtorIQ.postman_collection.json -e docs/postman/RealtorIQ.local.postman_environment.json
 ```
 
-127 assertions on a freshly seeded database. It is safe to re-run without
+141 assertions on a freshly seeded database. It is safe to re-run without
 reseeding: the channel assertions accept both "code sent" and "already verified",
 so a second pass stays honest rather than green by luck. Re-run `demo:seed` to
 reset the demo firm's WhatsApp channel to unverified.

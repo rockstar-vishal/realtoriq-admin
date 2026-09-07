@@ -11,7 +11,7 @@ npx newman run docs/postman/staging/RealtorIQ.postman_collection.json \
 
 | File | What | Size |
 | --- | --- | --- |
-| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 58 requests, 127 assertions |
+| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 62 requests, 141 assertions |
 | `RealtorIQ.staging-checks.postman_collection.json` | Post-deploy health check only | 11 requests, 30 assertions |
 | `RealtorIQ.staging.postman_environment.json` | The environment both use | — |
 
@@ -28,7 +28,18 @@ npx newman run docs/postman/staging/RealtorIQ.staging-checks.postman_collection.
 
 ## Coverage
 
-**51 of 51 routes.** Every endpoint the API exposes has at least one request.
+**51 of 51 routes, and every accepted parameter.** Each create and update request sends the
+complete permitted set, and each index has a `List — every filter` request that exercises every
+query parameter. So the collection doubles as the field-level API reference.
+
+Two traps it now documents, both of which produce **no error**:
+
+- `property_type_id` is a **single string**. Rails' `params.permit` silently discards an array
+  value for a scalar-permitted key, so `["01a0…"]` arrives as nil and you get
+  `422 Property type is required for a sale lead` with nothing pointing at the cause.
+  `typology_ids` **is** an array — one property type, many configurations.
+- A misnamed key is dropped in the same silence. The lead date field is `possession_by`; sending
+  `possession_up_to` returns `201` and a lead with no possession date.
 
 The two photo deletes were unreachable until recently — they take an
 **attachment id**, and no response returned one. The project and property
