@@ -146,6 +146,10 @@
     {
       "key": "property_photo_id",
       "value": ""
+    },
+    {
+      "key": "brochure_signed_id",
+      "value": ""
     }
   ],
   "item": [
@@ -634,6 +638,102 @@
           ]
         },
         {
+          "name": "List — every filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads?q=a&status=new&transaction_type=sale&property_type_id={{property_type_id}}&source_id={{lead_source_id}}&assigned_user_id={{user_id}}&budget_min=8000000&budget_max=25000000&possession_from=2026-01-01&possession_to=2028-12-31&typology_ids[]={{typology_id}}&sort=recent&per_page=5&page=1",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "a"
+                },
+                {
+                  "key": "status",
+                  "value": "new"
+                },
+                {
+                  "key": "transaction_type",
+                  "value": "sale"
+                },
+                {
+                  "key": "property_type_id",
+                  "value": "{{property_type_id}}"
+                },
+                {
+                  "key": "source_id",
+                  "value": "{{lead_source_id}}"
+                },
+                {
+                  "key": "assigned_user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "budget_min",
+                  "value": "8000000"
+                },
+                {
+                  "key": "budget_max",
+                  "value": "25000000"
+                },
+                {
+                  "key": "possession_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "possession_to",
+                  "value": "2028-12-31"
+                },
+                {
+                  "key": "typology_ids[]",
+                  "value": "{{typology_id}}"
+                },
+                {
+                  "key": "sort",
+                  "value": "recent"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\n**Budget filtering is overlap, not containment.** A window of 80L–2.5Cr returns the lead whose own range is 1.2–1.8 Cr *and* the one that straddles an edge. Containment would hide exactly the lead a broker widening the filter is looking for.\n\n**`status=missed_followup` is not a real status** — it means `next_action_at` in the past on a non-terminal lead.\n\n`sort` is `worklist` (default), `recent` or `updated`. `typology_ids` is an array, so it repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "// Filters legitimately narrow to zero rows. What must hold is that every",
+                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// with sane pagination is the honest assertion here.",
+                  "pm.test(\"pagination meta comes back\", () => {",
+                  "  pm.expect(body.meta.page).to.eql(1);",
+                  "  pm.expect(body.meta.per_page).to.eql(5);",
+                  "  pm.expect(body.meta.total_count).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Create a lead",
           "request": {
             "method": "POST",
@@ -652,10 +752,10 @@
                 "leads"
               ]
             },
-            "description": "**Name is optional** — brokers capture a number before anything else. Four fields are required: `mobile`, `transaction_type`, `budget`, and `property_type_id` *for sale leads only* — a rental lead carrying one is rejected, because the design's form never asks.\n\nMobiles are normalised to E.164, so `98201 44299` and `+919820144299` are the same number.\n\nDuplicates are allowed (the design shows several leads on one number); the response carries `possible_duplicates` so the app can warn.\n\nThe pre-request script pulls a property type and typology id from /reference.",
+            "description": "Every field the endpoint accepts, in one body.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Rhea Kapoor\",\n  \"mobile\": \"98201 44299\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 12000000,\n  \"budget_max\": 16000000,\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 12000000,\n  \"budget_max\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"next_action_note\": \"Call back after site visit\",\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
             }
           },
           "event": [
@@ -664,6 +764,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// Several bodies below reference the signed-in user; fetch the id once.",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/me\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200) { pm.collectionVariables.set(\"user_id\", res.json().user.id); }",
+                  "});",
+                  "",
                   "// Grab real master ids so the body doesn't hardcode uuids.",
                   "pm.sendRequest({",
                   "  url: pm.variables.replaceIn(\"{{api_base}}/reference\"),",
@@ -760,10 +869,10 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Partial update. Send `typology_ids` to replace the preferred configurations wholesale.",
+            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"next_action_note\": \"Call back after the site visit\",\n  \"next_action_at\": \"2026-09-01T10:30:00+05:30\"\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 13000000,\n  \"budget_max\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-10T16:00:00+05:30\",\n  \"next_action_note\": \"Share Aurum Vista brochure\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
             }
           },
           "event": [
@@ -862,7 +971,7 @@
             "description": "Kinds: `call`, `whatsapp`, `visit`, `note`. `status_change` is system-only and refused here — pipeline movement goes through the status endpoint, which also writes the reporting record.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"kind\": \"call\",\n  \"body\": \"Discussed the 3 BHK; wants a Saturday visit\",\n  \"outcome\": \"interested\"\n}"
+              "raw": "{\n  \"kind\": \"call\",\n  \"body\": \"Discussed the 3 BHK at Aurum Vista. Wants a higher floor.\",\n  \"occurred_at\": \"2026-09-01T11:15:00+05:30\",\n  \"outcome\": \"interested\"\n}"
             }
           },
           "event": [
@@ -1277,7 +1386,7 @@
             "description": "The design puts this on the project form so a broker is never blocked by a missing developer.\n\nWhat they add belongs to their firm alone — it does not join the global list, and a firm may reuse a name the platform already has.\n\nThe name carries `{{$timestamp}}` so the collection is re-runnable — builder names are unique per firm, and a fixed one would 422 on the second pass.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Sethi Preferred {{$timestamp}}\"\n}"
+              "raw": "{\n  \"name\": \"Sethi Preferred {{$timestamp}}\",\n  \"website\": \"https://sethipreferred.example.com\"\n}"
             }
           },
           "event": [
@@ -1349,7 +1458,7 @@
             "description": "The design's \"Building not listed? Add new\" modal, with the city pre-filled.\n\nAmenities live here rather than on the listing — every flat in the building shares the pool. A locality outside the chosen city is rejected.\n\nName carries `{{$timestamp}}`: buildings are unique per firm and locality, so a fixed name would 422 on a re-run.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"has_pool\": true,\n  \"has_gym\": true,\n  \"lat\": 19.04122,\n  \"lng\": 73.0674\n}"
+              "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Plot 14, Kolshet Road\",\n  \"lat\": 19.219,\n  \"lng\": 72.9772,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAC\",\n  \"has_pool\": true,\n  \"has_gym\": false\n}"
             }
           },
           "event": [
@@ -1412,7 +1521,7 @@
             "description": "Amenities live on the **building**, not the listing — every flat in it shares the same pool, so setting `has_pool` here changes what every property in the building reports.\n\nBuildings are firm-owned and unique on `(firm_id, name, locality_id)`: renaming one onto another building's name in the same locality is a 422.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"has_gym\": true,\n  \"address\": \"Off Linking Road\"\n}"
+              "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Linking Road\",\n  \"lat\": 19.2195,\n  \"lng\": 72.9768,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAD\",\n  \"has_pool\": true,\n  \"has_gym\": true\n}"
             }
           },
           "event": [
@@ -1470,6 +1579,90 @@
           ]
         },
         {
+          "name": "List — every filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects?q=Aurum&status=active&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Aurum"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                },
+                {
+                  "key": "builder_id",
+                  "value": "{{builder_id}}"
+                },
+                {
+                  "key": "city_id",
+                  "value": "{{city_id}}"
+                },
+                {
+                  "key": "locality_id",
+                  "value": "{{locality_id}}"
+                },
+                {
+                  "key": "budget_min",
+                  "value": "5000000"
+                },
+                {
+                  "key": "budget_max",
+                  "value": "50000000"
+                },
+                {
+                  "key": "possession_before",
+                  "value": "2029-12-31"
+                },
+                {
+                  "key": "typology_ids[]",
+                  "value": "{{typology_id}}"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Every filter on the projects index. `status` is `active` or `archived` — there is no destroy anywhere in inventory, archiving is the status change."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "// Filters legitimately narrow to zero rows. What must hold is that every",
+                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// with sane pagination is the honest assertion here.",
+                  "pm.test(\"pagination meta comes back\", () => {",
+                  "  pm.expect(body.meta.page).to.eql(1);",
+                  "  pm.expect(body.meta.per_page).to.eql(5);",
+                  "  pm.expect(body.meta.total_count).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Create a project",
           "request": {
             "method": "POST",
@@ -1491,7 +1684,7 @@
             "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Aurum Vista II\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-01\",\n  \"brokerage_percent\": 4.5,\n  \"rera_number\": \"P51700054218\",\n  \"promo_text\": \"Extra 1% on 3 BHK bookings\",\n  \"promo_ends_on\": \"2026-12-31\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ]\n}"
+              "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
             }
           },
           "event": [
@@ -1500,6 +1693,25 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// A project may carry a brochure — ticket, then PUT the file, then send the",
+                  "// signed_id with the project itself. Same three steps as a photo.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\", method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"project_brochure\", filename: \"aurum-vista.pdf\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"application/pdf\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const t = res.json();",
+                  "  pm.collectionVariables.set(\"brochure_signed_id\", t.signed_id);",
+                  "  pm.sendRequest({ url: t.direct_upload.url, method: \"PUT\",",
+                  "    header: t.direct_upload.headers, body: { mode: \"raw\", raw: \"hello world\" } }, () => {});",
+                  "});",
+                  "",
                   "// Pull real master ids so bodies don't hardcode uuids.",
                   "pm.sendRequest({",
                   "  url: pm.variables.replaceIn(\"{{api_base}}/reference\"),",
@@ -1534,7 +1746,9 @@
                   "",
                   "pm.test(\"created as the firm's own, not catalog\", () => {",
                   "  pm.expect(project.source).to.eql(\"own\");",
-                  "});"
+                  "});",
+                  "",
+                  "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
                 ]
               }
             }
@@ -1599,10 +1813,36 @@
             "description": "Send only what changed. Omitting `typologies` leaves them alone; sending the key at all **replaces the whole set**, so a partial list silently drops the rest.\n\nPrice and area bands are derived from the typologies on read, never stored, so they move on their own once a typology changes.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"brokerage_percent\": 2.75\n}"
+              "raw": "{\n  \"name\": \"Aurum Vista Phase 2 {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet West\",\n  \"lat\": 19.2201,\n  \"lng\": 72.976,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAB\",\n  \"starting_budget\": 15100000,\n  \"possession_on\": \"2028-03-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054322\",\n  \"brokerage_percent\": 2.75,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 15100000,\n      \"starting_carpet_sqft\": 760\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A project may carry a brochure — ticket, then PUT the file, then send the",
+                  "// signed_id with the project itself. Same three steps as a photo.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\", method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"project_brochure\", filename: \"aurum-vista.pdf\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"application/pdf\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const t = res.json();",
+                  "  pm.collectionVariables.set(\"brochure_signed_id\", t.signed_id);",
+                  "  pm.sendRequest({ url: t.direct_upload.url, method: \"PUT\",",
+                  "    header: t.direct_upload.headers, body: { mode: \"raw\", raw: \"hello world\" } }, () => {});",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -1610,18 +1850,21 @@
                 "exec": [
                   "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
                   "",
-                  "const p = pm.response.json().project;",
+                  "const project = pm.response.json().project;",
+                  "",
                   "",
                   "// `promo` is an object and appears only while the promo is live — an expired",
                   "// one is omitted entirely rather than sent with a past date for the client to",
                   "// check. That is why the body sets promo_ends_on too.",
                   "pm.test(\"the promo is live and carries the new text\", () => {",
-                  "  pm.expect(p.promo).to.be.an(\"object\");",
-                  "  pm.expect(p.promo.text).to.eql(\"Launch pricing till month end\");",
+                  "  pm.expect(project.promo).to.be.an(\"object\");",
+                  "  pm.expect(project.promo.text).to.eql(\"Launch pricing till month end\");",
                   "});",
                   "pm.test(\"brokerage is a number, not a string\", () => {",
-                  "  pm.expect(p.brokerage_percent).to.eql(2.75);",
-                  "});"
+                  "  pm.expect(project.brokerage_percent).to.eql(2.75);",
+                  "});",
+                  "",
+                  "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
                 ]
               }
             }
@@ -1788,6 +2031,97 @@
           ]
         },
         {
+          "name": "List — every filter ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties?q=Aurum&status=available&listing_for=sale&floor_band=higher&building_id={{building_id}}&typology_id={{typology_id}}&city_id={{city_id}}&locality_id={{locality_id}}&price_min=5000000&price_max=50000000&per_page=5&page=1",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Aurum"
+                },
+                {
+                  "key": "status",
+                  "value": "available"
+                },
+                {
+                  "key": "listing_for",
+                  "value": "sale"
+                },
+                {
+                  "key": "floor_band",
+                  "value": "higher"
+                },
+                {
+                  "key": "building_id",
+                  "value": "{{building_id}}"
+                },
+                {
+                  "key": "typology_id",
+                  "value": "{{typology_id}}"
+                },
+                {
+                  "key": "city_id",
+                  "value": "{{city_id}}"
+                },
+                {
+                  "key": "locality_id",
+                  "value": "{{locality_id}}"
+                },
+                {
+                  "key": "price_min",
+                  "value": "5000000"
+                },
+                {
+                  "key": "price_max",
+                  "value": "50000000"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Every filter on the properties index. `status` is `available` / `under_offer` / `closed`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`.\n\nNo list payload carries `confidential_note`, whatever the filter."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "// Filters legitimately narrow to zero rows. What must hold is that every",
+                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// with sane pagination is the honest assertion here.",
+                  "pm.test(\"pagination meta comes back\", () => {",
+                  "  pm.expect(body.meta.page).to.eql(1);",
+                  "  pm.expect(body.meta.per_page).to.eql(5);",
+                  "  pm.expect(body.meta.total_count).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"no confidential note leaks into a filtered list\", () => {",
+                  "  pm.expect(body.properties.every(x => !(\"confidential_note\" in x))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Create a property",
           "request": {
             "method": "POST",
@@ -1806,10 +2140,10 @@
                 "properties"
               ]
             },
-            "description": "Required: `building_id`, `typology_id`, `listing_for`, `price`. The city comes through the building.\n\n`confidential_note` holds owner details and negotiating room. The design puts it behind a reveal so it can't appear on a client's screen by accident — the API keeps it out of every list payload and out of `shareable`.",
+            "description": "Every accepted field. `status` is `available` / `under_offer` / `closed`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`.\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"floor_band\": \"middle\",\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"Corner flat, cross-ventilated.\",\n  \"confidential_note\": \"Owner: Mr R. Bhatt \\u00b7 negotiable to \\u20b91.14 Cr\"\n}"
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
             }
           },
           "event": [
@@ -1894,7 +2228,7 @@
             "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"price\": 12400000,\n  \"confidential_note\": \"Owner will close at 1.21 Cr\"\n}"
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"under_offer\"\n}"
             }
           },
           "event": [
@@ -2072,10 +2406,10 @@
                 "bookings"
               ]
             },
-            "description": "Every booking carries a lead — the design's flow finds one by phone first, which is just `GET /leads?q=<digits>`; no separate endpoint.\n\n`customer_name` and `customer_mobile` are **snapshotted** from the lead unless you send them: correcting the lead's name a year later must not rewrite what was booked.\n\nThe pre-request script picks a lead so the body doesn't hardcode an id.",
+            "description": "Every accepted field.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"other_details\": \"10:80:10 plan \\u00b7 two covered parkings\"\n}"
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
             }
           },
           "event": [
@@ -2151,6 +2485,81 @@
           ]
         },
         {
+          "name": "List — every filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/bookings?q=Rhea&status=live&client_phone=9820166666&project_id={{project_id}}&booked_from=2026-01-01&booked_to=2027-12-31&per_page=5&page=1",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Rhea"
+                },
+                {
+                  "key": "status",
+                  "value": "live"
+                },
+                {
+                  "key": "client_phone",
+                  "value": "9820166666"
+                },
+                {
+                  "key": "project_id",
+                  "value": "{{project_id}}"
+                },
+                {
+                  "key": "booked_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "booked_to",
+                  "value": "2027-12-31"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Every filter on the bookings index. `status` is `live` or `cancelled`; every money query starts from `live`.\n\n`client_phone` matches the **snapshot** on the booking, not the lead's current number.\n\nThe `totals` block is computed over the filtered set by re-selecting on id — never over a scope carrying `includes(:invoices, :collections)`, which becomes a LEFT JOIN and counts a booking once per associated row. That bug reported 3.12 Cr against a true 1.56 Cr."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "// Filters legitimately narrow to zero rows. What must hold is that every",
+                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// with sane pagination is the honest assertion here.",
+                  "pm.test(\"pagination meta comes back\", () => {",
+                  "  pm.expect(body.meta.page).to.eql(1);",
+                  "  pm.expect(body.meta.per_page).to.eql(5);",
+                  "  pm.expect(body.meta.total_count).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"totals are present and non-negative\", () => {",
+                  "  pm.expect(body.totals.net_income).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get a booking",
           "request": {
             "method": "GET",
@@ -2202,7 +2611,7 @@
             "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"commission_percent\": 5.0,\n  \"unit_no\": \"B-1204\"\n}"
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184-R1\",\n  \"unit_no\": \"B-1204\",\n  \"carpet_area_sqft\": 1360,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 5.0,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings · corner unit\",\n  \"registration_done_on\": \"2026-08-25\",\n  \"client_paid_percent\": 20\n}"
             }
           },
           "event": [
@@ -2387,13 +2796,38 @@
                 "collections"
               ]
             },
-            "description": "Modes: `neft_rtgs`, `upi`, `cheque`, `cash`.\n\n`invoice_id` is optional — omit it for the design's \"Unlinked payment\". Attach proof by passing `proof_signed_id` from `POST /uploads` with purpose `collection_proof`.",
+            "description": "Every accepted field. `invoice_id` is optional — the design offers \"Unlinked payment\" as a first-class choice — but naming one is what lets the API catch a payment filed against the wrong invoice (`over_collected_for_invoice`).\n\n`mode` is `neft_rtgs` / `upi` / `cheque` / `cash`. `proof_signed_id` attaches proof of payment; the pre-request script mints the upload ticket and PUTs the file.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"received_on\": \"2026-08-18\",\n  \"amount\": 400000,\n  \"transaction_no\": \"8842190\",\n  \"mode\": \"neft_rtgs\"\n}"
+              "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"received_on\": \"2026-08-05\",\n  \"amount\": 400000,\n  \"mode\": \"neft_rtgs\",\n  \"transaction_no\": \"NEFT/2026/884213\",\n  \"proof_signed_id\": \"{{signed_id}}\"\n}"
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A collection may carry proof of payment — ticket, then PUT the file.",
+                  "const api = pm.variables.replaceIn(\"{{api_base}}\");",
+                  "const token = pm.variables.replaceIn(\"{{access_token}}\");",
+                  "pm.sendRequest({",
+                  "  url: api + \"/uploads\", method: \"POST\",",
+                  "  header: { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + token },",
+                  "  body: { mode: \"raw\", raw: JSON.stringify({",
+                  "    purpose: \"collection_proof\", filename: \"neft.pdf\", byte_size: 11,",
+                  "    checksum: \"XrY7u+Ae7tCTyyK7j1rNww==\", content_type: \"application/pdf\"",
+                  "  }) }",
+                  "}, (err, res) => {",
+                  "  if (err || res.code !== 201) { return; }",
+                  "  const t = res.json();",
+                  "  pm.collectionVariables.set(\"signed_id\", t.signed_id);",
+                  "  pm.sendRequest({ url: t.direct_upload.url, method: \"PUT\",",
+                  "    header: t.direct_upload.headers, body: { mode: \"raw\", raw: \"hello world\" } }, () => {});",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -2401,10 +2835,18 @@
                 "exec": [
                   "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
                   "",
+                  "// Read the amount out of the request rather than hardcoding it — an earlier",
+                  "// version pinned 400000 here, so editing the body broke an assertion that",
+                  "// had nothing to do with the change.",
+                  "const sent = JSON.parse(pm.request.body.raw).amount;",
                   "const b = pm.response.json().booking;",
+                  "",
+                  "pm.test(\"the collection is counted\", () => pm.expect(b.collected).to.eql(sent));",
                   "pm.test(\"outstanding is invoiced minus collected\", () => {",
-                  "  pm.expect(b.collected).to.eql(400000);",
                   "  pm.expect(b.outstanding).to.eql(b.invoiced - b.collected);",
+                  "});",
+                  "pm.test(\"and never more than what was invoiced\", () => {",
+                  "  pm.expect(b.collected).to.be.at.most(b.invoiced);",
                   "});"
                 ]
               }
