@@ -49,7 +49,17 @@ module Api
         return render_error("already_cancelled", "This booking is cancelled.",
                             status: :unprocessable_content) if @booking.cancelled?
 
-        return render_validation_errors(@booking.errors) unless @booking.update(booking_params)
+        # net_income is recomputed by a before_save, so editing the value or the
+        # percentage silently moves the ceiling that over_invoiced enforces.
+        # Lowering it below what has already been raised turned the documented
+        # hard block into something one PATCH walked around: invoice the full
+        # ₹4,50,000 of a ₹1 Cr booking, then drop agreement_value to ₹1,00,000
+        # and the booking sits invoiced a hundred times past what it earned,
+        # with no route that can take an invoice back.
+        @booking.assign_attributes(booking_params)
+        if (failure = would_strand_invoices?) then return failure end
+
+        return render_validation_errors(@booking.errors) unless @booking.save
 
         render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :ok
       end
@@ -109,6 +119,34 @@ module Api
           agreement_value: live.sum(:agreement_value),
           net_income: live.sum(:net_income)
         }
+      end
+
+      # Runs against the *pending* figures: assign_attributes has been called but
+      # nothing is saved, so recomputing here is what the save would store.
+      def would_strand_invoices?
+        pending = Booking.calculate_net_income(
+          agreement_value: @booking.agreement_value,
+          commission_percent: @booking.commission_percent,
+          kicker: @booking.kicker, passback: @booking.passback
+        )
+        already_invoiced = @booking.invoiced_total
+        # Nothing raised yet, so nothing can be stranded — whatever the new
+        # figure works out to. (A booking can legitimately compute to a negative
+        # net income when the passback exceeds the commission plus the kicker;
+        # that is a separate question from this one.)
+        return nil if already_invoiced.zero?
+        return nil if pending >= already_invoiced
+
+        render_error(
+          "over_invoiced",
+          "That would leave this booking invoiced past what it earns.",
+          status: :unprocessable_content,
+          details: {
+            net_income: pending, already_invoiced:,
+            shortfall: already_invoiced - pending,
+            current_net_income: @booking.net_income_was
+          }
+        )
       end
 
       def render_validation_errors(errors)

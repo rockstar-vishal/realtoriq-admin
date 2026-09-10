@@ -305,4 +305,71 @@ RSpec.describe "API v1 bookings" do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "an update that would strand invoices already raised" do
+    it "refuses to drop net income below what has been invoiced" do
+      headers = auth
+      create_booking(headers, agreement_value: 10_000_000, commission_percent: 4.5,
+                              kicker: 0, passback: 0)
+      booking_id = response.parsed_body.dig("booking", "id")
+      # 4.5% of 1 Cr = 450000, invoiced in full.
+      post "/api/v1/bookings/#{booking_id}/invoices",
+        params: { number: "INV-STRAND", issued_on: Date.current, amount: 450_000 },
+        headers: headers, as: :json
+      expect(response).to have_http_status(:created)
+
+      patch "/api/v1/bookings/#{booking_id}",
+        params: { agreement_value: 100_000 }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("over_invoiced")
+      expect(response.parsed_body.dig("error", "details", "shortfall")).to eq(450_000 - 4_500)
+    end
+
+    it "leaves the booking untouched when it refuses" do
+      headers = auth
+      create_booking(headers, agreement_value: 10_000_000, commission_percent: 4.5,
+                              kicker: 0, passback: 0)
+      booking_id = response.parsed_body.dig("booking", "id")
+      post "/api/v1/bookings/#{booking_id}/invoices",
+        params: { number: "INV-STRAND-2", issued_on: Date.current, amount: 450_000 },
+        headers: headers, as: :json
+
+      patch "/api/v1/bookings/#{booking_id}",
+        params: { agreement_value: 100_000, unit_no: "CHANGED" }, headers: headers, as: :json
+
+      get "/api/v1/bookings/#{booking_id}", headers: headers
+      expect(response.parsed_body.dig("booking", "agreement_value")).to eq(10_000_000)
+      expect(response.parsed_body.dig("booking", "net_income")).to eq(450_000)
+      expect(response.parsed_body.dig("booking", "unit_no")).not_to eq("CHANGED")
+    end
+
+    it "allows a reduction that still covers what is invoiced" do
+      headers = auth
+      create_booking(headers, agreement_value: 10_000_000, commission_percent: 4.5,
+                              kicker: 0, passback: 0)
+      booking_id = response.parsed_body.dig("booking", "id")
+      post "/api/v1/bookings/#{booking_id}/invoices",
+        params: { number: "INV-OK", issued_on: Date.current, amount: 100_000 },
+        headers: headers, as: :json
+
+      # 4.5% of 50 L = 225000, still above the 100000 invoiced.
+      patch "/api/v1/bookings/#{booking_id}",
+        params: { agreement_value: 5_000_000 }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("booking", "net_income")).to eq(225_000)
+    end
+
+    it "still allows any update on a booking with no invoices" do
+      headers = auth
+      create_booking(headers, agreement_value: 10_000_000, commission_percent: 4.5)
+      booking_id = response.parsed_body.dig("booking", "id")
+
+      patch "/api/v1/bookings/#{booking_id}",
+        params: { agreement_value: 100_000 }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
 end
