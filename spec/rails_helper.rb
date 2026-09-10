@@ -63,6 +63,9 @@ RSpec.configure do |config|
   config.infer_spec_type_from_file_location!
 
   config.include FactoryBot::Syntax::Methods
+  # travel_to. Anything that splits by financial year or by "today" needs a
+  # frozen clock, or the test's meaning changes with the hour it runs at.
+  config.include ActiveSupport::Testing::TimeHelpers
 
   # Filter lines from Rails gems in backtraces.
   config.filter_rails_from_backtrace!

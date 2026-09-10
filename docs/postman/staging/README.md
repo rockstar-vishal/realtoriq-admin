@@ -11,7 +11,7 @@ npx newman run docs/postman/staging/RealtorIQ.postman_collection.json \
 
 | File | What | Size |
 | --- | --- | --- |
-| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 62 requests, 141 assertions |
+| `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 64 requests, 154 assertions |
 | `RealtorIQ.staging-checks.postman_collection.json` | Post-deploy health check only | 11 requests, 30 assertions |
 | `RealtorIQ.staging.postman_environment.json` | The environment both use | — |
 
@@ -28,7 +28,7 @@ npx newman run docs/postman/staging/RealtorIQ.staging-checks.postman_collection.
 
 ## Coverage
 
-**51 of 51 routes, and every accepted parameter.** Each create and update request sends the
+**52 of 52 routes, and every accepted parameter.** Each create and update request sends the
 complete permitted set, and each index has a `List — every filter` request that exercises every
 query parameter. So the collection doubles as the field-level API reference.
 

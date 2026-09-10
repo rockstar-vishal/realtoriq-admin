@@ -27,6 +27,33 @@ module FirmScoped
     def across_firms
       unscope(where: :firm_id)
     end
+
+    # Guards a foreign key that points at another firm-owned row.
+    #
+    # `belongs_to ... -> { unscope(where: :firm_id) }` is right for reading —
+    # see docs/schema.md — but it rests on an assumption: that reaching the
+    # parent at all meant the tenant check had happened, so the id was
+    # trustworthy when it was written. Where a **client supplies the id**, that
+    # assumption is simply false, and the unscoped association then reads the
+    # other firm's row back quite happily.
+    #
+    # Two of those were live: a firm could attach another firm's project to its
+    # own booking and read the project name back, and could create a lead
+    # assigned to another firm's user and read that person's name. Both returned
+    # 404 through the front door and answered through this side one.
+    #
+    # A validation rather than a controller check, so it holds for every write
+    # path — console sessions and future code included.
+    def belongs_to_same_firm(*names)
+      names.each do |name|
+        validate do
+          related = public_send(name)
+          next if related.nil? || related.firm_id == firm_id
+
+          errors.add(:"#{name}_id", "isn't one of this firm's records")
+        end
+      end
+    end
   end
 
   private

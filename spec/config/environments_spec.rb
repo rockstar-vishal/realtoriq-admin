@@ -79,6 +79,16 @@ RSpec.describe "Environment guarantees" do
       expect(primary[:username]).to be_nil
     end
 
+    it "stores files on disk, and cannot be pointed at a bucket" do
+      # One stray environment variable would otherwise put staging in the
+      # production bucket, writing test uploads among real documents — and
+      # purging a real blob whenever a tester deleted a photo.
+      source = Rails.root.join("config/environments/staging.rb").read
+
+      expect(source).to include("config.active_storage.service = :local")
+      expect(source).not_to match(/active_storage\.service\s*=\s*ENV/)
+    end
+
     it "answers any origin, so a preview build can talk to it unannounced" do
       expect(cors_origins_for("staging")).to eq([ "*" ])
     end
@@ -109,6 +119,26 @@ RSpec.describe "Environment guarantees" do
       expect(source).to match(/raise/)
     end
 
+    it "stores files on S3, because a container's disk does not survive a deploy" do
+      source = Rails.root.join("config/environments/production.rb").read
+
+      expect(source).to include('ENV.fetch("STORAGE_SERVICE", "amazon")')
+    end
+
+    it "refuses to boot on S3 without a bucket" do
+      # Active Storage builds the service during boot, before initializers, so
+      # this has to be checked in the environment file or the failure is an
+      # ArgumentError out of the AWS SDK that names nothing useful.
+      source = Rails.root.join("config/environments/production.rb").read
+
+      expect(source).to include("AWS_BUCKET")
+      expect(source).to match(/raise/)
+    end
+
+    it "has the S3 gem available to it" do
+      expect(Rails.root.join("Gemfile").read).to match(/gem "aws-sdk-s3"/)
+    end
+
     it "does not inherit staging's open CORS" do
       expect(cors_origins_for("production")).not_to include("*")
     end
@@ -123,6 +153,16 @@ RSpec.describe "Environment guarantees" do
       expect(source).to include('resource "/api/*"')
       expect(source).not_to include('resource "/admin')
       expect(source).not_to match(/resource ["']\*["']/)
+    end
+
+    it "covers the direct-upload path, or step 2 of every upload dies in a browser" do
+      # POST /api/v1/uploads hands back a direct_upload.url under
+      # /rails/active_storage/disk/..., not under /api — so a rule scoped to
+      # /api/* alone lets curl through (no Origin, no preflight) while every
+      # browser and webview client fails the PUT with nothing in the logs.
+      source = Rails.root.join("config/initializers/cors.rb").read
+
+      expect(source).to include('resource "/rails/active_storage/*"')
     end
 
     it "never sends credentials, which is what keeps the wildcard safe" do

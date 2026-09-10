@@ -6,13 +6,25 @@ local:
   service: Disk
   root: <%= Rails.root.join("storage") %>
 
-# Use bin/rails credentials:edit to set the AWS secrets (as aws:access_key_id|secret_access_key)
-# amazon:
-#   service: S3
-#   access_key_id: <%= Rails.application.credentials.dig(:aws, :access_key_id) %>
-#   secret_access_key: <%= Rails.application.credentials.dig(:aws, :secret_access_key) %>
-#   region: us-east-1
-#   bucket: your_own_bucket-<%= Rails.env %>
+# S3, for production. Staging never selects this — see config/environments/staging.rb.
+#
+# Keys are optional on purpose. Set them for a machine outside AWS; leave them
+# unset on EC2 or ECS and the SDK picks up the instance role, which is the
+# better arrangement because there is then no long-lived secret to leak or
+# rotate. Bucket and region come from the environment so one image can serve
+# more than one deployment.
+#
+# ap-south-1 (Mumbai) is the default: this is an India-only product, so it is
+# both the nearest region and the one that keeps customer data in-country.
+amazon:
+  service: S3
+  bucket: <%= ENV["AWS_BUCKET"] %>
+  region: <%= ENV.fetch("AWS_REGION", "ap-south-1") %>
+<% aws_key = ENV["AWS_ACCESS_KEY_ID"].presence || Rails.application.credentials.dig(:aws, :access_key_id) %>
+<% if aws_key.present? %>
+  access_key_id: <%= aws_key %>
+  secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"].presence || Rails.application.credentials.dig(:aws, :secret_access_key) %>
+<% end %>
 
 # Remember not to checkin your GCS keyfile to a repository
 # google:
