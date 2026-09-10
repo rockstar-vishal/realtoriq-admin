@@ -5,6 +5,13 @@ module Bookings
   # what has been invoiced, and a payment filed against a specific invoice
   # cannot take that invoice past its own amount — which is what catches a
   # payment recorded against the wrong invoice.
+  #
+  # **Both checks run under a row lock**, for the reason spelled out in
+  # RaiseInvoice: as a plain read-then-write, concurrent requests each read the
+  # balance before any had inserted and all of them saved. Three of eight
+  # concurrent collections landed against a ₹1,00,000 invoice in testing.
+  # The invoice is locked too, because `over_collected_for_invoice` reads its
+  # balance and a per-invoice race is the same defect one level down.
   class RecordCollection
     Result = Struct.new(:ok?, :collection, :error_code, :error_message, :details, keyword_init: true)
 
@@ -17,21 +24,29 @@ module Bookings
     end
 
     def call
-      return cancelled_booking if booking.cancelled?
-
       amount = attributes[:amount].to_i
+      collection = nil
 
-      if (failure = over_total?(amount)) then return failure end
-      if (failure = over_invoice?(amount)) then return failure end
+      booking.with_lock do
+        return cancelled_booking if booking.cancelled?
 
-      collection = booking.collections.new(attributes)
-      collection.firm = booking.firm
-      collection.invoice = invoice
-      collection.proof.attach(proof_signed_id) if proof_signed_id.present?
-      collection.save!
+        # Lock the invoice in the same transaction, and always in this order —
+        # booking then invoice — so two collections against different invoices
+        # on one booking can never deadlock by taking them the other way round.
+        invoice&.lock!
 
-      AuditEvent.record!(subject: collection, firm: booking.firm, actor:,
-                         action: "collection.recorded", metadata: { amount: })
+        if (failure = over_total?(amount)) then return failure end
+        if (failure = over_invoice?(amount)) then return failure end
+
+        collection = booking.collections.new(attributes)
+        collection.firm = booking.firm
+        collection.invoice = invoice
+        collection.proof.attach(proof_signed_id) if proof_signed_id.present?
+        collection.save!
+
+        AuditEvent.record!(subject: collection, firm: booking.firm, actor:,
+                           action: "collection.recorded", metadata: { amount: })
+      end
 
       Result.new(ok?: true, collection:)
     rescue ActiveRecord::RecordInvalid => e
