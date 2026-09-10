@@ -125,6 +125,16 @@ RSpec.describe "Environment guarantees" do
       expect(source).not_to match(/resource ["']\*["']/)
     end
 
+    it "covers the direct-upload path, or step 2 of every upload dies in a browser" do
+      # POST /api/v1/uploads hands back a direct_upload.url under
+      # /rails/active_storage/disk/..., not under /api — so a rule scoped to
+      # /api/* alone lets curl through (no Origin, no preflight) while every
+      # browser and webview client fails the PUT with nothing in the logs.
+      source = Rails.root.join("config/initializers/cors.rb").read
+
+      expect(source).to include('resource "/rails/active_storage/*"')
+    end
+
     it "never sends credentials, which is what keeps the wildcard safe" do
       # rack-cors 3 defaults credentials to false and refuses to combine `true`
       # with `*` at all. Asserted because re-adding it would be silent here and

@@ -8,6 +8,7 @@ observed against a live server; nothing is aspirational.
 - [Conventions](#conventions)
 - [Authentication](#authentication)
 - [Session and reference data](#session-and-reference-data)
+- [Dashboard](#dashboard)
 - [Leads](#leads)
 - [Inventory — projects, buildings, properties](#inventory)
 - [Bookings and money](#bookings-and-money)
@@ -213,6 +214,68 @@ Never hardcode these ids. **Switch on `code`**, and use `is_dead` / `is_booked`
 rather than matching a name.
 
 ---
+
+## Dashboard
+
+### `GET /dashboard`
+
+The whole home screen in one request — pipeline counters, money tiles, the
+inventory strip, and the top three of each list.
+
+It exists because every counter is derivable from a filter the API already
+exposes, so the alternative was six round trips for one card.
+
+```json
+{
+  "leads": {
+    "total": 29, "hot": 14, "todays_followups": 3,
+    "missed_followups": 4, "visited": 8, "bookings": 2,
+    "recent": [ /* top 3 of the worklist, same shape as GET /leads */ ]
+  },
+  "money": {
+    "revenue_till_date": 68400000, "brokerage_earned": 413000, "bookings_count": 6,
+    "this_month": { "bookings": 1, "revenue": 6900000, "brokerage": 69000 },
+    "this_fy":    { "label": "2026-27", "starts_on": "2026-04-01", "ends_on": "2027-03-31",
+                    "bookings": 6, "revenue": 68400000, "brokerage": 413000 },
+    "registered": { "count": 2, "value": 31200000 },
+    "cancelled":  { "count": 1, "value": 9000000 },
+    "invoiced": 686000, "collected": 400000, "outstanding": 286000,
+    "recent": [ { "id": "…", "code": "B-0001", "status": "live",
+                  "customer_name": "Rhea Kapoor", "agreement_value": 15600000,
+                  "net_income": 686000, "booked_on": "2026-08-24",
+                  "lead": { "id": "…", "code": "L-0001" } } ]
+  },
+  "inventory": { "properties": 14, "properties_added_this_week": 3, "projects": 5 },
+  "generated_at": "2026-09-10T18:22:10.114+05:30"
+}
+```
+
+**The `money` block is absent for an agent — not zeroed.** Agents get
+`forbidden_role` on every booking endpoint, and a block full of zeroes would
+read as "no revenue", which is a different and wrong statement. Branch on the
+key being present, not on the values.
+
+Everything else is scoped the same way the list endpoints are: an agent's
+counters cover only leads assigned to them.
+
+**Definitions worth pinning down**, because they are easy to assume wrong:
+
+| Field | Means |
+| --- | --- |
+| `revenue_till_date` | Σ `agreement_value` over **live** bookings — gross value sold |
+| `brokerage_earned` | Σ `net_income` — what the firm keeps. A different number |
+| `visited` | Leads with `first_visit_at` set — ever, not this month |
+| `todays_followups` | `next_action_at` falls today |
+| `missed_followups` | `next_action_at` in the past on a non-terminal lead |
+| `cancelled` | Counted **separately** and excluded from every figure above |
+
+**`todays_followups` and `missed_followups` overlap.** A followup due at 10am is
+still "today's" at 5pm *and* already overdue. That is deliberate: the tiles
+deep-link to `GET /leads`, and `status=missed_followup` there uses the same
+rule — a tile that disagreed with the list it opens would be the real bug.
+
+**`this_fy` is the Indian financial year, 1 April to 31 March.** A 31 March
+booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 
 ## Leads
 
@@ -656,6 +719,15 @@ Both mistakes are easy from a typed client that isn't matched to this list.
 `property_type_id` is a **string**; `typology_ids` and `photo_signed_ids` are
 **arrays**.
 
+**This leniency is deliberate and is not going to change.** Rejecting unknown
+keys would break any client that sends a stray field, which is what an app
+mid-rollout does. So the server will not tell you — check your field names
+against the tables above, and against the Postman collection, which sends the
+complete accepted set for every endpoint.
+
+A cheap client-side guard, if you want one: assert in dev that the object you
+POSTed round-trips in the response. A field that vanishes was dropped.
+
 **2. `404` is used where you might expect `403`.** Another firm's record and
 another agent's lead both return `404`, deliberately — a 403 confirms the record
 exists. Do not treat 404 as "deleted".
@@ -677,7 +749,7 @@ deletion takes the attachment id from `photos[].id`.
 
 ## Running the collection
 
-A Postman collection covering all 51 routes and every accepted parameter lives at
+A Postman collection covering all 52 routes and every accepted parameter lives at
 [`docs/postman/RealtorIQ.postman_collection.json`](postman/RealtorIQ.postman_collection.json),
 with a staging environment in [`docs/postman/staging/`](postman/staging/). It chains
 its own tokens — you never paste one.
