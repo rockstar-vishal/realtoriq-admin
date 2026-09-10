@@ -60,7 +60,8 @@ module Api
             label: doc.display_label,
             filename: doc.file.attached? ? doc.file.filename.to_s : nil,
             byte_size: doc.file.attached? ? doc.file.byte_size : nil,
-            url: doc.file.attached? ? BlobUrl.call(doc.file) : nil,
+            # A commission record. Expiring, for the reason in BlobUrl.
+            url: doc.file.attached? ? BlobUrl.sensitive(doc.file) : nil,
             uploaded_at: doc.created_at
           }
         end

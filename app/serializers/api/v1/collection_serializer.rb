@@ -14,7 +14,8 @@ module Api
           invoice: collection.invoice && {
             id: collection.invoice_id, number: collection.invoice.number
           },
-          proof_url: collection.proof.attached? ? BlobUrl.call(collection.proof) : nil,
+          # Evidence of a payment — expiring, not a permanent public link.
+          proof_url: collection.proof.attached? ? BlobUrl.sensitive(collection.proof) : nil,
           created_at: collection.created_at
         }
       end
