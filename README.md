@@ -154,7 +154,6 @@ loudly rather than quietly printing live codes into a log file.
 | --- | --- |
 | **`docs/api.md`** | **Broker API reference — every endpoint, parameter and error code. Start here** |
 | `docs/api-clarifications.md` | Answers to the mobile team's 21 open items (10 Sep 2026) |
-| **`docs/tech-debt.md`** | **Deferred work, and what must be done before production** |
 | `docs/schema.md` | The data model, and what is still designed but unbuilt |
 | `docs/staging.md` | Staging setup — fixed codes, nothing delivered |
 | `docs/postman/` | Postman collection for the broker API — chains its own tokens, 154 assertions over all 52 routes and every accepted parameter |
