@@ -45,10 +45,20 @@ module Api
       end
 
       def update
-        @lead.assign_attributes(lead_params)
-        replace_typologies if params.key?(:typology_ids)
+        saved = false
 
-        return render_validation_errors(@lead.errors) unless @lead.save
+        # The whole update in one transaction. `replace_typologies` deletes the
+        # join rows immediately, so before this a rejected save left the lead
+        # with its preferred configurations already gone — a 422 that silently
+        # destroyed data the caller never asked to change.
+        @lead.transaction do
+          @lead.assign_attributes(update_params)
+          replace_typologies if params.key?(:typology_ids)
+          saved = @lead.save
+          raise ActiveRecord::Rollback unless saved
+        end
+
+        return render_validation_errors(@lead.errors) unless saved
 
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
       end
@@ -160,6 +170,8 @@ module Api
         requested.clamp(1, 50)
       end
 
+      # Create may set an owner — an agent's own lead is auto-assigned to them,
+      # and a manager can assign at creation.
       def lead_params
         params.permit(
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
@@ -167,6 +179,15 @@ module Api
           :assigned_user_id, :next_action_at, :next_action_note, :notes
         )
       end
+
+      # Update may not. Reassignment is manager-only and goes through #assign,
+      # which checks the role *and* that the target user is in this firm — and
+      # `assigned_user_id` sitting in this list let a plain PATCH do the same
+      # write with neither check. An agent could hand their own lead to anyone
+      # and lose sight of it, or unassign it and hide it from every agent.
+      #
+      # One column, one door.
+      def update_params = lead_params.except(:assigned_user_id)
     end
   end
 end

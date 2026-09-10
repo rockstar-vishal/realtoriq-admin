@@ -9,7 +9,6 @@
 
 # Ignore all environment files.
 /.env*
-Gemfile.lock
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*
@@ -37,4 +36,15 @@ Gemfile.lock
 !/app/assets/builds/.keep
 .claude/*
 tmp/*
+.DS_Store
+# Kept OUT of version control by decision. Both are provisioned per machine:
+# database.yml is placed there as a deploy step, Gemfile.lock is regenerated
+# by `bundle install`. Do not add either back without asking.
 config/database.yml
+Gemfile.lock
+
+# Working notes, not codebase documentation. Dated write-ups that go stale, and
+# the audit report lists findings that are not fixed yet — neither belongs in a
+# repo that gets pushed. Kept on disk, shared by hand.
+docs/audit-*.md
+docs/tech-debt.md

@@ -38,12 +38,34 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
     origins(*cors_origins)
 
-    # Scoped to the API. The admin panel is server-rendered on a cookie session
-    # and must never be reachable cross-origin.
+    # The admin panel is server-rendered on a cookie session and must never be
+    # reachable cross-origin, so it stays outside both resources below.
     resource "/api/*",
       headers: :any,
       methods: %i[get post patch put delete options head],
       expose: %w[ETag],
+      max_age: 600
+
+    # Direct uploads do NOT go to /api. `POST /api/v1/uploads` returns a
+    # direct_upload.url pointing at /rails/active_storage/disk/<signed token>,
+    # and the client PUTs the file straight there — so leaving this path out of
+    # CORS breaks step 2 of every upload from a browser or webview while curl
+    # keeps working, because curl sends no Origin and so triggers no preflight.
+    # That is exactly the shape the mobile team reported: step 1 fine, step 2
+    # dead, and no server-side error to find.
+    #
+    # Safe to open: every URL here is itself the capability — signed, scoped to
+    # one blob and short-lived — and `credentials` stays off, so nothing rides
+    # along with the request. /rails/active_storage/direct_uploads is separately
+    # routed to a 404 in config/routes.rb and stays unreachable regardless.
+    #
+    # Note for the S3 move: once STORAGE_SERVICE=amazon, direct_upload.url points
+    # at the bucket instead and this rule stops applying — the CORS policy has to
+    # be set on the bucket itself.
+    resource "/rails/active_storage/*",
+      headers: :any,
+      methods: %i[get put options head],
+      expose: %w[ETag Content-MD5],
       max_age: 600
   end
 end

@@ -107,8 +107,20 @@ module Api
 
       private
 
+      # `device` is optional and advisory, so anything unusable is simply ignored.
+      #
+      # It used to be `params.fetch(:device, {}).permit(...)`, which raises
+      # NoMethodError on a String or Array — a client sending
+      # `"device": "iPhone 15"` got a 500. That was worse than it looks: this
+      # runs *after* the code has been verified and consumed, so the sign-in
+      # code was already burned, the retry returned invalid_code, and three
+      # retries locked the account for thirty minutes. On an unauthenticated
+      # endpoint.
       def device_params
-        params.fetch(:device, {}).permit(:device_id, :device_name, :platform, :app_version).to_h.symbolize_keys
+        raw = params[:device]
+        return {} unless raw.respond_to?(:permit)
+
+        raw.permit(:device_id, :device_name, :platform, :app_version).to_h.symbolize_keys
       rescue ActionController::UnpermittedParameters
         {}
       end

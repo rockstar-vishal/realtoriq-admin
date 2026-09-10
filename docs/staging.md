@@ -10,6 +10,7 @@ environment can be exercised without reaching a real broker or a real rupee:
 | OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
 | Email | `delivery_method = :test` — nothing leaves | Real SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
+| File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
 
 Everything else — eager loading, caching, SSL, Solid Queue/Cache/Cable, the four
 databases — matches production.
@@ -93,7 +94,7 @@ Optional, with sensible defaults:
 | `DATABASE_HOST` | unset | **Leave unset** for a local Postgres — see below |
 | `DATABASE_USERNAME` | unset | Only for a remote database |
 | `KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD` | unset | Only for a remote database |
-| `STORAGE_SERVICE` | `local` | `amazon` once S3 is configured |
+| `STORAGE_SERVICE` | — | **Ignored on staging.** Storage is pinned to disk |
 | `FORCE_SSL` / `ASSUME_SSL` | `true` | Set both `false` if terminating plain HTTP |
 | `OTP_FIXED_CODE` | `888888` | Only to change the code; you do not need to set it |
 

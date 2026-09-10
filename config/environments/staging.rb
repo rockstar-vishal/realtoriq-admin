@@ -19,7 +19,14 @@ Rails.application.configure do
 
   config.public_file_server.headers = { "cache-control" => "public, max-age=#{1.year.to_i}" }
 
-  config.active_storage.service = ENV.fetch("STORAGE_SERVICE", "local").to_sym
+  # Disk, always, and deliberately not configurable.
+  #
+  # It used to read STORAGE_SERVICE, which meant one stray environment variable
+  # could point staging at the production bucket — where it would write test
+  # uploads among real documents and, worse, could purge a real blob when a
+  # tester deleted a photo. There is no staging need this serves: files here are
+  # throwaway, and the box is rebuilt freely.
+  config.active_storage.service = :local
 
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") == "true"
   config.force_ssl = ENV.fetch("FORCE_SSL", "true") == "true"

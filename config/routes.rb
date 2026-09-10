@@ -73,6 +73,9 @@ Rails.application.routes.draw do
 
       get "me",        to: "me#show"
       get "reference", to: "reference#index"
+      # The home screen. One request rather than six, and scoped to the caller:
+      # an agent gets no money block at all.
+      get "dashboard", to: "dashboard#show"
 
       # No destroy: the design has no delete. `Dead` is the terminal state, and
       # it carries a reason so the dead-leads report can explain itself.

@@ -152,9 +152,12 @@ loudly rather than quietly printing live codes into a log file.
 
 | Path | What |
 | --- | --- |
+| **`docs/api.md`** | **Broker API reference — every endpoint, parameter and error code. Start here** |
+| `docs/api-clarifications.md` | Answers to the mobile team's 21 open items (10 Sep 2026) |
+| **`docs/tech-debt.md`** | **Deferred work, and what must be done before production** |
 | `docs/schema.md` | The data model, and what is still designed but unbuilt |
 | `docs/staging.md` | Staging setup — fixed codes, nothing delivered |
-| `docs/postman/` | Postman collection for the broker API — chains its own tokens, 127 assertions over all 51 routes |
+| `docs/postman/` | Postman collection for the broker API — chains its own tokens, 154 assertions over all 52 routes and every accepted parameter |
 | `docs/postman/staging/` | The same collection pointed at staging, plus 30 post-deploy checks |
 | `app/models/concerns/firm_scoped.rb` | Row-level tenancy. Fail-closed by design |
 | `app/models/current.rb` | Per-request tenant. Read the comment before touching `firm_scope_bypassed` |

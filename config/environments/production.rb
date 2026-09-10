@@ -22,7 +22,26 @@ Rails.application.configure do
   # config.asset_host = "http://assets.example.com"
 
   # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # S3 by default — a container's disk does not survive a deploy, so :local here
+  # means uploads vanish on the next release. Overridable for a deployment that
+  # genuinely has persistent storage mounted.
+  config.active_storage.service = ENV.fetch("STORAGE_SERVICE", "amazon").to_sym
+
+  # Checked here rather than in an initializer: Active Storage builds the S3
+  # service during boot, before config/initializers/* run, so a missing bucket
+  # otherwise surfaces as `missing required option :name (ArgumentError)` out of
+  # the AWS SDK — which says nothing about what to set.
+  if config.active_storage.service == :amazon && ENV["AWS_BUCKET"].blank?
+    raise <<~ABORT
+      Refusing to boot: Active Storage is set to :amazon but AWS_BUCKET is unset.
+
+      Set AWS_BUCKET, and AWS_REGION if the bucket is not in ap-south-1.
+      Credentials are optional — omit them on EC2/ECS and the instance role is
+      used, which is preferable since there is then no long-lived secret.
+
+      To run on local disk instead, set STORAGE_SERVICE=local.
+    ABORT
+  end
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   config.assume_ssl = true

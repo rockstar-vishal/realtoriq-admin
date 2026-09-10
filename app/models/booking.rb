@@ -12,6 +12,10 @@ class Booking < ApplicationRecord
   # has already passed the tenant check.
   belongs_to :lead, -> { unscope(where: :firm_id) }
   belongs_to :project, -> { unscope(where: :firm_id) }, optional: true
+  # project_id arrives straight from the client, so it needs checking — see
+  # FirmScoped.belongs_to_same_firm. lead_id is resolved through the scoped
+  # Lead in the controller, which is what makes it safe.
+  belongs_to_same_firm :project
   belongs_to :created_by_user, -> { unscope(where: :firm_id) },
     class_name: "User", optional: true
 
