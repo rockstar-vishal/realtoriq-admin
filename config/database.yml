@@ -1,0 +1,85 @@
+# PostgreSQL. Install with `brew install postgresql` on macOS.
+#
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  # For details on connection pooling, see Rails configuration guide
+  # https://guides.rubyonrails.org/configuring.html#database-pooling
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: kgen_realtoriq_admin_development
+
+# Warning: The database defined as "test" will be erased and
+# re-generated from your development database when you run "rake".
+# Do not set this db to the same as development or production.
+test:
+  <<: *default
+  database: kgen_realtoriq_admin_test
+
+# Staging runs the same four-database layout as production so that a migration
+# proved here is the migration production gets.
+staging:
+  primary: &primary_staging
+    <<: *default
+    database: kgen_realtoriq_admin_staging
+    # host, username and password are emitted only when set, and that matters.
+    #
+    # With none of them, libpq connects over the local Unix socket as the OS
+    # user — which is what Ubuntu's default `peer` authentication expects, so no
+    # password is needed. Naming a host (even "localhost") forces TCP instead,
+    # where pg_hba.conf requires a password and you get:
+    #
+    #   fe_sendauth: no password supplied
+    #
+    # Set DATABASE_HOST only when Postgres is genuinely on another machine.
+<% if ENV["DATABASE_HOST"].present? %>
+    host: <%= ENV["DATABASE_HOST"] %>
+<% end %>
+<% if ENV["DATABASE_USERNAME"].present? %>
+    username: <%= ENV["DATABASE_USERNAME"] %>
+<% end %>
+<% if ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"].present? %>
+    password: <%= ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"] %>
+<% end %>
+  cache:
+    <<: *primary_staging
+    database: kgen_realtoriq_admin_staging_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_staging
+    database: kgen_realtoriq_admin_staging_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_staging
+    database: kgen_realtoriq_admin_staging_cable
+    migrations_paths: db/cable_migrate
+
+# Store production database in the storage/ directory, which by default
+# is mounted as a persistent Docker volume in config/deploy.yml.
+production:
+  primary: &primary_production
+    <<: *default
+    database: kgen_realtoriq_admin_production
+<% if ENV["DATABASE_HOST"].present? %>
+    host: <%= ENV["DATABASE_HOST"] %>
+<% end %>
+<% if ENV["DATABASE_USERNAME"].present? %>
+    username: <%= ENV["DATABASE_USERNAME"] %>
+<% end %>
+<% if ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"].present? %>
+    password: <%= ENV["KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD"] %>
+<% end %>
+  cache:
+    <<: *primary_production
+    database: kgen_realtoriq_admin_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: kgen_realtoriq_admin_production_queue
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production
+    database: kgen_realtoriq_admin_production_cable
+    migrations_paths: db/cable_migrate

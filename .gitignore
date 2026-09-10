@@ -9,7 +9,6 @@
 
 # Ignore all environment files.
 /.env*
-Gemfile.lock
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*
@@ -37,5 +36,10 @@ Gemfile.lock
 !/app/assets/builds/.keep
 .claude/*
 tmp/*
-config/database.yml
 .DS_Store
+
+# Gemfile.lock and config/database.yml are deliberately NOT ignored.
+# Both are required to deploy: the Dockerfile does `COPY Gemfile Gemfile.lock`,
+# BUNDLE_DEPLOYMENT=1 refuses to run without a lockfile, and Rails cannot boot
+# without database.yml. Neither holds a secret — database.yml reads host,
+# username and password from the environment and emits them only when set.
