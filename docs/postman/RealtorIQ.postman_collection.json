@@ -413,6 +413,76 @@
               }
             }
           ]
+        },
+        {
+          "name": "Dashboard — the whole home screen",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/dashboard",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            },
+            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "",
+                  "pm.test(\"the lead counters are all there\", () => {",
+                  "  [\"total\",\"hot\",\"todays_followups\",\"missed_followups\",\"visited\",\"bookings\"].forEach(k => {",
+                  "    pm.expect(b.leads[k], k).to.be.a(\"number\");",
+                  "  });",
+                  "});",
+                  "pm.test(\"the worklist strip is at most three leads\", () => {",
+                  "  pm.expect(b.leads.recent.length).to.be.at.most(3);",
+                  "});",
+                  "",
+                  "pm.test(\"the money tiles are all there\", () => {",
+                  "  [\"revenue_till_date\",\"brokerage_earned\",\"bookings_count\",\"invoiced\",\"collected\",\"outstanding\"]",
+                  "    .forEach(k => pm.expect(b.money[k], k).to.be.a(\"number\"));",
+                  "});",
+                  "",
+                  "// The arithmetic the client must never redo itself.",
+                  "pm.test(\"outstanding is invoiced minus collected\", () => {",
+                  "  pm.expect(b.money.outstanding).to.eql(b.money.invoiced - b.money.collected);",
+                  "});",
+                  "pm.test(\"brokerage never exceeds revenue\", () => {",
+                  "  pm.expect(b.money.brokerage_earned).to.be.at.most(b.money.revenue_till_date);",
+                  "});",
+                  "pm.test(\"this month is within this FY\", () => {",
+                  "  pm.expect(b.money.this_month.revenue).to.be.at.most(b.money.this_fy.revenue);",
+                  "});",
+                  "",
+                  "// 1 April to 31 March, not the calendar year.",
+                  "pm.test(\"the FY window is Indian, and labelled the way a broker writes it\", () => {",
+                  "  pm.expect(b.money.this_fy.starts_on).to.match(/-04-01$/);",
+                  "  pm.expect(b.money.this_fy.ends_on).to.match(/-03-31$/);",
+                  "  pm.expect(b.money.this_fy.label).to.match(/^\\d{4}-\\d{2}$/);",
+                  "});",
+                  "",
+                  "pm.test(\"cancelled bookings are reported apart from revenue\", () => {",
+                  "  pm.expect(b.money.cancelled.count).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"the inventory strip is there\", () => {",
+                  "  pm.expect(b.inventory.properties).to.be.a(\"number\");",
+                  "  pm.expect(b.inventory.properties_added_this_week).to.be.at.most(b.inventory.properties);",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -3330,6 +3400,50 @@
                   "  pm.response.to.have.status(403);",
                   "  pm.expect(pm.response.json().error.code).to.eql(\"forbidden_role\");",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Agent dashboard → no money block",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{agent_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/dashboard",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "dashboard"
+              ]
+            },
+            "description": "An agent gets the dashboard, minus the money. Not a 403 — the screen is legitimately theirs, just smaller — and not zeroes, which would read as \"no revenue\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200, not 403 — the screen is theirs\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "pm.test(\"but the money block is absent, not zeroed\", () => {",
+                  "  pm.expect(b).to.not.have.property(\"money\");",
+                  "});",
+                  "pm.test(\"the lead counters are still there\", () => pm.expect(b.leads.total).to.be.a(\"number\"));"
                 ]
               }
             }

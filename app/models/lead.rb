@@ -98,10 +98,15 @@ class Lead < ApplicationRecord
     scope
   }
 
+  # No `.distinct`: the subquery filters on the primary key, so a lead can match
+  # at most once and it was never needed. It was also actively harmful — combined
+  # with `as_worklist`, Postgres rejects the query ("for SELECT DISTINCT, ORDER BY
+  # expressions must appear in select list"), so this documented filter returned
+  # a 500 on the default sort and worked on every other one.
   scope :for_typologies, ->(ids) {
     next all if ids.blank?
 
-    where(id: LeadTypology.where(typology_id: ids).select(:lead_id)).distinct
+    where(id: LeadTypology.where(typology_id: ids).select(:lead_id))
   }
 
   # The list is a worklist, so what needs doing sorts to the top: overdue
