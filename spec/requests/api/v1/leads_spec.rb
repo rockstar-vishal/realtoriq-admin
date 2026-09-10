@@ -339,4 +339,84 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["activities"].map { |a| a["body"] }).to eq([ "Newer", "Older" ])
     end
   end
+
+  describe "PATCH may not do what POST /assign guards" do
+    it "ignores assigned_user_id on update, where POST /assign returns 403" do
+      lead = create(:lead, firm:, assigned_user: agent)
+      headers = auth(agent)
+
+      post "/api/v1/leads/#{lead.id}/assign",
+        params: { assigned_user_id: manager.id }, headers: headers, as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      # The same write through the other door must not succeed.
+      patch "/api/v1/leads/#{lead.id}",
+        params: { assigned_user_id: manager.id, notes: "still mine" }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+      # The rest of the update still applies.
+      expect(lead.notes).to eq("still mine")
+    end
+
+    it "does not let an agent unassign a lead and hide it from everyone" do
+      lead = create(:lead, firm:, assigned_user: agent)
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { assigned_user_id: nil }, headers: auth(agent), as: :json
+
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+    end
+
+    it "still lets a manager assign through the proper endpoint" do
+      lead = create(:lead, firm:, assigned_user: agent)
+
+      post "/api/v1/leads/#{lead.id}/assign",
+        params: { assigned_user_id: manager.id }, headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user_id).to eq(manager.id)
+    end
+  end
+
+  describe "a rejected update" do
+    it "leaves the preferred configurations alone" do
+      # replace_typologies deletes the join rows immediately, so without a
+      # transaction a 422 destroyed data the caller never asked to change.
+      typologies = create_list(:typology, 2)
+      lead = create(:lead, firm:)
+      typologies.each { |t| lead.lead_typologies.create!(typology: t) }
+      headers = auth(super_admin)
+
+      patch "/api/v1/leads/#{lead.id}", params: {
+        typology_ids: [ typologies.first.id ], budget_min: 9_000_000, budget_max: 100
+      }, headers: headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(lead.reload.typologies.count).to eq(2)
+    end
+
+    it "leaves the other attributes alone too" do
+      lead = create(:lead, firm:, name: "Original")
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { name: "Changed", budget_min: 9_000_000, budget_max: 100 },
+        headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(lead.reload.name).to eq("Original")
+    end
+
+    it "still replaces the set on a successful update" do
+      typologies = create_list(:typology, 2)
+      lead = create(:lead, firm:)
+      typologies.each { |t| lead.lead_typologies.create!(typology: t) }
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { typology_ids: [ typologies.first.id ] }, headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.typologies.map(&:id)).to eq([ typologies.first.id ])
+    end
+  end
 end
