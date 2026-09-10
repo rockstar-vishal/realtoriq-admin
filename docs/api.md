@@ -496,7 +496,7 @@ by rupees from what the reports sum.
 | Field | Type | | Notes |
 | --- | --- | --- | --- |
 | `lead_id` | string | **required** | `422 lead_required` without it |
-| `booked_on` | date | **required** | |
+| `booked_on` | date | optional | **Defaults to today** if omitted — so a near-miss key lands the booking in the wrong month for every report. Send it explicitly |
 | `agreement_value` | integer | **required** | |
 | `commission_percent` | number | **required** | |
 | `kicker` / `passback` | integer | optional | Default 0 |
