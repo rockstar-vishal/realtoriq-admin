@@ -37,7 +37,6 @@
 .claude/*
 tmp/*
 .DS_Store
-
 # Kept OUT of version control by decision. Both are provisioned per machine:
 # database.yml is placed there as a deploy step, Gemfile.lock is regenerated
 # by `bundle install`. Do not add either back without asking.
