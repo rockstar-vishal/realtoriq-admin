@@ -76,3 +76,8 @@ group :development do
   # Use console on exceptions pages [https://github.com/rails/web-console]
   gem "web-console"
 end
+
+# Active Storage's S3 service. `require: false` because Active Storage loads it
+# on demand — only the environments that actually select the `amazon` service
+# pay for it, and staging deliberately never does.
+gem "aws-sdk-s3", require: false
