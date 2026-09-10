@@ -23,6 +23,9 @@ class Lead < ApplicationRecord
   # to nil or empty whenever Current.firm isn't set, silently.
   belongs_to :assigned_user, -> { unscope(where: :firm_id) },
     class_name: "User", optional: true
+  # Create takes assigned_user_id from the client. #assign checks the firm
+  # itself; this covers the other door.
+  belongs_to_same_firm :assigned_user
 
   has_many :lead_typologies, dependent: :destroy
   has_many :typologies, through: :lead_typologies

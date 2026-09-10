@@ -198,4 +198,60 @@ RSpec.describe "Tenancy isolation" do
       expect(Firm.include?(FirmScoped)).to be(false)
     end
   end
+
+  # An unscoped belongs_to reads the other firm's row back quite happily. That
+  # is correct where the id was checked when it was written — and both of these
+  # take the id straight from the client, where nothing had checked it.
+  describe "foreign keys supplied by the client" do
+    let(:mine) { create(:firm) }
+    let(:theirs) { create(:firm) }
+
+    around do |example|
+      Current.firm = mine
+      example.run
+      Current.firm = nil
+    end
+
+    it "refuses another firm's project on a booking" do
+      their_project = nil
+      Current.firm = theirs
+      their_project = create(:project, firm: theirs)
+      Current.firm = mine
+
+      booking = build(:booking, firm: mine, lead: create(:lead, firm: mine),
+                                project_id: their_project.id)
+
+      expect(booking).not_to be_valid
+      expect(booking.errors[:project_id]).to include("isn't one of this firm's records")
+    end
+
+    it "accepts its own project" do
+      booking = build(:booking, firm: mine, lead: create(:lead, firm: mine),
+                                project: create(:project, firm: mine))
+
+      expect(booking).to be_valid
+    end
+
+    it "refuses another firm's user as a lead's owner" do
+      Current.firm = theirs
+      their_user = create(:user, firm: theirs)
+      Current.firm = mine
+
+      lead = build(:lead, firm: mine, assigned_user_id: their_user.id)
+
+      expect(lead).not_to be_valid
+      expect(lead.errors[:assigned_user_id]).to include("isn't one of this firm's records")
+    end
+
+    it "accepts its own user" do
+      lead = build(:lead, firm: mine, assigned_user: create(:user, firm: mine))
+
+      expect(lead).to be_valid
+    end
+
+    it "still allows no project and no assignee at all" do
+      expect(build(:lead, firm: mine, assigned_user: nil)).to be_valid
+      expect(build(:booking, firm: mine, lead: create(:lead, firm: mine), project: nil)).to be_valid
+    end
+  end
 end
