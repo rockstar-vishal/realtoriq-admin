@@ -3,6 +3,17 @@
 module Api
   module V1
     class PropertiesController < AuthenticatedController
+      # `sort=recent` (the default — properties were already newest first, and
+      # that stays unchanged) or `sort=name`. A property has no name of its
+      # own; brokers know a listing by its building, so `name` means building
+      # name. `id` breaks ties for the same reason as in ProjectsController —
+      # several flats share a building, and without it pagination is unstable.
+      SORTS = {
+        "recent" => -> { order(created_at: :desc, id: :desc) },
+        "name" => -> { joins(:building).order("buildings.name ASC", :id) }
+      }.freeze
+      DEFAULT_SORT = "recent"
+
       include AttachesPhotos
 
       before_action :set_property, only: %i[show update add_photos remove_photo]
@@ -74,7 +85,11 @@ module Api
         scope = scope.where(floor_band: params[:floor_band]) if params[:floor_band].present?
         scope = scope.where(status: params[:status].presence || "available")
 
-        scope.newest_first
+        apply_sort(scope)
+      end
+
+      def apply_sort(scope)
+        scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
       end
 
       def render_validation_errors(errors)

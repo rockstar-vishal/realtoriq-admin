@@ -3,6 +3,23 @@
 module Api
   module V1
     class ProjectsController < AuthenticatedController
+      # `sort=name` (the default, so existing callers see no change) or
+      # `sort=recent`, which puts a just-created project on page one instead of
+      # wherever its name falls alphabetically. Unknown values fall back to the
+      # default, in keeping with how the rest of the API treats stray params.
+      #
+      # `id` breaks ties in both. Postgres documents that rows with equal sort
+      # keys come back in an unspecified order, so under LIMIT/OFFSET a page
+      # boundary inside several same-named projects is permitted to repeat one
+      # and skip another. Not observed here — small tables return ties stably —
+      # but nothing guarantees it, and staging already has four called "Test".
+      # Ids are UUIDv7, so the tiebreak is also creation order.
+      SORTS = {
+        "name" => -> { order(:name, :id) },
+        "recent" => -> { order(created_at: :desc, id: :desc) }
+      }.freeze
+      DEFAULT_SORT = "name"
+
       include AttachesPhotos
 
       before_action :set_project, only: %i[show update add_photos remove_photo]
@@ -14,6 +31,29 @@ module Api
         render json: {
           projects: records.map { |p| ProjectSerializer.list(p) },
           meta: pagination_meta(@pagy)
+        }, status: :ok
+      end
+
+      def search
+        result = Inventory::ProjectSearch.new(query: params[:q]).call
+
+        unless result.ok?
+          return render_error(result.error_code, result.error_message,
+                              status: :unprocessable_content, details: result.details)
+        end
+
+        render json: {
+          projects: result.projects.map { |p| ProjectSerializer.search_hit(p) },
+          meta: {
+            query: result.query,
+            limit: Inventory::ProjectSearch::LIMIT,
+            min_length: Inventory::ProjectSearch::MIN_LENGTH,
+            # More matches exist past the limit — the app can prompt to keep typing.
+            more: result.more,
+            # Nothing matched as typed, so these are close spellings instead —
+            # the app can label them "did you mean".
+            fuzzy: result.fuzzy
+          }
         }, status: :ok
       end
 
@@ -84,7 +124,11 @@ module Api
         scope = scope.where(locality_id: params[:locality_id]) if params[:locality_id].present?
         scope = scope.where(status: params[:status].presence || "active")
 
-        scope.alphabetical
+        apply_sort(scope)
+      end
+
+      def apply_sort(scope)
+        scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
       end
 
       def replace_typologies

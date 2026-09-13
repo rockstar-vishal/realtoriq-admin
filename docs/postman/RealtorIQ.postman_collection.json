@@ -1654,7 +1654,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/projects?q=Aurum&status=active&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1",
+              "raw": "{{api_base}}/projects?q=Aurum&status=active&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1&sort=recent",
               "host": [
                 "{{api_base}}"
               ],
@@ -1705,6 +1705,10 @@
                 {
                   "key": "page",
                   "value": "1"
+                },
+                {
+                  "key": "sort",
+                  "value": "recent"
                 }
               ]
             },
@@ -1935,6 +1939,180 @@
                   "});",
                   "",
                   "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List projects — newest first",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects?sort=recent",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "recent"
+                }
+              ]
+            },
+            "description": "`sort=recent` puts a just-created project on page 1. The default, `sort=name`, is A–Z — which is why a new project can land on page 2 and look missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const list = pm.response.json().projects;",
+                  "pm.test(\"the project created above is first\", () => {",
+                  "  pm.expect(list[0].id).to.eql(pm.collectionVariables.get(\"project_id\"));",
+                  "});",
+                  "pm.test(\"and the rest are newest first\", () => {",
+                  "  const times = list.map(p => Date.parse(p.created_at));",
+                  "  pm.expect(times).to.eql([...times].sort((a, b) => b - a));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search projects — typeahead",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=aurum",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "aurum"
+                }
+              ]
+            },
+            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nTypo-tolerant on the name, exact fragments on the RERA number. Ranked exact → prefix → contains → typo, capped at 10. `meta.more` is true when there are more than 10.\n\nA hit carries only what a row shows — tap through to `GET /projects/:id` for the rest."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"finds the project created above\", () => {",
+                  "  pm.expect(body.projects.map(p => p.id)).to.include(pm.collectionVariables.get(\"project_id\"));",
+                  "});",
+                  "pm.test(\"literal matches, so not a did-you-mean\", () => pm.expect(body.meta.fuzzy).to.eql(false));",
+                  "pm.test(\"at most ten, with the rules in meta\", () => {",
+                  "  pm.expect(body.projects.length).to.be.at.most(10);",
+                  "  pm.expect(body.meta).to.include({ limit: 10, min_length: 3, query: \"aurum\" });",
+                  "  pm.expect(body.meta.more).to.be.a(\"boolean\");",
+                  "});",
+                  "pm.test(\"a hit is slim — no price bands, photos or brokerage\", () => {",
+                  "  pm.expect(Object.keys(body.projects[0]).sort())",
+                  "    .to.eql([\"builder\", \"city\", \"id\", \"locality\", \"name\", \"rera_number\", \"source\"]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search tolerates a typo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=aurm",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "aurm"
+                }
+              ]
+            },
+            "description": "`aurm` matches nothing as typed, so the search falls back to close spellings and finds *Aurum Vista*. `meta.fuzzy` is `true` so the app can label it \"did you mean\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the misspelling still finds Aurum\", () => {",
+                  "  pm.expect(body.projects.map(p => p.name).some(n => /^Aurum/.test(n))).to.eql(true);",
+                  "});",
+                  "pm.test(\"and says these are close spellings\", () => pm.expect(body.meta.fuzzy).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search needs three characters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=au",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "au"
+                }
+              ]
+            },
+            "description": "Fewer than three characters is a `422 query_too_short`, with the minimum in `details` so the app never hardcodes it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 query_too_short\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"query_too_short\");",
+                  "});",
+                  "pm.test(\"says how many it needs\", () => {",
+                  "  pm.expect(pm.response.json().error.details).to.eql({ min_length: 3, length: 2 });",
+                  "});"
                 ]
               }
             }

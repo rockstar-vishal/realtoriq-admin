@@ -7,6 +7,9 @@ class Project < ApplicationRecord
 
   STATUSES = %w[active archived].freeze
   SOURCES = %w[own catalog].freeze
+  # Shared with Inventory::ProjectSearch, so a pasted full name is never cut
+  # short before it can match itself.
+  NAME_MAX_LENGTH = 160
 
   enum :status, STATUSES.index_by(&:itself), validate: true
   enum :source, SOURCES.index_by(&:itself), prefix: :from, validate: true
@@ -23,7 +26,7 @@ class Project < ApplicationRecord
   has_many_attached :photos
   has_one_attached :brochure
 
-  validates :name, presence: true, length: { maximum: 160 }
+  validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :starting_budget, numericality: { greater_than: 0, only_integer: true }
   validates :brokerage_percent,
     numericality: { greater_than: 0, less_than_or_equal_to: 100 }, allow_nil: true

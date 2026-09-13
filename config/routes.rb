@@ -98,6 +98,10 @@ Rails.application.routes.draw do
       resources :buildings, only: %i[index create update]
 
       resources :projects, only: %i[index create show update] do
+        # Typeahead. A collection route, so Rails matches it before :id and
+        # "search" is never looked up as a project.
+        collection { get :search }
+
         member do
           # Photos live on the detail screen, not the create form.
           post   "photos", to: "projects#add_photos"

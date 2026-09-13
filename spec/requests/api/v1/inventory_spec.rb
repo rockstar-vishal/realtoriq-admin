@@ -402,4 +402,106 @@ RSpec.describe "API v1 inventory" do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "sorting" do
+    # **params, not a positional hash: Ruby reads `names(path, sort: "recent")`
+    # as keyword arguments, so a plain `params = {}` rejects `sort:` outright.
+    def names(path, **params)
+      get path, params:, headers: auth
+      key = path.split("/").last
+      response.parsed_body[key].map { |r| r.dig("building", "name") || r["name"] }
+    end
+
+    describe "projects" do
+      before do
+        travel_to(3.days.ago) { create(:project, firm:, name: "Zephyr Towers") }
+        travel_to(2.days.ago) { create(:project, firm:, name: "Aurum Vista") }
+        travel_to(1.day.ago)  { create(:project, firm:, name: "Marina Bay") }
+      end
+
+      it "stays A–Z by default, so existing callers see no change" do
+        expect(names("/api/v1/projects")).to eq([ "Aurum Vista", "Marina Bay", "Zephyr Towers" ])
+      end
+
+      it "puts the newest first with sort=recent" do
+        expect(names("/api/v1/projects", sort: "recent"))
+          .to eq([ "Marina Bay", "Aurum Vista", "Zephyr Towers" ])
+      end
+
+      it "falls back to A–Z for an unknown sort rather than erroring" do
+        expect(names("/api/v1/projects", sort: "sideways"))
+          .to eq([ "Aurum Vista", "Marina Bay", "Zephyr Towers" ])
+      end
+
+      it "ignores a sort sent as an array rather than crashing" do
+        get "/api/v1/projects?sort[]=recent", headers: auth
+        expect(response).to have_http_status(:ok)
+      end
+
+      # A correctness property worth holding on its own: walking every page
+      # returns each project exactly once, duplicate names included.
+      it "pages through duplicate names without repeating or dropping any" do
+        4.times { create(:project, firm:, name: "Test") }
+        # across_firms: FirmScoped is fail-closed with no Current.firm in the spec
+        # process, so a bare Project.where returns nothing.
+        expected = Project.across_firms.where(firm:).pluck(:id)
+        headers = auth
+
+        seen = []
+        (1..4).each do |page|
+          get "/api/v1/projects", params: { per_page: 2, page: }, headers: headers
+          seen.concat(response.parsed_body["projects"].map { |p| p["id"] })
+        end
+
+        expect(seen.size).to eq(expected.size)
+        expect(seen).to match_array(expected)
+      end
+
+      # The spec above cannot catch a missing tiebreak: on a table this small
+      # Postgres returns equal names in a stable order anyway, and it passed
+      # with the tiebreak removed. So assert the ordering itself — every sort
+      # must end on a unique column, or pagination is only stable by luck.
+      it "ends every sort on id, so ties have a defined order" do
+        Api::V1::ProjectsController::SORTS.each do |name, sort|
+          sql = Project.across_firms.instance_exec(&sort).to_sql
+          expect(sql).to match(/ORDER BY .*"projects"\."id"/), "sort=#{name} has no id tiebreak: #{sql}"
+        end
+        Api::V1::PropertiesController::SORTS.each do |name, sort|
+          sql = Property.across_firms.instance_exec(&sort).to_sql
+          expect(sql).to match(/ORDER BY .*"properties"\."id"/), "sort=#{name} has no id tiebreak: #{sql}"
+        end
+      end
+    end
+
+    describe "properties" do
+      before do
+        travel_to(3.days.ago) do
+          create(:property, firm:, typology:,
+                            building: create(:building, firm:, city:, locality:, name: "Cedar Court"))
+        end
+        travel_to(2.days.ago) do
+          create(:property, firm:, typology:,
+                            building: create(:building, firm:, city:, locality:, name: "Aurum Heights"))
+        end
+        travel_to(1.day.ago) do
+          create(:property, firm:, typology:,
+                            building: create(:building, firm:, city:, locality:, name: "Bayview"))
+        end
+      end
+
+      it "stays newest first by default, as it already was" do
+        expect(names("/api/v1/properties")).to eq([ "Bayview", "Aurum Heights", "Cedar Court" ])
+      end
+
+      it "orders by building name with sort=name" do
+        expect(names("/api/v1/properties", sort: "name"))
+          .to eq([ "Aurum Heights", "Bayview", "Cedar Court" ])
+      end
+
+      it "falls back to newest first for an unknown sort" do
+        expect(names("/api/v1/properties", sort: "sideways"))
+          .to eq([ "Bayview", "Aurum Heights", "Cedar Court" ])
+      end
+    end
+  end
 end
