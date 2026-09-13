@@ -23,12 +23,47 @@ is answered there in more detail than this document repeats.
 > properties strip — in one request. Shape and definitions in
 > [docs/api.md](api.md#dashboard). Ships with the CORS fix.
 
+> **Update — project search is built, and can be used for the Projects search box.**
+>
+> ```
+> GET /api/v1/projects/search?q=<text>
+> ```
+>
+> - **Call it once the user has typed at least 3 letters or numbers**, debounced
+>   (~250 ms). Fewer returns `422 query_too_short`, with the minimum in
+>   `details.min_length`.
+> - **Matches what was typed first** — the project name or RERA number containing
+>   the text, ranked exact → starts with → contains. Typing `lod` gives Lodha, not
+>   every project starting "Lo".
+> - **Offers close spellings only when nothing matches as typed** (4+ characters):
+>   `aurm` finds *Aurum Vista*. `meta.fuzzy` is `true` then — label them "did you mean".
+> - **Capped at 10.** `meta.more` is `true` when there are more — show "keep typing".
+> - **Each result is slim** — `id`, `name`, `rera_number`, `source`, `builder`,
+>   `locality`, `city`. Tap through to `GET /projects/:id` for the full project.
+> - Built to stay fast as the project pool grows: it is answered from a search
+>   index, not by scanning every project.
+>
+> Full shape in [docs/api.md](api.md#get-projectssearch). **Ships with the next
+> deploy**, which needs a database migration.
+
+> **Update — a project you just created is not missing, it is on page 2.**
+> `GET /projects` is sorted A–Z by default, 25 per page. Pass **`sort=recent`** to
+> get newest first, or — simplest after a create — show the project the `POST`
+> returned instead of re-fetching the list. `GET /properties` was already newest
+> first and also accepts `sort=name` (by building). Ships with the same deploy.
+
 Two of your items were flagged blocking. **One is fixed** and one is a real gap
 I can close quickly.
 
 ---
 
 ## 🔧 #14 — Uploads: step 2 (PUT to the pre-signed URL) — **fixed**
+
+> **Update — files over 1 MB still fail, with `413 Request Entity Too Large`.**
+> That one is the web server in front of the app, not the API: nginx's default
+> request size is 1 MB while the app accepts up to 5 MB. It needs a one-line change
+> on the staging server. Until then, test with files under 1 MB — the API itself
+> handles the full 5 MB (verified with a 4.9 MB brochure).
 
 **You were right, and the cause was a CORS rule of mine.**
 
@@ -246,8 +281,7 @@ inventing contracts:
 | --- | --- | --- |
 | 1 | Notification bell — badge + inbox | `notifications` table is **designed** in `docs/schema.md`, not migrated. No endpoint |
 | 2 | Real-time toast / push | Nothing. No push infrastructure, no FCM, no socket topic. This is a project, not an endpoint |
-| 3 | Featured / Live Projects | **Deliberately out of scope** — it was always meant to come from the turbo-rails8 API. `projects.source` + `external_ref` are the seam |
-
+| 3 | Featured / Live Projects | **Use placeholder data on the client for now.** Featured projects will come from the **LaunchIQ** integration, which is not built yet — there is no endpoint for this, and `GET /dashboard` deliberately has no featured block. `inventory.projects` there is a count, not a list |
 | 6 | Knowledge Center articles | `news_articles` is **designed**, not migrated. No CMS |
 | 7 | EMI calculator | See note below |
 | 8 | Reports — 4 kinds | **Designed in `docs/schema.md`** with the exact grouping for each, not built. This is the largest single item |

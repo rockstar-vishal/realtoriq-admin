@@ -171,6 +171,31 @@ Background jobs, if you need them (OTP email delivery is the only user today):
 bin/jobs
 ```
 
+## nginx must allow 5 MB request bodies
+
+**nginx's default `client_max_body_size` is 1 MB. The app allows uploads up to
+5 MB.** Every file between the two is rejected by nginx with a
+`413 Request Entity Too Large` before Rails sees it — and small test files pass,
+which is how this hides. Put this in the server block:
+
+```nginx
+# Largest upload the app accepts is 5 MB (project brochures and photos). Kept
+# just above that rather than wide open, so nginx remains a real ceiling.
+# Raise it with any UploadPurpose max_bytes in app/models/upload_purpose.rb.
+client_max_body_size 6m;
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Direct uploads PUT the raw file with no multipart overhead, so 6 MB leaves room.
+The admin panel's firm-logo form is multipart but capped at 1 MB, so it fits too.
+
+`RealtorIQ — Staging deployment checks` → **nginx accepts a full-size upload**
+sends a 5.1 MB body and fails on a 413, so a rebuilt server that loses this line
+is caught on the next deploy check.
+
 ## Signing in
 
 Any registered mobile, code `888888`. The demo firm gives you one of each role:

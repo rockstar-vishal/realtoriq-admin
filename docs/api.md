@@ -219,6 +219,10 @@ rather than matching a name.
 
 ### `GET /dashboard`
 
+> **There is no featured / live projects block, and there will not be one here yet.**
+> Featured projects will come from the LaunchIQ integration. Until then, render that
+> section from placeholder data on the client. `inventory.projects` is a count, not a list.
+
 The whole home screen in one request — pipeline counters, money tiles, the
 inventory strip, and the top three of each list.
 
@@ -401,7 +405,7 @@ building, because every flat in it shares the same pool.
 | `builder_id` | string | **required** | Global, or one this firm added |
 | `city_id` | string | **required** | |
 | `locality_id` | string | optional | Must belong to `city_id` |
-| `starting_budget` | integer | optional | > 0 |
+| `starting_budget` | integer | **required** | > 0 |
 | `possession_on` **or** `possession_label` | date / string | **one required** | `"Dec 2027"` when the date is vague |
 | `brokerage_percent` | number | optional | 0–100 |
 | `rera_number`, `address`, `google_place_id` | string | optional | |
@@ -419,6 +423,72 @@ with the rows it came from.
 `{ text, ends_on }`, or absent. An expired promo is omitted entirely rather than
 sent with a past date for you to check.
 
+### `GET /projects`
+
+| Filter | Notes |
+| --- | --- |
+| `q` | Substring of name or address. For a search box, use [`/projects/search`](#get-projectssearch) instead |
+| `status` | `active` (default) · `archived` |
+| `builder_id`, `city_id`, `locality_id` | |
+| `budget_min`, `budget_max` | Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike leads — and a project with no configurations never matches |
+| `possession_before` | date |
+| `typology_ids[]` | Repeat the key |
+| `sort` | **`name`** (default, A–Z) · `recent` (newest first) |
+| `page`, `per_page` | 25 per page by default |
+
+**The list is paginated and sorted A–Z by default, so a project you just created
+may not be on page 1.** Either pass `sort=recent`, read `meta.total_pages`, or —
+simplest after a create — show the project the `POST` returned rather than
+re-fetching the list.
+
+### `GET /projects/search`
+
+Typeahead for a project search box. Call it once the user has typed **at least
+three letters or numbers**, debounced (~250 ms).
+
+| Param | |
+| --- | --- |
+| `q` | **Required: 3+ letters or numbers.** Fewer returns `422 query_too_short`. Punctuation alone (`___`, `!!!`) does not count. Up to 160 characters — the longest a project name can be |
+
+**Literal matches first.** If the name or RERA number contains what was typed,
+those are the results, ranked **exact → starts with → contains**.
+
+**Close spellings only when nothing matches as typed**, and only for 4+
+characters — `aurm` finds *Aurum Vista*, `lodah` finds *Lodha Amara*. `meta.fuzzy`
+is `true` when that happened, so label them "did you mean". Typing `lod` returns
+Lodha — not every project that starts with "Lo".
+
+The RERA number is never fuzzy-matched: a near-miss registration is a different
+project. Spaces pasted in with text — including non-breaking ones from web pages —
+are cleaned up first.
+
+**At most 10 results.** Only `active` projects, and only your firm's.
+
+```json
+{
+  "projects": [
+    {
+      "id": "01a0…", "name": "Aurum Vista", "rera_number": "P51700054321",
+      "source": "own",
+      "builder": { "id": "01a0…", "name": "Lodha Group" },
+      "locality": "Kolshet", "city": "Thane"
+    }
+  ],
+  "meta": { "query": "aurum", "limit": 10, "min_length": 3, "more": false, "fuzzy": false }
+}
+```
+
+- **`meta.more`** is `true` when there are more than 10 — show "keep typing".
+- **`meta.fuzzy`** is `true` when these are close spellings rather than matches.
+- **`meta.query`** is what was actually searched, after trimming.
+
+A result carries only what a row shows. Tap through to `GET /projects/:id` for the
+full project.
+
+`source` is `own` today. When LaunchIQ catalog projects are searchable too, they
+will come back in the same list as `catalog` — so render by `source` now and no
+client change is needed then.
+
 ### `POST /buildings` and `POST /properties`
 
 Buildings: `name` (**required**), `city_id`, `locality_id`, `address`, `lat`,
@@ -430,6 +500,9 @@ Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`
 (`available` · `under_offer` · `closed`).
+
+`GET /properties` takes `sort`: **`recent`** (default, newest first) · `name`
+(A–Z by building name — a listing has no name of its own).
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a
@@ -676,6 +749,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `invalid_request` | 400 | A required parameter is missing |
 | `not_found` | 404 | Also returned for another firm's — or another agent's — record |
 | `unknown_user` | 404 | That user isn't in this firm |
+| `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
 
 ### Money
 

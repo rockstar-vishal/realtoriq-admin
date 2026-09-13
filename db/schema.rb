@@ -10,9 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "pg_trgm"
 
   create_table "active_storage_attachments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
@@ -501,6 +502,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["firm_id", "status"], name: "index_projects_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_projects_on_firm_id"
     t.index ["locality_id"], name: "index_projects_on_locality_id"
+    t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["source", "external_ref"], name: "index_projects_on_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
     t.check_constraint "source::text = ANY (ARRAY['own'::character varying::text, 'catalog'::character varying::text])", name: "projects_source_check"
     t.check_constraint "starting_budget >= 0", name: "projects_starting_budget_check"

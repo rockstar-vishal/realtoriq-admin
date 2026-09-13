@@ -46,6 +46,24 @@ module Api
           )
         end
 
+        # One row of typeahead results — what the row shows and nothing more.
+        # The full project is one tap away at GET /projects/:id.
+        #
+        # `source` is there for later: projects are `own` today, and when the
+        # LaunchIQ catalog is searched too the app can tell a catalog hit from
+        # the firm's own without a contract change.
+        def search_hit(project)
+          {
+            id: project.id,
+            name: project.name,
+            rera_number: project.rera_number,
+            source: project.source,
+            builder: project.builder && { id: project.builder_id, name: project.builder.name },
+            locality: project.locality&.name,
+            city: project.city&.name
+          }
+        end
+
         # Everything safe to send a client. Projects carry no confidential
         # field today, but the subset exists so the client has one consistent
         # place to build a share message from — the same contract as properties.

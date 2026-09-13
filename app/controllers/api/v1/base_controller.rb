@@ -23,6 +23,8 @@ module Api
     # complete permitted set for every endpoint, so there is a working example
     # of each. Keep both current when you add a parameter.
     class BaseController < ActionController::API
+      NULL_BYTE = "\u0000"
+
       include Pagy::Backend
 
       # Active Storage builds absolute URLs and needs a host to do it. Its own
@@ -34,10 +36,34 @@ module Api
       rescue_from ActiveRecord::RecordNotFound, with: :not_found
       rescue_from ActionController::ParameterMissing, with: :parameter_missing
 
+      before_action :remove_null_bytes
       before_action :set_request_context
       before_action :normalise_page
 
       private
+
+      # Postgres text cannot hold a NUL byte, and the pg adapter raises
+      # ArgumentError the moment one is bound into a query — so `q=a%00b` was a
+      # 500 HTML page on every endpoint that searches: leads, projects,
+      # properties, buildings, bookings and project search alike. Handled once
+      # here rather than in each of them. No legitimate value contains a NUL,
+      # so removing them loses nothing; it covers query strings and JSON bodies,
+      # which both arrive in `params`.
+      #
+      # Recursive by hand: Parameters has transform_values! but no deep variant,
+      # and a NUL in a nested JSON field is as fatal as one in `q`.
+      def remove_null_bytes = without_null_bytes(params)
+
+      def without_null_bytes(node)
+        case node
+        when String then node.delete(NULL_BYTE)
+        when Array then node.map { |value| without_null_bytes(value) }
+        when ActionController::Parameters
+          node.keys.each { |key| node[key] = without_null_bytes(node[key]) }
+          node
+        else node
+        end
+      end
 
       # Pagy raises on page 0, a negative page, or a non-numeric one, and the
       # raise surfaced as a 500 HTML page on every index endpoint. A client
