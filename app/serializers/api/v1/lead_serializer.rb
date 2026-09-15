@@ -46,8 +46,21 @@ module Api
             dead_at: lead.dead_at,
             booked_at: lead.booked_at,
             notes: lead.notes,
+            mapped_projects: lead.lead_projects.map { |mapping| mapped_project(mapping) },
+            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
             status_history: status_history.map { |change| history_entry(change) }
+          )
+        end
+
+        def full_detail(lead)
+          lead.lead_projects.includes(project: %i[builder city locality]).load
+          lead.lead_properties.includes(property: [ :typology, { building: %i[city locality] } ]).load
+
+          detail(
+            lead,
+            activities: lead.lead_activities.includes(:user).recent_first.limit(20),
+            status_history: lead.lead_status_changes.includes(:from_status, :to_status, :user).recent_first
           )
         end
 
@@ -71,6 +84,37 @@ module Api
           return nil if record.nil?
 
           { id: record.id, name: record.name }
+        end
+
+        def mapped_project(mapping)
+          project = mapping.project
+          {
+            id: mapping.id,
+            project: {
+              id: project.id,
+              name: project.name,
+              source: project.source,
+              builder: project.builder && { id: project.builder_id, name: project.builder.name },
+              city: project.city&.name,
+              city_id: project.city_id,
+              locality: project.locality&.name,
+              locality_id: project.locality_id
+            }
+          }
+        end
+
+        def mapped_property(mapping)
+          property = mapping.property
+          {
+            id: mapping.id,
+            property: {
+              id: property.id,
+              title: property.title,
+              listing_for: property.listing_for,
+              status: property.status,
+              price: property.price
+            }
+          }
         end
 
         def history_entry(change)

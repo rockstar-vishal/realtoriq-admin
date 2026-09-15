@@ -73,6 +73,11 @@ Rails.application.routes.draw do
 
       get "me",        to: "me#show"
       get "reference", to: "reference#index"
+
+      resources :users, only: %i[index create show update] do
+        resources :managers, only: %i[create destroy], controller: "user_managers",
+          param: :manager_id
+      end
       # The home screen. One request rather than six, and scoped to the caller:
       # an agent gets no money block at all.
       get "dashboard", to: "dashboard#show"
@@ -82,12 +87,16 @@ Rails.application.routes.draw do
       resources :leads, only: %i[index create show update] do
         member do
           post :status
-          post :assign
+          # Side-effecting on purpose: the live version will persist catalog
+          # copies. The stub returns { matches: [] } until LaunchIQ is wired.
+          post :matches
         end
 
-        # Flat controller name on purpose — an Api::V1::Leads module would
+        # Flat controller names on purpose — an Api::V1::Leads module would
         # shadow the top-level Leads:: service namespace.
         resources :activities, only: %i[index create], controller: "lead_activities"
+        resources :projects, only: %i[create destroy], controller: "lead_projects"
+        resources :properties, only: %i[create destroy], controller: "lead_properties"
       end
 
       resources :uploads, only: %i[create]

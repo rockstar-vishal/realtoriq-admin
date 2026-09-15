@@ -63,5 +63,19 @@ module KgenRealtoriqAdmin
     # a developer machine, a Postman run or a QA pass legitimately makes a dozen
     # requests from one address.
     config.x.otp_rate_limit = Rails.env.production? ? 12 : 100
+
+    # The Next.js BFF sits in front of this API. Rails only honours
+    # X-Forwarded-For from trusted hops; loopback and RFC1918 are already in
+    # ActionDispatch::RemoteIp::TRUSTED_PROXIES, which covers local and typical
+    # private-network deploys. Set TRUSTED_PROXIES to extra CIDRs when the BFF
+    # sits on a public address — otherwise every web sign-in shares one IP for
+    # the OTP rate limit and for auth_sessions.ip.
+    if ENV["TRUSTED_PROXIES"].present?
+      require "ipaddr"
+      require "action_dispatch/middleware/remote_ip"
+      extra = ENV["TRUSTED_PROXIES"].split(",").map { |s| IPAddr.new(s.strip) }
+      config.action_dispatch.trusted_proxies =
+        ActionDispatch::RemoteIp::TRUSTED_PROXIES + extra
+    end
   end
 end

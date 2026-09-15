@@ -101,14 +101,65 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body.dig("lead", "assigned_user")).to be_nil
     end
 
-    it "reports duplicates on the same number without refusing the save" do
+    it "assigns a manager's lead to someone in their line when they ask" do
+      create(:user_manager, user: agent, manager:, firm:)
+
+      post "/api/v1/leads", params: valid_attributes(assigned_user_id: agent.id),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body.dig("lead", "assigned_user", "id")).to eq(agent.id)
+    end
+
+    it "refuses a manager assigning to someone outside their line" do
+      outsider = create(:user, firm:, role: :agent)
+
+      post "/api/v1/leads", params: valid_attributes(assigned_user_id: outsider.id),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "refuses a second sale lead on the same number and names the existing one" do
       headers = auth(manager)
       post "/api/v1/leads", params: valid_attributes, headers: headers, as: :json
+      existing_id = response.parsed_body.dig("lead", "id")
 
       post "/api/v1/leads", params: valid_attributes(name: "Rhea K."), headers: headers, as: :json
 
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("duplicate_lead")
+      expect(response.parsed_body.dig("error", "details", "lead_id")).to eq(existing_id)
+    end
+
+    it "allows the same number once as sale and once as rent" do
+      headers = auth(manager)
+      post "/api/v1/leads", params: valid_attributes, headers: headers, as: :json
+
+      post "/api/v1/leads",
+        params: valid_attributes(transaction_type: "rent", property_type_id: nil, name: "Rhea rent"),
+        headers: headers, as: :json
+
       expect(response).to have_http_status(:created)
+      expect(response.parsed_body.dig("lead", "transaction_type")).to eq("rent")
       expect(response.parsed_body["possible_duplicates"].size).to eq(1)
+    end
+
+    it "copies budget and notes from a project and maps it" do
+      project = create(:project, firm:, name: "From Project",
+        starting_budget: 20_000_000, city: create(:city, name: "Thane"),
+        locality: create(:locality, name: "Kolshet"))
+
+      post "/api/v1/leads",
+        params: valid_attributes(project_id: project.id, budget_min: nil, budget_max: nil, notes: nil),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      body = response.parsed_body["lead"]
+      expect(body["budget_min"]).to eq(20_000_000)
+      expect(body["notes"]).to include("Client's requirements")
+      expect(body["notes"]).to include("Kolshet")
+      expect(body["mapped_projects"].map { |m| m.dig("project", "id") }).to eq([ project.id ])
     end
   end
 
@@ -209,33 +260,130 @@ RSpec.describe "API v1 leads" do
     end
   end
 
-  describe "POST /leads/:id/assign" do
+  describe "PATCH /leads/:id assignment" do
     let!(:lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
 
-    it "lets a manager reassign" do
-      post "/api/v1/leads/#{lead.id}/assign", params: { assigned_user_id: manager.id },
+    before { create(:user_manager, user: agent, manager:, firm:) }
+
+    it "lets a manager reassign within their active manageables" do
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: manager.id },
         headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:ok)
       expect(lead.reload.assigned_user).to eq(manager)
     end
 
-    it "refuses an agent, even on their own lead" do
-      post "/api/v1/leads/#{lead.id}/assign", params: { assigned_user_id: manager.id },
-        headers: auth(agent), as: :json
+    it "lets a manager assign to an agent they manage" do
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: agent.id },
+        headers: auth(manager), as: :json
 
-      expect(response).to have_http_status(:forbidden)
-      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user).to eq(agent)
+    end
+
+    it "refuses a firm user outside the manager's line" do
+      outsider = create(:user, firm:, role: :agent)
+
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: outsider.id },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(response.parsed_body.dig("error", "code")).to eq("unknown_user")
+      expect(lead.reload.assigned_user).to eq(agent)
+    end
+
+    it "refuses a disabled user even when they sit in the line" do
+      agent.update!(status: :disabled)
+
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: agent.id },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+    end
+
+    it "lets the super admin assign anyone active in the firm" do
+      outsider = create(:user, firm:, role: :agent)
+
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: outsider.id },
+        headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user).to eq(outsider)
     end
 
     it "refuses a user from another firm" do
       stranger = create(:user, firm: create(:firm))
 
-      post "/api/v1/leads/#{lead.id}/assign", params: { assigned_user_id: stranger.id },
-        headers: auth(manager), as: :json
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: stranger.id },
+        headers: auth(super_admin), as: :json
 
       expect(response).to have_http_status(:not_found)
       expect(lead.reload.assigned_user).to eq(agent)
+    end
+
+    it "lets a manager unassign" do
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: nil },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user).to be_nil
+    end
+
+    it "refuses an agent unassigning — that would hide the lead from every agent" do
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: nil },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+    end
+
+    it "lets an agent reassign only inside their own line" do
+      junior = create(:user, firm:, role: :agent)
+      create(:user_manager, user: junior, manager: agent, firm:)
+
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: junior.id },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user).to eq(junior)
+    end
+
+    it "does not let an agent hand a lead to someone they do not manage" do
+      patch "/api/v1/leads/#{lead.id}", params: { assigned_user_id: manager.id, notes: "still mine" },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+      expect(lead.notes).not_to eq("still mine")
+    end
+
+    it "leaves assignment alone when the key is omitted" do
+      patch "/api/v1/leads/#{lead.id}", params: { notes: "call tomorrow" },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.assigned_user_id).to eq(agent.id)
+      expect(lead.notes).to eq("call tomorrow")
+    end
+
+    it "refuses flipping type when the other type already exists on that mobile" do
+      create(:lead, :rent, firm:, mobile: lead.mobile, lead_status: new_status)
+
+      patch "/api/v1/leads/#{lead.id}", params: { transaction_type: "rent", property_type_id: nil },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("duplicate_lead")
+      expect(lead.reload.transaction_type).to eq("sale")
+    end
+
+    it "no longer has POST /leads/:id/assign" do
+      post "/api/v1/leads/#{lead.id}/assign", params: { assigned_user_id: manager.id },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:not_found)
     end
   end
 
@@ -337,45 +485,6 @@ RSpec.describe "API v1 leads" do
       get "/api/v1/leads/#{lead.id}/activities", headers: headers
 
       expect(response.parsed_body["activities"].map { |a| a["body"] }).to eq([ "Newer", "Older" ])
-    end
-  end
-
-  describe "PATCH may not do what POST /assign guards" do
-    it "ignores assigned_user_id on update, where POST /assign returns 403" do
-      lead = create(:lead, firm:, assigned_user: agent)
-      headers = auth(agent)
-
-      post "/api/v1/leads/#{lead.id}/assign",
-        params: { assigned_user_id: manager.id }, headers: headers, as: :json
-      expect(response).to have_http_status(:forbidden)
-
-      # The same write through the other door must not succeed.
-      patch "/api/v1/leads/#{lead.id}",
-        params: { assigned_user_id: manager.id, notes: "still mine" }, headers: headers, as: :json
-
-      expect(response).to have_http_status(:ok)
-      expect(lead.reload.assigned_user_id).to eq(agent.id)
-      # The rest of the update still applies.
-      expect(lead.notes).to eq("still mine")
-    end
-
-    it "does not let an agent unassign a lead and hide it from everyone" do
-      lead = create(:lead, firm:, assigned_user: agent)
-
-      patch "/api/v1/leads/#{lead.id}",
-        params: { assigned_user_id: nil }, headers: auth(agent), as: :json
-
-      expect(lead.reload.assigned_user_id).to eq(agent.id)
-    end
-
-    it "still lets a manager assign through the proper endpoint" do
-      lead = create(:lead, firm:, assigned_user: agent)
-
-      post "/api/v1/leads/#{lead.id}/assign",
-        params: { assigned_user_id: manager.id }, headers: auth(manager), as: :json
-
-      expect(response).to have_http_status(:ok)
-      expect(lead.reload.assigned_user_id).to eq(manager.id)
     end
   end
 

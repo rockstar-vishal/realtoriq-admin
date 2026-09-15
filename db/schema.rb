@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_16_013000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -150,6 +150,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.index ["firm_id", "status"], name: "index_bookings_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_bookings_on_firm_id"
     t.index ["lead_id"], name: "index_bookings_on_lead_id"
+    t.index ["project_id", "unit_no"], name: "index_bookings_on_live_project_unit", unique: true, where: "(((status)::text = 'live'::text) AND (project_id IS NOT NULL) AND (unit_no IS NOT NULL))"
     t.index ["project_id"], name: "index_bookings_on_project_id"
     t.check_constraint "agreement_value >= 0", name: "bookings_agreement_value_check"
     t.check_constraint "client_paid_percent IS NULL OR client_paid_percent >= 0 AND client_paid_percent <= 100", name: "bookings_client_paid_percent_check"
@@ -322,6 +323,30 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.check_constraint "kind::text = ANY (ARRAY['call'::character varying::text, 'whatsapp'::character varying::text, 'visit'::character varying::text, 'note'::character varying::text, 'status_change'::character varying::text])", name: "lead_activities_kind_check"
   end
 
+  create_table "lead_projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "project_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_projects_on_firm_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_projects_on_lead_id_and_project_id", unique: true
+    t.index ["lead_id"], name: "index_lead_projects_on_lead_id"
+    t.index ["project_id"], name: "index_lead_projects_on_project_id"
+  end
+
+  create_table "lead_properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "property_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_properties_on_firm_id"
+    t.index ["lead_id", "property_id"], name: "index_lead_properties_on_lead_id_and_property_id", unique: true
+    t.index ["lead_id"], name: "index_lead_properties_on_lead_id"
+    t.index ["property_id"], name: "index_lead_properties_on_property_id"
+  end
+
   create_table "lead_sources", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.string "code", null: false
@@ -403,7 +428,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
     t.index ["firm_id", "lead_status_id"], name: "index_leads_on_firm_id_and_lead_status_id"
-    t.index ["firm_id", "mobile"], name: "index_leads_on_firm_id_and_mobile"
+    t.index ["firm_id", "mobile", "transaction_type"], name: "index_leads_on_firm_mobile_transaction_type", unique: true
     t.index ["firm_id", "next_action_at"], name: "index_leads_on_firm_id_and_next_action_at"
     t.index ["firm_id"], name: "index_leads_on_firm_id"
     t.index ["lead_source_id"], name: "index_leads_on_lead_source_id"
@@ -495,16 +520,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.string "external_ref"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
+    t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index ["builder_id"], name: "index_projects_on_builder_id"
     t.index ["city_id"], name: "index_projects_on_city_id"
     t.index ["firm_id", "builder_id"], name: "index_projects_on_firm_id_and_builder_id"
     t.index ["firm_id", "city_id"], name: "index_projects_on_firm_id_and_city_id"
+    t.index ["firm_id", "source", "external_ref"], name: "index_projects_on_firm_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
     t.index ["firm_id", "status"], name: "index_projects_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_projects_on_firm_id"
     t.index ["locality_id"], name: "index_projects_on_locality_id"
     t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
-    t.index ["source", "external_ref"], name: "index_projects_on_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
     t.check_constraint "source::text = ANY (ARRAY['own'::character varying::text, 'catalog'::character varying::text])", name: "projects_source_check"
     t.check_constraint "starting_budget >= 0", name: "projects_starting_budget_check"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'archived'::character varying::text])", name: "projects_status_check"
@@ -524,7 +551,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.string "status", default: "available", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "created_by_user_id"
     t.index ["building_id"], name: "index_properties_on_building_id"
+    t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
     t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
     t.index ["firm_id", "status"], name: "index_properties_on_firm_id_and_status"
@@ -577,6 +606,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["code"], name: "index_typologies_on_code", unique: true
+  end
+
+  create_table "user_managers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "manager_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "manager_id"], name: "index_user_managers_on_firm_and_manager"
+    t.index ["firm_id"], name: "index_user_managers_on_firm_id"
+    t.index ["manager_id"], name: "index_user_managers_on_manager_id"
+    t.index ["user_id", "manager_id"], name: "index_user_managers_on_user_and_manager", unique: true
+    t.index ["user_id"], name: "index_user_managers_on_user_id"
+    t.check_constraint "user_id <> manager_id", name: "user_managers_no_self"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -632,6 +675,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
   add_foreign_key "lead_activities", "firms"
   add_foreign_key "lead_activities", "leads"
   add_foreign_key "lead_activities", "users", on_delete: :nullify
+  add_foreign_key "lead_projects", "firms"
+  add_foreign_key "lead_projects", "leads"
+  add_foreign_key "lead_projects", "projects"
+  add_foreign_key "lead_properties", "firms"
+  add_foreign_key "lead_properties", "leads"
+  add_foreign_key "lead_properties", "properties"
   add_foreign_key "lead_status_changes", "firms"
   add_foreign_key "lead_status_changes", "lead_statuses", column: "from_status_id"
   add_foreign_key "lead_status_changes", "lead_statuses", column: "to_status_id"
@@ -656,8 +705,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_13_100000) do
   add_foreign_key "properties", "buildings"
   add_foreign_key "properties", "firms"
   add_foreign_key "properties", "typologies"
+  add_foreign_key "properties", "users", column: "created_by_user_id", on_delete: :nullify
   add_foreign_key "subscriptions", "admin_users", column: "created_by_admin_id"
   add_foreign_key "subscriptions", "firms"
   add_foreign_key "subscriptions", "plans"
+  add_foreign_key "user_managers", "firms", on_delete: :cascade
+  add_foreign_key "user_managers", "users", column: "manager_id", on_delete: :cascade
+  add_foreign_key "user_managers", "users", on_delete: :cascade
   add_foreign_key "users", "firms"
 end

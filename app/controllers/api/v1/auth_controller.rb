@@ -80,7 +80,8 @@ module Api
 
       def refresh
         token = params.require(:refresh_token)
-        session = AuthSession.across_firms.live.find_by(refresh_token_digest: AuthSession.digest(token))
+        digest = AuthSession.digest(token)
+        session = AuthSession.across_firms.live.find_by(refresh_token_digest: digest)
 
         return render_error("unauthorized", "Sign in again.", status: :unauthorized) if session.nil?
 
@@ -88,7 +89,8 @@ module Api
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
         return render_error("account_suspended", "This account is suspended.", status: :forbidden) if user.firm.suspended?
 
-        rotated = session.rotate_refresh_token!
+        rotated = session.rotate_if_matches!(digest)
+        return render_error("unauthorized", "Sign in again.", status: :unauthorized) if rotated.nil?
 
         render json: token_payload(user, session, rotated), status: :ok
       end

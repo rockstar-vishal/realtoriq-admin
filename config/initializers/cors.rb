@@ -16,10 +16,13 @@
 # to false, and it refuses to combine `true` with `*` at all), which also keeps
 # the wildcard away from the admin panel's cookie session — that lives outside
 # the `/api/*` resource below in any case.
-DEFAULT_CORS_ORIGINS = "http://localhost:5173"
+# The Next.js app is :3000. 5173 was an old Vite port; a default that does not
+# match the running frontend makes the direct-upload PUT fail its preflight
+# while curl (no Origin) keeps working.
+DEFAULT_CORS_ORIGINS = %w[http://localhost:3000 http://127.0.0.1:3000].freeze
 
 cors_origins = ENV["CORS_ORIGINS"].to_s.split(",").map(&:strip).compact_blank
-cors_origins = [ Rails.env.staging? ? "*" : DEFAULT_CORS_ORIGINS ] if cors_origins.empty?
+cors_origins = (Rails.env.staging? ? [ "*" ] : DEFAULT_CORS_ORIGINS.dup) if cors_origins.empty?
 
 # Loud rather than fatal. A wildcard in production is a real weakening and
 # someone should have to justify it, but — unlike the fixed sign-in code, which

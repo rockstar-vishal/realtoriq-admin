@@ -39,7 +39,14 @@ class Booking < ApplicationRecord
   validates :client_paid_percent,
     numericality: { in: 0..100, only_integer: true }, allow_nil: true
   validates :cancellation_reason, presence: true, if: :cancelled?
+  validates :unit_no, presence: true, if: -> { project_id.present? }
+  validates :unit_no, uniqueness: {
+    scope: :project_id,
+    conditions: -> { where(status: "live") },
+    message: "is already booked on this project"
+  }, if: -> { live? && project_id.present? && unit_no.present? }
 
+  before_validation :normalise_unit_no
   before_validation :assign_code, on: :create
   # Recomputed on every save, so a corrected agreement value or commission can
   # never leave a stale figure behind.
@@ -53,8 +60,11 @@ class Booking < ApplicationRecord
     next all if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    where("bookings.customer_name ILIKE :q OR bookings.unit_no ILIKE :q " \
-          "OR bookings.builder_ref_no ILIKE :q OR bookings.code ILIKE :q", q: pattern)
+    left_joins(:project).where(
+      "bookings.customer_name ILIKE :q OR bookings.unit_no ILIKE :q " \
+      "OR bookings.builder_ref_no ILIKE :q OR bookings.code ILIKE :q " \
+      "OR projects.name ILIKE :q", q: pattern
+    )
   }
 
   scope :for_phone, ->(phone) {
@@ -107,6 +117,10 @@ class Booking < ApplicationRecord
   end
 
   private
+
+  def normalise_unit_no
+    self.unit_no = unit_no.to_s.strip.presence
+  end
 
   def recompute_net_income
     self.net_income = self.class.calculate_net_income(

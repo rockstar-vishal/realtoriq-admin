@@ -24,8 +24,14 @@ class AuthSession < ApplicationRecord
 
     transaction do
       # Reinstalling the app on a known device should reclaim its slot rather
-      # than consume another one.
-      user.auth_sessions.live.where(device_id:).find_each { |s| s.revoke!("replaced_by_same_device") } if device_id
+      # than consume another one. `live` excludes expired rows, but the unique
+      # index does not — an idle-expired session with revoked_at still null
+      # occupies the slot and the next sign-in on that device 500s.
+      if device_id
+        user.auth_sessions.where(device_id:, revoked_at: nil).find_each do |s|
+          s.revoke!("replaced_by_same_device")
+        end
+      end
 
       evict_over_limit(user)
 
@@ -63,6 +69,21 @@ class AuthSession < ApplicationRecord
 
   def revoke!(reason = "signed_out")
     update!(revoked_at: Time.current, revoked_reason: reason)
+  end
+
+  # Returns a new refresh token, or nil when this row no longer matches the
+  # digest the caller presented — another request already rotated it. Callers
+  # must treat nil as a replay (401), not issue a second pair.
+  def rotate_if_matches!(presented_digest)
+    token = nil
+    AuthSession.across_firms.transaction do
+      locked = AuthSession.across_firms.lock.find_by(id:)
+      if locked&.active? &&
+          ActiveSupport::SecurityUtils.secure_compare(locked.refresh_token_digest, presented_digest)
+        token = locked.rotate_refresh_token!
+      end
+    end
+    token
   end
 
   # Refresh tokens rotate on every use: a stolen token is good for one call, and

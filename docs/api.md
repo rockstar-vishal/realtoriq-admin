@@ -8,6 +8,7 @@ observed against a live server; nothing is aspirational.
 - [Conventions](#conventions)
 - [Authentication](#authentication)
 - [Session and reference data](#session-and-reference-data)
+- [Users](#users)
 - [Dashboard](#dashboard)
 - [Leads](#leads)
 - [Inventory — projects, buildings, properties](#inventory)
@@ -143,10 +144,16 @@ failed attempt, so retrying a consumed code eats into the three.
 | --- | :-: | :-: | :-: |
 | Leads assigned to them | ✅ | ✅ | ✅ |
 | The firm's whole pipeline | ❌ | ✅ | ✅ |
-| Reassign a lead | ❌ | ✅ | ✅ |
-| Inventory | ✅ | ✅ | ✅ |
+| Reassign a lead | ❌* | ✅ | ✅ |
+| Inventory (read) | ✅ | ✅ | ✅ |
+| My Projects writes, firm builders | ❌ | ❌ | ✅ |
 | Bookings, invoices, collections | ❌ | ✅ | ✅ |
 | Verify firm contact channels | ❌ | ❌ | ✅ |
+| Create / disable users, edit reporting lines | ❌ | ❌ | ✅ |
+
+\*Agents can reassign a lead they can see to someone in their **active manageables** (themselves, plus anyone who reports to them). They cannot unassign.
+
+`manage_users` on `GET /me` is the flag to drive the team screen — do not switch on `role` for that. `manage_projects` is the flag for My Projects create/edit/photos and for inline builder create.
 
 Anything an agent may not do is `403 forbidden_role`. **A lead an agent may not
 see is `404`, not `403`** — a 403 would confirm the record exists.
@@ -179,7 +186,8 @@ firm suspended mid-session starts failing on the next call.
               "city": "Navi Mumbai", "logo_url": null, "channels_verified": true },
   "subscription": { "plan": "Growth", "status": "active", "entitled": true,
                     "renews_on": "2026-09-18", "amount": 2499 },
-  "permissions":  { "manage_firm_settings": true, "verify_contact_channels": true },
+  "permissions":  { "manage_firm_settings": true, "verify_contact_channels": true,
+                    "manage_users": true, "manage_projects": true },
   "limits":       { "devices": 3, "users": 5 }
 }
 ```
@@ -212,6 +220,82 @@ Seeded values today: statuses `new`, `hot`, `followup`, `visit_planned`,
 
 Never hardcode these ids. **Switch on `code`**, and use `is_dead` / `is_booked`
 rather than matching a name.
+
+---
+
+## Users
+
+Ops create the firm and its one super admin. That person creates everyone else.
+There is no invite SMS — the new user signs in with their mobile and a code.
+
+A firm has **exactly one** super admin. They cannot be disabled or demoted here,
+and nobody can be promoted into the role.
+
+### `GET /users`
+
+| Caller | Who comes back |
+| --- | --- |
+| Super admin | The whole firm, **including disabled** (the team screen re-enables them) |
+| Anyone else | **Active manageables** — themselves plus everyone who reports to them, walking the reporting graph. Disabled people in the line are omitted |
+
+No pagination: a firm's user cap is small enough that the picker loads in one shot.
+
+```json
+{
+  "users": [
+    {
+      "id": "…", "name": "Rohit Shah", "role": "manager",
+      "mobile": "+919820144211", "email": "rohit@example.com",
+      "status": "active", "active": true,
+      "managers": [ { "id": "…", "name": "Priya Mehta", "role": "agent" } ]
+    }
+  ]
+}
+```
+
+`active` is `status == "active"`. Drive the picker off this list: the ids here are
+exactly the ids `PATCH /leads/:id` will accept as `assigned_user_id` for this
+caller (the super admin's list also includes disabled people — filter those out
+in the picker).
+
+### `GET /users/:id`
+
+Same payload as one list row. Super admin: anyone in the firm. Anyone else:
+`404` unless that person is in their active manageables.
+
+### `POST /users`
+
+Super admin only. `{ name, mobile, role, email?, rera_number?, notification_mode?, manager_ids? }`.
+
+`role` is `manager` or `agent` — sending `super_admin` is `422 invalid`.
+`manager_ids` is an **array** of user ids; the super admin is not a valid
+manager here (they already see the whole firm). The new user can sign in at
+once.
+
+`422 user_limit_reached` when the plan's `max_users` is hit. **Disabled users
+count toward the cap.** `max_users: null` is unlimited.
+
+### `PATCH /users/:id`
+
+Super admin only. `{ name, mobile, email, role, status, rera_number, notification_mode }`.
+
+`status: "disabled"` revokes every live session. Reversible with `status: "active"`.
+Role changes stay inside `manager` / `agent`.
+
+### Reporting lines
+
+A person may have **several** managers. The graph is not a tree. Super admins
+are not stored in it. Agents may appear as `manager_id` so a senior agent can
+own a slice of the pipeline.
+
+| | |
+| --- | --- |
+| `POST /users/:id/managers` | `{ manager_id }`. Super admin only. A cycle is `422 reporting_cycle` |
+| `DELETE /users/:id/managers/:manager_id` | Super admin only |
+
+Disabling a user does **not** drop their reporting lines. A manager above them
+still reaches them (and their reports) through `manageables`; they just cannot
+be assigned a lead until they are active again.
 
 ---
 
@@ -297,11 +381,12 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 | `possession_by` | date | optional | **Not** `possession_up_to` |
 | `lead_source_id` | string | optional | |
 | `source_detail` | string | optional | e.g. `"99acres enquiry #48213"` |
-| `assigned_user_id` | string | optional | Defaults to the creator when an agent creates it |
+| `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
 | `next_action_at` | timestamp | optional | Drives the "Missed f/u" badge |
 | `next_action_note` | string | optional | |
-| `notes` | text | optional | |
+| `notes` | text | optional | **Client's requirements.** No separate locality column — put location text here |
 | `typology_ids` | **array** of string | optional | |
+| `project_id` | string | optional | Create-from-project. Copies blank budget / possession / notes from the project and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
 
 > **`property_type_id` is a single string. `typology_ids` is an array.**
 > One property type, many configurations. Sending `property_type_id` as an array
@@ -309,8 +394,9 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 > sale lead` with nothing pointing at the real cause. See
 > [Traps](#traps-worth-knowing).
 
-Returns `201` with the lead plus `possible_duplicates` — other leads on the same
-number. **Duplicates are allowed**; show them, don't block on them.
+One lead per `(firm, mobile, transaction_type)`. Same number may exist once as `sale` and once as `rent`. A second create of the same type is **`422 duplicate_lead`** with `details.lead_id` and `details.transaction_type` so you can open the existing card. PATCH `transaction_type` to the other type is the same `422` if that type already exists on the number.
+
+Returns `201` with the lead plus `possible_duplicates` — the **other** transaction type on the same number, if any, and only leads the caller can see. Same type is never in this array; it was refused.
 
 `code` is assigned server-side and sequential per firm (`L-0002`). Brokers read
 these to each other.
@@ -364,19 +450,35 @@ due, then newest. It is the default because the list is a worklist.
 for headings. `overdue` and `visited` are computed; don't derive them yourself.
 
 The **detail** adds `alt_mobile`, `source`, `source_detail`, `first_visit_at`,
-`dead_reason`, `dead_at`, `booked_at`, `notes`, `activities[]` (latest 20) and
-`status_history[]`.
+`dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
+`mapped_properties[]`, `activities[]` (latest 20) and `status_history[]`.
+
+`mapped_projects[].id` / `mapped_properties[].id` are the **join ids** that
+`DELETE` takes. The nested `project` / `property` is the inventory row.
 
 ### Other lead endpoints
 
 | | |
 | --- | --- |
-| `GET /leads/:id` | Detail, with timeline and status history |
-| `PATCH /leads/:id` | Same fields as create. **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone |
+| `GET /leads/:id` | Detail, with timeline, mappings and status history |
+| `PATCH /leads/:id` | Same fields as create except `project_id` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile |
 | `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status |
-| `POST /leads/:id/assign` | `{ assigned_user_id }`. `null` unassigns — which hides it from every agent. Manager+ |
 | `GET /leads/:id/activities` | |
 | `POST /leads/:id/activities` | `{ kind, body, occurred_at, outcome }` |
+| `POST /leads/:id/projects` | `{ project_id }` — map a My Projects or catalog row. Anyone who can see the lead. `201` returns the refreshed lead |
+| `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
+| `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
+| `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
+| `POST /leads/:id/matches` | Show New Matches. **Stub:** `{ "matches": [] }` until LaunchIQ. Do not fake this from `GET /projects` |
+
+Many mappings are allowed. They stay after a booking. A booking does **not** require a mapping.
+
+There is **no** `POST /leads/:id/assign`. Reassignment is `PATCH /leads/:id`
+with `assigned_user_id`. `null` unassigns — which hides the lead from every
+agent — and is manager-role+ only. Any other caller may only set an assignee
+from their **active manageables** (the super admin: any active user in the
+firm). An unknown or out-of-line id is `404 unknown_user`. Omitting the key
+leaves the owner alone.
 
 `kind` is `call` · `whatsapp` · `visit` · `note`. (`status_change` exists but is
 written by the server.) `body` is required. Logging a **`visit`** sets
@@ -397,11 +499,24 @@ A **project** is a builder's development, sold from a brochure. A **property** i
 one resale or rental listing inside a **building**. Amenities live on the
 building, because every flat in it shares the same pool.
 
+**My Projects vs catalog.** `GET /projects` and `GET /projects/search` return
+only `source: own` (My Projects). Catalog rows (`source: catalog`) are LaunchIQ
+copies stored per firm; they are not a Marketplace tab. You see them on a lead
+via mappings / `GET /projects/:id` / the matches stub. Brokers cannot edit them
+(`422 catalog_readonly`).
+
+**Writes to My Projects and `POST /builders` are superadmin only**
+(`403 forbidden_role`, gated in the app by `permissions.manage_projects`).
+Anyone in the firm may create a **property**.
+
+Own-list names are unique case-insensitively per firm. Catalog names are unique
+the same way, in their own list. The same name may exist once in each.
+
 ### `POST /projects`
 
 | Field | Type | | Notes |
 | --- | --- | --- | --- |
-| `name` | string | **required** | ≤ 160 chars |
+| `name` | string | **required** | ≤ 160 chars. Unique case-insensitively among this firm's **own** projects |
 | `builder_id` | string | **required** | Global, or one this firm added |
 | `city_id` | string | **required** | |
 | `locality_id` | string | optional | Must belong to `city_id` |
@@ -428,13 +543,15 @@ sent with a past date for you to check.
 | Filter | Notes |
 | --- | --- |
 | `q` | Substring of name or address. For a search box, use [`/projects/search`](#get-projectssearch) instead |
-| `status` | `active` (default) · `archived` |
+| `status` | `active` (default) · `archived` · `all` (no status filter). Omitting the param is `active`, not every project |
 | `builder_id`, `city_id`, `locality_id` | |
 | `budget_min`, `budget_max` | Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike leads — and a project with no configurations never matches |
 | `possession_before` | date |
 | `typology_ids[]` | Repeat the key |
 | `sort` | **`name`** (default, A–Z) · `recent` (newest first) |
 | `page`, `per_page` | 25 per page by default |
+
+**The list is My Projects only** (`source: own`). Catalog rows are omitted.
 
 **The list is paginated and sorted A–Z by default, so a project you just created
 may not be on page 1.** Either pass `sort=recent`, read `meta.total_pages`, or —
@@ -471,7 +588,8 @@ are cleaned up first.
       "id": "01a0…", "name": "Aurum Vista", "rera_number": "P51700054321",
       "source": "own",
       "builder": { "id": "01a0…", "name": "Lodha Group" },
-      "locality": "Kolshet", "city": "Thane"
+      "locality": "Kolshet", "locality_id": "01a0…",
+      "city": "Thane", "city_id": "01a0…"
     }
   ],
   "meta": { "query": "aurum", "limit": 10, "min_length": 3, "more": false, "fuzzy": false }
@@ -485,9 +603,12 @@ are cleaned up first.
 A result carries only what a row shows. Tap through to `GET /projects/:id` for the
 full project.
 
-`source` is `own` today. When LaunchIQ catalog projects are searchable too, they
-will come back in the same list as `catalog` — so render by `source` now and no
-client change is needed then.
+`source` is `own` on this endpoint. Catalog projects are not searchable here —
+they arrive through `POST /leads/:id/matches`.
+
+List and detail also carry `city_id` and `locality_id` (the names stay as
+`city` / `locality`). Use the ids when editing; rematching by name can attach
+the wrong locality.
 
 ### `POST /buildings` and `POST /properties`
 
@@ -499,10 +620,18 @@ dropdown.
 Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`
-(`available` · `under_offer` · `closed`).
+(`available` · `under_offer` · `closed`). Any role may create. List and detail
+include `created_by: { id, name }` (or `null` on older rows) — show it when
+`permissions.manage_projects` is true.
+
+`POST /builders` is superadmin only. `{ name, website }`. A name that already
+exists on the **master** list is `422 invalid` — pick the master row instead of
+minting a private duplicate.
 
 `GET /properties` takes `sort`: **`recent`** (default, newest first) · `name`
-(A–Z by building name — a listing has no name of its own).
+(A–Z by building name — a listing has no name of its own). `status` is
+`available` (default) · `under_offer` · `closed` · `all` (no status filter).
+Omitting the param is `available`, not every listing.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a
@@ -574,7 +703,11 @@ by rupees from what the reports sum.
 | `commission_percent` | number | **required** | |
 | `kicker` / `passback` | integer | optional | Default 0 |
 | `customer_name` / `customer_mobile` | string | optional | **Snapshotted** — see below |
-| `project_id`, `builder_ref_no`, `unit_no` | | optional | |
+| `project_id` | string | optional | |
+| `unit_no` | string | conditional | **Required when `project_id` is set.** Unique among **live** bookings on that project. Cancel frees the unit |
+| `builder_ref_no` | string | optional | |
+| `use_existing` | boolean | optional | Catalog booking name clash — reuse the existing My Projects row |
+| `new_name` | string | optional | Catalog booking name clash — copy under this name instead |
 | `carpet_area_sqft`, `other_details` | | optional | |
 | `registration_done_on` | date | optional | |
 | `client_paid_percent` | integer | optional | 0–100 |
@@ -585,6 +718,28 @@ correcting a lead's name a year later must not rewrite what was booked.
 
 There is no endpoint to find a lead by phone before booking; it is just
 `GET /leads?q=<digits>`.
+
+**Catalog bookings.** If `project_id` is a catalog row, the server copies
+required fields into a My Projects (`source: own`) row and stores *that* id on
+the booking. The catalog row stays for other mapped leads. A cancelled booking
+**keeps** the copy.
+
+If My Projects already has that name: **`422 project_name_clash`** with
+`details.existing_project_id` and `details.name`. Retry the same body with
+`use_existing: true` (point the booking at the existing own row) or `new_name`
+(copy under the new name). Do not send both; `use_existing` wins.
+
+### `GET /bookings`
+
+| Filter | Notes |
+| --- | --- |
+| `q` | Substring of customer name, unit, builder ref, booking code, or **project name** |
+| `status` | `live` (default, when omitted) · `cancelled` |
+| `client_phone`, `project_id` | |
+| `booked_from`, `booked_to` | |
+| `page`, `per_page` | 25 per page by default |
+
+`totals` is agreement value and net income over **live** rows in the filtered set, so `status=cancelled` returns zero totals. Status is `live` or `cancelled` — never `Cancelled` / `Completed`.
 
 ### Payload
 
@@ -696,8 +851,10 @@ it does not match — that is the integrity check, not a bug.
 Rejections at step 1: `file_too_large`, `unsupported_type`.
 
 Attaching a `signed_id` whose PUT never landed is **`422 upload_incomplete`**, not
-a 500 — a real case worth handling, since it means the client's upload failed
-silently. A malformed one is `422 invalid_upload`.
+a 500 — photos, brochures, booking documents and collection proofs all take that
+code. A malformed signed_id, one issued for another firm, or one issued for a
+different `purpose` is `422 invalid_upload`. Caps are checked again at attach, so
+a 5 MB `project_photo` ticket cannot be attached as a 2 MB `collection_proof`.
 
 > Rails' own `/rails/active_storage/direct_uploads` is deliberately **404'd**.
 > It sits outside our auth and enforces none of these caps. `POST /uploads` is
@@ -748,8 +905,12 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `invalid` | 422 | Validation failed. `details` maps field → messages |
 | `invalid_request` | 400 | A required parameter is missing |
 | `not_found` | 404 | Also returned for another firm's — or another agent's — record |
-| `unknown_user` | 404 | That user isn't in this firm |
+| `unknown_user` | 404 | That user isn't in this firm, or isn't in the caller's assignable set |
+| `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
+| `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
+| `duplicate_lead` | 422 | That mobile already has this transaction type. `details.lead_id`, `details.transaction_type` |
+| `catalog_readonly` | 422 | Catalog projects cannot be edited |
 
 ### Money
 
@@ -761,14 +922,16 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `over_collected_for_invoice` | 422 | Past that one invoice |
 | `reason_required` | 422 | Cancelling a booking, or moving a lead to a dead status, needs a reason |
 | `already_cancelled` | 422 | |
+| `unit_taken` | 422 | A live booking already has this `project_id` + `unit_no`. `details.project_id`, `details.unit_no` |
+| `project_name_clash` | 422 | Booking a catalog project whose name already exists in My Projects. `details.existing_project_id`, `details.name`. Retry with `use_existing` or `new_name` |
 
 ### Files
 
 | Code | Status | |
 | --- | --- | --- |
 | `file_too_large` / `unsupported_type` | 422 | At `POST /uploads` |
-| `invalid_upload` | 422 | The `signed_id` doesn't verify |
-| `upload_incomplete` | 422 | Ticket issued, file never arrived |
+| `invalid_upload` | 422 | The `signed_id` doesn't verify, belongs to another firm, or was issued for a different purpose |
+| `upload_incomplete` | 422 | Ticket issued, file never arrived. Photos, brochure, documents, collection proof |
 | `too_many_photos` | 422 | 20 per listing |
 | `slot_taken` | 422 | A named document slot already has a file |
 

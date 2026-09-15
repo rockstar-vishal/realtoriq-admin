@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b7f1e4a2-9c3d-4f8a-b512-6a0d9e4c1f77",
-    "name": "RealtorIQ — Broker API v1",
-    "description": "The JSON API the React broker app talks to.\n\n**The flow chains itself.** Run the Auth folder top to bottom: `Request sign-in code` saves `request_id`, `Verify code` saves `access_token` and `refresh_token`, and every other request picks the token up from collection auth. Nothing needs copy-pasting.\n\n**Prerequisites**\n\n1. `bin/rails db:seed` — reference data\n2. `bin/rails demo:seed` — a firm you can sign into (Sethi Realty)\n3. `bin/dev` — the server on :3000\n\n**Sign-in codes are `888888` in development.** Nothing is delivered. That is a development-only bypass; the app refuses to boot in production with it set.\n\n**Error shape.** Every failure is `{ \"error\": { \"code\", \"message\", \"details\" } }`. Switch on `code`, never on the prose. The codes are: `not_registered`, `account_disabled`, `otp_locked`, `invalid_code`, `account_suspended`, `subscription_lapsed`, `device_limit_reached`, `forbidden_role`, `rate_limited`, `delivery_failed`, `unauthorized`, `not_found`, `invalid_request`.",
+    "name": "RealtorIQ \u2014 Broker API v1",
+    "description": "The JSON API the React broker app talks to.\n\n**The flow chains itself.** Run the Auth folder top to bottom: `Request sign-in code` saves `request_id`, `Verify code` saves `access_token` and `refresh_token`, and every other request picks the token up from collection auth. Nothing needs copy-pasting.\n\n**Prerequisites**\n\n1. `bin/rails db:seed` \u2014 reference data\n2. `bin/rails demo:seed` \u2014 a firm you can sign into (Sethi Realty)\n3. `bin/dev` \u2014 the server on :3000\n\n**Sign-in codes are `888888` in development.** Nothing is delivered. That is a development-only bypass; the app refuses to boot in production with it set.\n\n**Error shape.** Every failure is `{ \"error\": { \"code\", \"message\", \"details\" } }`. Switch on `code`, never on the prose. The codes are: `not_registered`, `account_disabled`, `otp_locked`, `invalid_code`, `account_suspended`, `subscription_lapsed`, `device_limit_reached`, `forbidden_role`, `rate_limited`, `delivery_failed`, `unauthorized`, `not_found`, `invalid_request`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -73,6 +73,11 @@
     },
     {
       "key": "lead_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "created_user_id",
       "value": "",
       "type": "string"
     },
@@ -150,6 +155,11 @@
     {
       "key": "brochure_signed_id",
       "value": ""
+    },
+    {
+      "key": "lead_project_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -184,7 +194,7 @@
               "mode": "raw",
               "raw": "{\n  \"mobile\": \"{{super_admin_mobile}}\"\n}"
             },
-            "description": "Accepts any format of the number — `9820144210`, `+91 98201 44210`, `098201 44210` all resolve to the same user, because mobiles are normalised to E.164 and are globally unique.\n\nSaves `request_id` for the next request."
+            "description": "Accepts any format of the number \u2014 `9820144210`, `+91 98201 44210`, `098201 44210` all resolve to the same user, because mobiles are normalised to E.164 and are globally unique.\n\nSaves `request_id` for the next request."
           },
           "event": [
             {
@@ -299,7 +309,7 @@
               "mode": "raw",
               "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
             },
-            "description": "Refresh tokens **rotate on every use**: a stolen token is good for exactly one call, and using it invalidates the copy the real device holds — which surfaces the theft rather than hiding it.\n\nRun this twice in a row and the second attempt returns 401. That is the design working, not a bug."
+            "description": "Refresh tokens **rotate on every use**: a stolen token is good for exactly one call, and using it invalidates the copy the real device holds \u2014 which surfaces the theft rather than hiding it.\n\nRun this twice in a row and the second attempt returns 401. That is the design working, not a bug."
           },
           "event": [
             {
@@ -342,7 +352,7 @@
                 "me"
               ]
             },
-            "description": "What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.\n\nThis is also where the blocked states surface — suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`."
+            "description": "What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.\n\n`permissions.manage_users` drives the team screen. `permissions.manage_projects` drives My Projects create/edit and inline builder create.\n\nThis is also where the blocked states surface \u2014 suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`."
           },
           "event": [
             {
@@ -356,6 +366,8 @@
                   "",
                   "pm.test(\"resolves permissions server-side\", () => {",
                   "  pm.expect(body.permissions).to.have.property(\"verify_contact_channels\");",
+                  "  pm.expect(body.permissions).to.have.property(\"manage_users\");",
+                  "  pm.expect(body.permissions).to.have.property(\"manage_projects\");",
                   "});",
                   "",
                   "pm.test(\"reports the device limit from the plan\", () => {",
@@ -380,7 +392,7 @@
                 "reference"
               ]
             },
-            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
+            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload \u2014 cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
           },
           "event": [
             {
@@ -415,7 +427,7 @@
           ]
         },
         {
-          "name": "Dashboard — the whole home screen",
+          "name": "Dashboard \u2014 the whole home screen",
           "request": {
             "method": "GET",
             "header": [],
@@ -428,7 +440,7 @@
                 "dashboard"
               ]
             },
-            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
+            "description": "The whole home screen in one request \u2014 the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" \u2014 a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
           },
           "event": [
             {
@@ -488,7 +500,7 @@
     },
     {
       "name": "Firm contact channels",
-      "description": "The firm's email, mobile and WhatsApp — the three rows behind Settings → Contact channels.\n\nThese belong to the **firm**, not to individual users. A user's own mobile receives the login code, but that is authentication (proving possession at sign-in), not channel verification.\n\nAny user can read them; only the firm's `super_admin` can act on them.",
+      "description": "The firm's email, mobile and WhatsApp \u2014 the three rows behind Settings \u2192 Contact channels.\n\nThese belong to the **firm**, not to individual users. A user's own mobile receives the login code, but that is authentication (proving possession at sign-in), not channel verification.\n\nAny user can read them; only the firm's `super_admin` can act on them.",
       "item": [
         {
           "name": "List channels",
@@ -505,7 +517,7 @@
                 "contact_channels"
               ]
             },
-            "description": "`can_verify` tells the client whether to render the verify actions at all.\n\nSaves an **unverified** channel's id for the next two requests — `demo:seed` leaves WhatsApp unverified on purpose so the flow is walkable on a fresh database."
+            "description": "`can_verify` tells the client whether to render the verify actions at all.\n\nSaves an **unverified** channel's id for the next two requests \u2014 `demo:seed` leaves WhatsApp unverified on purpose so the flow is walkable on a fresh database."
           },
           "event": [
             {
@@ -557,7 +569,7 @@
                 "request_code"
               ]
             },
-            "description": "Routes by channel kind: email through Action Mailer, mobile and WhatsApp through MSG91.\n\nThere is a 60-second resend cooldown — call it twice quickly and the second returns 422 `code_not_sent`. An already-verified channel is refused the same way, which is why the assertions below accept both outcomes: it keeps repeat runs honest instead of green-by-luck."
+            "description": "Routes by channel kind: email through Action Mailer, mobile and WhatsApp through MSG91.\n\nThere is a 60-second resend cooldown \u2014 call it twice quickly and the second returns 422 `code_not_sent`. An already-verified channel is refused the same way, which is why the assertions below accept both outcomes: it keeps repeat runs honest instead of green-by-luck."
           },
           "event": [
             {
@@ -636,8 +648,187 @@
       ]
     },
     {
+      "name": "Users",
+      "description": "Ops create the firm and its one super admin. That person creates everyone else \u2014 no invite SMS.\n\n`GET /users` is also the reassignment picker. The super admin sees the whole firm (including disabled). Everyone else sees **active manageables**: themselves plus anyone who reports to them.\n\nA person may have several managers. Super admins are not in that graph. A cycle is `422 reporting_cycle`.",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/users",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Picker and team screen. Saves the first non-super-admin id as `created_user_id` for the requests below."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const users = pm.response.json().users || [];",
+                  "pm.test(\"returns an array\", () => pm.expect(users).to.be.an(\"array\"));",
+                  "",
+                  "const other = users.find(u => u.role !== \"super_admin\");",
+                  "if (other) { pm.collectionVariables.set(\"created_user_id\", other.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create an agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Super admin only. `role` is `manager` or `agent`. `manager_ids` is an array. The new user can sign in immediately.\n\n`422 user_limit_reached` when the plan is full \u2014 disabled accounts still occupy a seat.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ananya Iyer\",\n  \"mobile\": \"9820199001\",\n  \"email\": \"ananya.iyer@example.com\",\n  \"role\": \"agent\",\n  \"manager_ids\": [\n    \"{{user_id}}\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/me\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200) { pm.collectionVariables.set(\"user_id\", res.json().user.id); }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created, or already exists / over limit\", () => {",
+                  "  pm.expect([201, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set(\"created_user_id\", pm.response.json().user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a reporting line",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users/{{created_user_id}}/managers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users",
+                "{{created_user_id}}",
+                "managers"
+              ]
+            },
+            "description": "Super admin only. A cycle is `422 reporting_cycle`. The super admin cannot be a manager in this table.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manager_id\": \"{{user_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created, already exists, or would cycle\", () => {",
+                  "  pm.expect([201, 422, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disable a user",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users/{{created_user_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users",
+                "{{created_user_id}}"
+              ]
+            },
+            "description": "Revokes every live session. Reversible. The firm's super admin cannot be disabled.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"disabled\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 or 422 (super admin cannot be disabled)\", () => {",
+                  "  pm.expect([200, 422, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Leads",
-      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Two filter semantics worth knowing.** `status=missed_followup` is a *derived* tab, not a status: it means an overdue `next_action_at` on a non-terminal lead. And budget filtering is **overlap**, not containment — `budget_min`/`budget_max` return leads whose own range intersects your window.\n\nMoney is raw integer rupees throughout; the client formats lakh/crore.",
+      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** \u2014 a 403 would confirm it exists.\n\n**Two filter semantics worth knowing.** `status=missed_followup` is a *derived* tab, not a status: it means an overdue `next_action_at` on a non-terminal lead. And budget filtering is **overlap**, not containment \u2014 `budget_min`/`budget_max` return leads whose own range intersects your window.\n\nMoney is raw integer rupees throughout; the client formats lakh/crore.",
       "item": [
         {
           "name": "List leads",
@@ -676,7 +867,7 @@
           ]
         },
         {
-          "name": "List — missed followups only",
+          "name": "List \u2014 missed followups only",
           "request": {
             "method": "GET",
             "header": [],
@@ -689,7 +880,7 @@
                 "leads?status=missed_followup"
               ]
             },
-            "description": "The design's \"Missed f/u\" tab. Not a status — `LEAD_STATUSES` has no such entry — but an overdue next action on a lead that isn't already dead or booked."
+            "description": "The design's \"Missed f/u\" tab. Not a status \u2014 `LEAD_STATUSES` has no such entry \u2014 but an overdue next action on a lead that isn't already dead or booked."
           },
           "event": [
             {
@@ -708,7 +899,7 @@
           ]
         },
         {
-          "name": "List — every filter",
+          "name": "List \u2014 every filter",
           "request": {
             "method": "GET",
             "header": [],
@@ -779,7 +970,7 @@
                 }
               ]
             },
-            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\n**Budget filtering is overlap, not containment.** A window of 80L–2.5Cr returns the lead whose own range is 1.2–1.8 Cr *and* the one that straddles an edge. Containment would hide exactly the lead a broker widening the filter is looking for.\n\n**`status=missed_followup` is not a real status** — it means `next_action_at` in the past on a non-terminal lead.\n\n`sort` is `worklist` (default), `recent` or `updated`. `typology_ids` is an array, so it repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25."
+            "description": "Every filter the leads index accepts, in one request \u2014 this is the reference for what is queryable.\n\n**Budget filtering is overlap, not containment.** A window of 80L\u20132.5Cr returns the lead whose own range is 1.2\u20131.8 Cr *and* the one that straddles an edge. Containment would hide exactly the lead a broker widening the filter is looking for.\n\n**`status=missed_followup` is not a real status** \u2014 it means `next_action_at` in the past on a non-terminal lead.\n\n`sort` is `worklist` (default), `recent` or `updated`. `typology_ids` is an array, so it repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25."
           },
           "event": [
             {
@@ -791,7 +982,7 @@
                   "",
                   "const body = pm.response.json();",
                   "// Filters legitimately narrow to zero rows. What must hold is that every",
-                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// parameter was understood \u2014 an unknown one is ignored in Rails, so a 200",
                   "// with sane pagination is the honest assertion here.",
                   "pm.test(\"pagination meta comes back\", () => {",
                   "  pm.expect(body.meta.page).to.eql(1);",
@@ -822,7 +1013,7 @@
                 "leads"
               ]
             },
-            "description": "Every field the endpoint accepts, in one body.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.",
+            "description": "Every field the endpoint accepts, in one body.\n\n**One lead per (firm, mobile, transaction_type).** A second sale on the same number is `422 duplicate_lead` with `details.lead_id`. Sale + rent on one number is allowed.\n\n`notes` is Client's requirements. Optional `project_id` copies blank budget/possession/notes from that project and maps it.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key \u2014 so sending `[\"01a0\u2026\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way \u2014 you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 12000000,\n  \"budget_max\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"next_action_note\": \"Call back after site visit\",\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
@@ -899,7 +1090,7 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Detail payload: the lead, its typologies, its recent timeline and its full status history.\n\nNote the lead **detail screen was never designed** — this shape is inferred from the list card and the new-lead form, and will likely change when that screen exists."
+            "description": "Detail payload: the lead, mappings (`mapped_projects`, `mapped_properties`), its recent timeline and its full status history.\n\nJoin ids on `mapped_*[].id` are what DELETE /leads/:id/projects/:id and /properties/:id take."
           },
           "event": [
             {
@@ -909,11 +1100,137 @@
                 "exec": [
                   "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
                   "",
-                  "pm.test(\"carries the timeline and history\", () => {",
+                  "pm.test(\"carries the timeline, history and mappings\", () => {",
                   "  const lead = pm.response.json().lead;",
                   "  pm.expect(lead.activities).to.be.an(\"array\");",
                   "  pm.expect(lead.status_history).to.be.an(\"array\");",
+                  "  pm.expect(lead.mapped_projects).to.be.an(\"array\");",
+                  "  pm.expect(lead.mapped_properties).to.be.an(\"array\");",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Map a project onto a lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/projects",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "projects"
+              ]
+            },
+            "description": "Anyone who can see the lead. Body is `{ project_id }` \u2014 own or catalog. Returns the refreshed lead. Join id is `lead.mapped_projects[].id`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{project_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/projects?per_page=1\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200 && res.json().projects.length) {",
+                  "    pm.collectionVariables.set(\"project_id\", res.json().projects[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const lead = pm.response.json().lead;",
+                  "if (lead.mapped_projects.length) {",
+                  "  pm.collectionVariables.set(\"lead_project_id\", lead.mapped_projects[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Show new matches \u2014 stub",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/matches",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "matches"
+              ]
+            },
+            "description": "LaunchIQ is not wired. Returns `{ matches: [] }`. Do not fake cards from GET /projects."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"empty until LaunchIQ\", () => {",
+                  "  pm.expect(pm.response.json().matches).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unmap a project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/projects/{{lead_project_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "projects",
+                "{{lead_project_id}}"
+              ]
+            },
+            "description": "`:id` is the join id from mapped_projects[], not the project id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -939,7 +1256,7 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.",
+            "description": "Every accepted field. Send only what changed \u2014 this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 13000000,\n  \"budget_max\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-10T16:00:00+05:30\",\n  \"next_action_note\": \"Share Aurum Vista brochure\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
@@ -960,7 +1277,7 @@
         {
           "name": "Reassign a lead",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -968,17 +1285,16 @@
               }
             ],
             "url": {
-              "raw": "{{api_base}}/leads/{{lead_id}}/assign",
+              "raw": "{{api_base}}/leads/{{lead_id}}",
               "host": [
                 "{{api_base}}"
               ],
               "path": [
                 "leads",
-                "{{lead_id}}",
-                "assign"
+                "{{lead_id}}"
               ]
             },
-            "description": "Managers and the super admin only — an agent gets `forbidden_role`.\n\nReassigning matters more than it looks: agents can only see leads assigned to them, so moving a lead is what makes it appear in — or vanish from — someone's worklist. Send `assigned_user_id: null` to unassign, which hides it from every agent.\n\nThe pre-request script reads the signed-in user's own id, so the body hardcodes nothing.",
+            "description": "There is no `/assign` path. Send `assigned_user_id` on `PATCH /leads/:id`.\n\nThe super admin can assign anyone active in the firm. Anyone else is limited to their **active manageables** (themselves plus reports). `null` unassigns \u2014 manager-role+ only \u2014 and hides the lead from every agent.\n\nThe pre-request script reads the signed-in user's own id, so the body hardcodes nothing.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"assigned_user_id\": \"{{user_id}}\"\n}"
@@ -1038,7 +1354,7 @@
                 "activities"
               ]
             },
-            "description": "Kinds: `call`, `whatsapp`, `visit`, `note`. `status_change` is system-only and refused here — pipeline movement goes through the status endpoint, which also writes the reporting record.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
+            "description": "Kinds: `call`, `whatsapp`, `visit`, `note`. `status_change` is system-only and refused here \u2014 pipeline movement goes through the status endpoint, which also writes the reporting record.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"kind\": \"call\",\n  \"body\": \"Discussed the 3 BHK at Aurum Vista. Wants a higher floor.\",\n  \"occurred_at\": \"2026-09-01T11:15:00+05:30\",\n  \"outcome\": \"interested\"\n}"
@@ -1057,7 +1373,7 @@
           ]
         },
         {
-          "name": "Log a visit — sets the visited badge",
+          "name": "Log a visit \u2014 sets the visited badge",
           "request": {
             "method": "POST",
             "header": [
@@ -1130,7 +1446,7 @@
           ]
         },
         {
-          "name": "Mark dead — reason required",
+          "name": "Mark dead \u2014 reason required",
           "request": {
             "method": "POST",
             "header": [
@@ -1172,7 +1488,7 @@
           ]
         },
         {
-          "name": "Mark dead — with a reason",
+          "name": "Mark dead \u2014 with a reason",
           "request": {
             "method": "POST",
             "header": [
@@ -1238,7 +1554,7 @@
                 "status"
               ]
             },
-            "description": "Clears the death details — otherwise a revived lead still reads as dead everywhere it's shown.",
+            "description": "Clears the death details \u2014 otherwise a revived lead still reads as dead everywhere it's shown.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"hot\"\n}"
@@ -1266,7 +1582,7 @@
     },
     {
       "name": "Uploads",
-      "description": "Direct upload: ask for a ticket, PUT the file straight to storage, then pass the returned `signed_id` when creating the record it belongs to.\n\nLimits are enforced **when the ticket is issued**, per purpose — after that the browser talks to storage and this is the last point we control. Rails' own `/rails/active_storage/direct_uploads` is shadowed with a 404, since it sits outside this auth and enforces none of these rules.",
+      "description": "Direct upload: ask for a ticket, PUT the file straight to storage, then pass the returned `signed_id` when creating the record it belongs to.\n\nLimits are enforced **when the ticket is issued**, per purpose \u2014 after that the browser talks to storage and this is the last point we control. Rails' own `/rails/active_storage/direct_uploads` is shadowed with a 404, since it sits outside this auth and enforces none of these rules.",
       "item": [
         {
           "name": "Request an upload ticket",
@@ -1287,7 +1603,7 @@
                 "uploads"
               ]
             },
-            "description": "Purposes and caps: `booking_document` 2 MB (PDF/JPG/PNG), `project_brochure` 5 MB (PDF), `project_photo` and `property_photo` 5 MB (JPG/PNG/WebP), `firm_logo` 1 MB.\n\n`checksum` is the base64 MD5 of the file — storage rejects the PUT if it doesn't match, which is the integrity check, not a bug.",
+            "description": "Purposes and caps: `booking_document` 2 MB (PDF/JPG/PNG), `project_brochure` 5 MB (PDF), `project_photo` and `property_photo` 5 MB (JPG/PNG/WebP), `firm_logo` 1 MB.\n\n`checksum` is the base64 MD5 of the file \u2014 storage rejects the PUT if it doesn't match, which is the integrity check, not a bug.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"purpose\": \"project_brochure\",\n  \"filename\": \"aurum-vista.pdf\",\n  \"byte_size\": 1048576,\n  \"checksum\": \"XrY7u+Ae7tCTyyK7j1rNww==\",\n  \"content_type\": \"application/pdf\"\n}"
@@ -1397,7 +1713,7 @@
     },
     {
       "name": "Inventory",
-      "description": "Projects are developer stock a broker sells on commission. Properties are resale and rental listings. Buildings hold properties and are **firm-owned** — brokers create them inline from the property form, so one firm's typo never reaches another's dropdown.\n\n**Inventory is firm-wide**, unlike leads: everyone in the firm sees all of it.\n\n**Money is raw rupees.** The design's inputs read \"₹ lakh\" — that is a client-side unit, converted before it gets here.\n\n**Price and area bands are derived**, not stored: min/max across a project's typologies. A stored band could disagree with its own rows.",
+      "description": "Projects are developer stock a broker sells on commission. Properties are resale and rental listings. Buildings hold properties and are **firm-owned** \u2014 brokers create them inline from the property form, so one firm's typo never reaches another's dropdown.\n\n**Inventory is firm-wide**, unlike leads: everyone in the firm sees all of it.\n\n**Money is raw rupees.** The design's inputs read \"\u20b9 lakh\" \u2014 that is a client-side unit, converted before it gets here.\n\n**Price and area bands are derived**, not stored: min/max across a project's typologies. A stored band could disagree with its own rows.",
       "item": [
         {
           "name": "List builders",
@@ -1413,7 +1729,7 @@
                 "builders"
               ]
             },
-            "description": "The platform's curated developers plus this firm's own. `global: false` marks the ones the firm added — those are theirs to correct; the global list is not."
+            "description": "The platform's curated developers plus this firm's own. `global: false` marks the ones the firm added \u2014 those are theirs to correct; the global list is not."
           },
           "event": [
             {
@@ -1453,7 +1769,7 @@
                 "builders"
               ]
             },
-            "description": "The design puts this on the project form so a broker is never blocked by a missing developer.\n\nWhat they add belongs to their firm alone — it does not join the global list, and a firm may reuse a name the platform already has.\n\nThe name carries `{{$timestamp}}` so the collection is re-runnable — builder names are unique per firm, and a fixed one would 422 on the second pass.",
+            "description": "The design puts this on the project form so a broker is never blocked by a missing developer.\n\nWhat they add belongs to their firm alone \u2014 it does not join the global list, and a firm may reuse a name the platform already has.\n\nThe name carries `{{$timestamp}}` so the collection is re-runnable \u2014 builder names are unique per firm, and a fixed one would 422 on the second pass.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Sethi Preferred {{$timestamp}}\",\n  \"website\": \"https://sethipreferred.example.com\"\n}"
@@ -1489,7 +1805,7 @@
                 "buildings"
               ]
             },
-            "description": "Firm-owned. `q` searches by name — this is what backs the property form's building picker."
+            "description": "Firm-owned. `q` searches by name \u2014 this is what backs the property form's building picker."
           },
           "event": [
             {
@@ -1525,7 +1841,7 @@
                 "buildings"
               ]
             },
-            "description": "The design's \"Building not listed? Add new\" modal, with the city pre-filled.\n\nAmenities live here rather than on the listing — every flat in the building shares the pool. A locality outside the chosen city is rejected.\n\nName carries `{{$timestamp}}`: buildings are unique per firm and locality, so a fixed name would 422 on a re-run.",
+            "description": "The design's \"Building not listed? Add new\" modal, with the city pre-filled.\n\nAmenities live here rather than on the listing \u2014 every flat in the building shares the pool. A locality outside the chosen city is rejected.\n\nName carries `{{$timestamp}}`: buildings are unique per firm and locality, so a fixed name would 422 on a re-run.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Plot 14, Kolshet Road\",\n  \"lat\": 19.219,\n  \"lng\": 72.9772,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAC\",\n  \"has_pool\": true,\n  \"has_gym\": false\n}"
@@ -1588,7 +1904,7 @@
                 "{{building_id}}"
               ]
             },
-            "description": "Amenities live on the **building**, not the listing — every flat in it shares the same pool, so setting `has_pool` here changes what every property in the building reports.\n\nBuildings are firm-owned and unique on `(firm_id, name, locality_id)`: renaming one onto another building's name in the same locality is a 422.",
+            "description": "Amenities live on the **building**, not the listing \u2014 every flat in it shares the same pool, so setting `has_pool` here changes what every property in the building reports.\n\nBuildings are firm-owned and unique on `(firm_id, name, locality_id)`: renaming one onto another building's name in the same locality is a 422.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Aurum Heights {{$timestamp}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Linking Road\",\n  \"lat\": 19.2195,\n  \"lng\": 72.9768,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAD\",\n  \"has_pool\": true,\n  \"has_gym\": true\n}"
@@ -1623,7 +1939,7 @@
                 "projects"
               ]
             },
-            "description": "Filters: `q`, `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `typology_ids[]`, `status`.\n\n**Budget filtering matches a project if *any* of its typologies starts in the window** — a broker wants the project that has something sellable at that price, not one whose every configuration fits."
+            "description": "Filters: `q`, `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `typology_ids[]`, `status` (`active` default \u00b7 `archived` \u00b7 `all`).\n\n**Budget filtering matches a project if *any* of its typologies starts in the window** \u2014 a broker wants the project that has something sellable at that price, not one whose every configuration fits."
           },
           "event": [
             {
@@ -1649,7 +1965,7 @@
           ]
         },
         {
-          "name": "List — every filter",
+          "name": "List \u2014 every filter",
           "request": {
             "method": "GET",
             "header": [],
@@ -1712,7 +2028,7 @@
                 }
               ]
             },
-            "description": "Every filter on the projects index. `status` is `active` or `archived` — there is no destroy anywhere in inventory, archiving is the status change."
+            "description": "Every filter on the projects index. `status` is `active` or `archived` \u2014 there is no destroy anywhere in inventory, archiving is the status change."
           },
           "event": [
             {
@@ -1724,7 +2040,7 @@
                   "",
                   "const body = pm.response.json();",
                   "// Filters legitimately narrow to zero rows. What must hold is that every",
-                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// parameter was understood \u2014 an unknown one is ignored in Rails, so a 200",
                   "// with sane pagination is the honest assertion here.",
                   "pm.test(\"pagination meta comes back\", () => {",
                   "  pm.expect(body.meta.page).to.eql(1);",
@@ -1755,7 +2071,7 @@
                 "projects"
               ]
             },
-            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
+            "description": "Project and typologies in one call \u2014 a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
@@ -1767,7 +2083,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// A project may carry a brochure — ticket, then PUT the file, then send the",
+                  "// A project may carry a brochure \u2014 ticket, then PUT the file, then send the",
                   "// signed_id with the project itself. Same three steps as a photo.",
                   "const api = pm.variables.replaceIn(\"{{api_base}}\");",
                   "const token = pm.variables.replaceIn(\"{{access_token}}\");",
@@ -1843,7 +2159,7 @@
                 "{{project_id}}"
               ]
             },
-            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object."
+            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` \u2014 what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object."
           },
           "event": [
             {
@@ -1896,7 +2212,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// A project may carry a brochure — ticket, then PUT the file, then send the",
+                  "// A project may carry a brochure \u2014 ticket, then PUT the file, then send the",
                   "// signed_id with the project itself. Same three steps as a photo.",
                   "const api = pm.variables.replaceIn(\"{{api_base}}\");",
                   "const token = pm.variables.replaceIn(\"{{access_token}}\");",
@@ -1927,7 +2243,7 @@
                   "const project = pm.response.json().project;",
                   "",
                   "",
-                  "// `promo` is an object and appears only while the promo is live — an expired",
+                  "// `promo` is an object and appears only while the promo is live \u2014 an expired",
                   "// one is omitted entirely rather than sent with a past date for the client to",
                   "// check. That is why the body sets promo_ends_on too.",
                   "pm.test(\"the promo is live and carries the new text\", () => {",
@@ -1945,7 +2261,7 @@
           ]
         },
         {
-          "name": "List projects — newest first",
+          "name": "List projects \u2014 newest first",
           "request": {
             "method": "GET",
             "header": [],
@@ -1964,7 +2280,7 @@
                 }
               ]
             },
-            "description": "`sort=recent` puts a just-created project on page 1. The default, `sort=name`, is A–Z — which is why a new project can land on page 2 and look missing."
+            "description": "`sort=recent` puts a just-created project on page 1. The default, `sort=name`, is A\u2013Z \u2014 which is why a new project can land on page 2 and look missing."
           },
           "event": [
             {
@@ -1988,7 +2304,7 @@
           ]
         },
         {
-          "name": "Search projects — typeahead",
+          "name": "Search projects \u2014 typeahead",
           "request": {
             "method": "GET",
             "header": [],
@@ -2008,7 +2324,7 @@
                 }
               ]
             },
-            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nTypo-tolerant on the name, exact fragments on the RERA number. Ranked exact → prefix → contains → typo, capped at 10. `meta.more` is true when there are more than 10.\n\nA hit carries only what a row shows — tap through to `GET /projects/:id` for the rest."
+            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nTypo-tolerant on the name, exact fragments on the RERA number. Ranked exact \u2192 prefix \u2192 contains \u2192 typo, capped at 10. `meta.more` is true when there are more than 10.\n\nA hit carries only what a row shows \u2014 tap through to `GET /projects/:id` for the rest."
           },
           "event": [
             {
@@ -2028,7 +2344,7 @@
                   "  pm.expect(body.meta).to.include({ limit: 10, min_length: 3, query: \"aurum\" });",
                   "  pm.expect(body.meta.more).to.be.a(\"boolean\");",
                   "});",
-                  "pm.test(\"a hit is slim — no price bands, photos or brokerage\", () => {",
+                  "pm.test(\"a hit is slim \u2014 no price bands, photos or brokerage\", () => {",
                   "  pm.expect(Object.keys(body.projects[0]).sort())",
                   "    .to.eql([\"builder\", \"city\", \"id\", \"locality\", \"name\", \"rera_number\", \"source\"]);",
                   "});"
@@ -2139,7 +2455,7 @@
                 "photos"
               ]
             },
-            "description": "Photos live on the detail screen, not the create form.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. The pre-request script does the first two, so this request stands alone.\n\n**Note:** there is no matching request for `DELETE /projects/:id/photos/:photo_id` because no response returns an attachment id — only `photo_urls`. The endpoint exists but no client can address it. See the README.",
+            "description": "Photos live on the detail screen, not the create form.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. The pre-request script does the first two, so this request stands alone.\n\n**Note:** there is no matching request for `DELETE /projects/:id/photos/:photo_id` because no response returns an attachment id \u2014 only `photo_urls`. The endpoint exists but no client can address it. See the README.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
@@ -2151,7 +2467,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Ticket, then PUT the file — what a client does before attaching.",
+                  "// Ticket, then PUT the file \u2014 what a client does before attaching.",
                   "const api = pm.variables.replaceIn(\"{{api_base}}\");",
                   "const token = pm.variables.replaceIn(\"{{access_token}}\");",
                   "",
@@ -2190,7 +2506,7 @@
                   "pm.test(\"and a cover url comes back\", () => pm.expect(p.cover_photo_url).to.be.a(\"string\"));",
                   "",
                   "// `photos` carries the attachment id; `photo_urls` does not. The id is",
-                  "// what DELETE /photos/:photo_id takes — the signed blob URL encodes the",
+                  "// what DELETE /photos/:photo_id takes \u2014 the signed blob URL encodes the",
                   "// blob id, a different record, so it cannot be scraped from the url.",
                   "pm.collectionVariables.set(\"project_photo_id\", p.photos[p.photos.length - 1].id);",
                   "pm.test(\"each photo comes back with an addressable id\", () => {",
@@ -2222,7 +2538,7 @@
                 "{{project_photo_id}}"
               ]
             },
-            "description": "Takes the **attachment** id from `photos[].id` on the project detail.\n\nPurges the blob as well as detaching it — an unreferenced file would sit in storage being paid for forever."
+            "description": "Takes the **attachment** id from `photos[].id` on the project detail.\n\nPurges the blob as well as detaching it \u2014 an unreferenced file would sit in storage being paid for forever."
           },
           "event": [
             {
@@ -2257,7 +2573,7 @@
                 "properties"
               ]
             },
-            "description": "Filters: `q`, `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `status`.\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
+            "description": "Filters: `q`, `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `status` (`available` default \u00b7 `under_offer` \u00b7 `closed` \u00b7 `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` \u2014 so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
           },
           "event": [
             {
@@ -2279,7 +2595,7 @@
           ]
         },
         {
-          "name": "List — every filter ",
+          "name": "List \u2014 every filter ",
           "request": {
             "method": "GET",
             "header": [],
@@ -2354,7 +2670,7 @@
                   "",
                   "const body = pm.response.json();",
                   "// Filters legitimately narrow to zero rows. What must hold is that every",
-                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// parameter was understood \u2014 an unknown one is ignored in Rails, so a 200",
                   "// with sane pagination is the honest assertion here.",
                   "pm.test(\"pagination meta comes back\", () => {",
                   "  pm.expect(body.meta.page).to.eql(1);",
@@ -2388,7 +2704,7 @@
                 "properties"
               ]
             },
-            "description": "Every accepted field. `status` is `available` / `under_offer` / `closed`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`.\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
+            "description": "Every accepted field. `status` is `available` / `under_offer` / `closed`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`.\n\n`confidential_note` is returned only by the detail \u2014 never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
@@ -2429,7 +2745,7 @@
                 "{{property_id}}"
               ]
             },
-            "description": "The only response that carries `confidential_note`. `shareable` holds exactly what may go to a client — build share text from it and the note cannot leak by accident."
+            "description": "The only response that carries `confidential_note`. `shareable` holds exactly what may go to a client \u2014 build share text from it and the note cannot leak by accident."
           },
           "event": [
             {
@@ -2473,7 +2789,7 @@
                 "{{property_id}}"
               ]
             },
-            "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
+            "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` \u2014 derived, never stored \u2014 means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"under_offer\"\n}"
@@ -2521,7 +2837,7 @@
                 "photos"
               ]
             },
-            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`.\n\nThe pre-request script does the first two steps, so this request works on its own.",
+            "description": "Photos live on the detail screen, not the create form \u2014 the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`. A ticket from another firm, or issued for a different purpose, is `invalid_upload`.\n\nThe same attach check applies to brochures, booking documents and collection proofs.\n\nThe pre-request script does the first two steps, so this request works on its own.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
@@ -2533,7 +2849,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Ticket, then PUT the file — what a client does before attaching.",
+                  "// Ticket, then PUT the file \u2014 what a client does before attaching.",
                   "const api = pm.variables.replaceIn(\"{{api_base}}\");",
                   "const token = pm.variables.replaceIn(\"{{access_token}}\");",
                   "",
@@ -2576,7 +2892,7 @@
                   "const p = pm.response.json().property;",
                   "",
                   "// `photos` carries the attachment id; `photo_urls` does not. The id is",
-                  "// what DELETE /photos/:photo_id takes — the signed blob URL encodes the",
+                  "// what DELETE /photos/:photo_id takes \u2014 the signed blob URL encodes the",
                   "// blob id, a different record, so it cannot be scraped from the url.",
                   "pm.collectionVariables.set(\"property_photo_id\", p.photos[p.photos.length - 1].id);",
                   "pm.test(\"each photo comes back with an addressable id\", () => {",
@@ -2608,7 +2924,7 @@
                 "{{property_photo_id}}"
               ]
             },
-            "description": "Same as the project one. A photo id that isn't on this property is a 404, not a 403 — consistent with how every other not-yours lookup answers."
+            "description": "Same as the project one. A photo id that isn't on this property is a 404, not a 403 \u2014 consistent with how every other not-yours lookup answers."
           },
           "event": [
             {
@@ -2633,7 +2949,7 @@
     },
     {
       "name": "Bookings and money",
-      "description": "Recording a sale and the brokerage on it.\n\n**Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.\n\n**Net income is computed server-side and stored:**\n\n```\nround(agreement_value × commission_percent / 100) + kicker − passback\n```\n\nThe design's own example is the fixture: ₹1,56,00,000 at 4.5% is ₹7,02,000, plus a ₹50,000 kicker, minus a ₹66,000 passback = **₹6,86,000** — the \"₹6.86 L\" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.\n\n**Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.\n\n**Cancelling** sets the booking's status and nothing else — the lead is untouched and invoices already raised stay on record.",
+      "description": "Recording a sale and the brokerage on it.\n\n**Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.\n\n**Net income is computed server-side and stored:**\n\n```\nround(agreement_value \u00d7 commission_percent / 100) + kicker \u2212 passback\n```\n\nThe design's own example is the fixture: \u20b91,56,00,000 at 4.5% is \u20b97,02,000, plus a \u20b950,000 kicker, minus a \u20b966,000 passback = **\u20b96,86,000** \u2014 the \"\u20b96.86 L\" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.\n\n**Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.\n\n**Cancelling** sets the booking's status and nothing else \u2014 the lead is untouched and invoices already raised stay on record.",
       "item": [
         {
           "name": "Create a booking",
@@ -2654,10 +2970,10 @@
                 "bookings"
               ]
             },
-            "description": "Every accepted field.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
+            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` \u2014 retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** \u2014 sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan \u00b7 two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
             }
           },
           "event": [
@@ -2714,7 +3030,7 @@
                 "bookings"
               ]
             },
-            "description": "Cancelled bookings are excluded unless you ask for them — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q`, `client_phone`, `project_id`, `booked_from`, `booked_to`, `status`.\n\n`totals` carries the firm's live agreement value and net income for the header."
+            "description": "Cancelled bookings are excluded unless you ask for them \u2014 the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q` (customer, unit, code, builder ref, project name), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default \u00b7 `cancelled`).\n\n`totals` carries the firm's live agreement value and net income for the header."
           },
           "event": [
             {
@@ -2733,7 +3049,7 @@
           ]
         },
         {
-          "name": "List — every filter",
+          "name": "List \u2014 every filter",
           "request": {
             "method": "GET",
             "header": [],
@@ -2780,7 +3096,7 @@
                 }
               ]
             },
-            "description": "Every filter on the bookings index. `status` is `live` or `cancelled`; every money query starts from `live`.\n\n`client_phone` matches the **snapshot** on the booking, not the lead's current number.\n\nThe `totals` block is computed over the filtered set by re-selecting on id — never over a scope carrying `includes(:invoices, :collections)`, which becomes a LEFT JOIN and counts a booking once per associated row. That bug reported 3.12 Cr against a true 1.56 Cr."
+            "description": "Every filter on the bookings index. `status` is `live` or `cancelled`; every money query starts from `live`.\n\n`client_phone` matches the **snapshot** on the booking, not the lead's current number.\n\nThe `totals` block is computed over the filtered set by re-selecting on id \u2014 never over a scope carrying `includes(:invoices, :collections)`, which becomes a LEFT JOIN and counts a booking once per associated row. That bug reported 3.12 Cr against a true 1.56 Cr."
           },
           "event": [
             {
@@ -2792,7 +3108,7 @@
                   "",
                   "const body = pm.response.json();",
                   "// Filters legitimately narrow to zero rows. What must hold is that every",
-                  "// parameter was understood — an unknown one is ignored in Rails, so a 200",
+                  "// parameter was understood \u2014 an unknown one is ignored in Rails, so a 200",
                   "// with sane pagination is the honest assertion here.",
                   "pm.test(\"pagination meta comes back\", () => {",
                   "  pm.expect(body.meta.page).to.eql(1);",
@@ -2856,10 +3172,10 @@
                 "{{booking_id}}"
               ]
             },
-            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.",
+            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates \u2014 `booking_cancelled`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184-R1\",\n  \"unit_no\": \"B-1204\",\n  \"carpet_area_sqft\": 1360,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 5.0,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings · corner unit\",\n  \"registration_done_on\": \"2026-08-25\",\n  \"client_paid_percent\": 20\n}"
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184-R1\",\n  \"unit_no\": \"B-1204\",\n  \"carpet_area_sqft\": 1360,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 5.0,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan \u00b7 two covered parkings \u00b7 corner unit\",\n  \"registration_done_on\": \"2026-08-25\",\n  \"client_paid_percent\": 20\n}"
             }
           },
           "event": [
@@ -2872,7 +3188,7 @@
                   "",
                   "const b = pm.response.json().booking;",
                   "",
-                  "// The itemised money lives under `revenue` — the design's screen breaks it",
+                  "// The itemised money lives under `revenue` \u2014 the design's screen breaks it",
                   "// down that way so the client never recomputes it.",
                   "pm.test(\"net income was recomputed, not left stale\", () => {",
                   "  const r = b.revenue;",
@@ -2909,7 +3225,7 @@
                 "invoices"
               ]
             },
-            "description": "The number is **entered by the broker**, not generated, so it matches the invoice they actually raised. Unique per firm.\n\nCapped at net income — see the next request.\n\nThe number carries `{{$timestamp}}` because it is unique per firm. A fixed one 422s on the second run — and because each run creates a fresh booking, that left the next request with nothing invoiced and the over-invoicing check passed when it should have failed. Exactly the cascade running the collection is meant to catch.",
+            "description": "The number is **entered by the broker**, not generated, so it matches the invoice they actually raised. Unique per firm.\n\nCapped at net income \u2014 see the next request.\n\nThe number carries `{{$timestamp}}` because it is unique per firm. A fixed one 422s on the second run \u2014 and because each run creates a fresh booking, that left the next request with nothing invoiced and the over-invoicing check passed when it should have failed. Exactly the cascade running the collection is meant to catch.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"number\": \"INV-{{$timestamp}}\",\n  \"issued_on\": \"2026-08-04\",\n  \"amount\": 686000,\n  \"comment\": \"full brokerage\"\n}"
@@ -2951,7 +3267,7 @@
                 "invoices"
               ]
             },
-            "description": "Everything raised against this booking, with what is still outstanding on each.\n\nInvoice numbers are entered by the broker (`INV-2026-041`) so they match what was raised outside the system, and are unique per firm. Cancelling an invoice is not built — the design shows no control for it."
+            "description": "Everything raised against this booking, with what is still outstanding on each.\n\nInvoice numbers are entered by the broker (`INV-2026-041`) so they match what was raised outside the system, and are unique per firm. Cancelling an invoice is not built \u2014 the design shows no control for it."
           },
           "event": [
             {
@@ -2970,7 +3286,7 @@
                   "  const summed = body.invoices.reduce((s, i) => s + i.amount, 0);",
                   "  pm.expect(summed).to.eql(body.totals.invoiced);",
                   "});",
-                  "pm.test(\"invoiced never exceeds net income — the hard block holds\", () => {",
+                  "pm.test(\"invoiced never exceeds net income \u2014 the hard block holds\", () => {",
                   "  pm.expect(body.totals.invoiced).to.be.at.most(body.totals.net_income);",
                   "  pm.expect(body.totals.invoiceable_balance).to.eql(body.totals.net_income - body.totals.invoiced);",
                   "});"
@@ -3044,7 +3360,7 @@
                 "collections"
               ]
             },
-            "description": "Every accepted field. `invoice_id` is optional — the design offers \"Unlinked payment\" as a first-class choice — but naming one is what lets the API catch a payment filed against the wrong invoice (`over_collected_for_invoice`).\n\n`mode` is `neft_rtgs` / `upi` / `cheque` / `cash`. `proof_signed_id` attaches proof of payment; the pre-request script mints the upload ticket and PUTs the file.",
+            "description": "Every accepted field. `invoice_id` is optional \u2014 the design offers \"Unlinked payment\" as a first-class choice \u2014 but naming one is what lets the API catch a payment filed against the wrong invoice (`over_collected_for_invoice`).\n\n`mode` is `neft_rtgs` / `upi` / `cheque` / `cash`. `proof_signed_id` attaches proof of payment; the pre-request script mints the upload ticket and PUTs the file.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"invoice_id\": \"{{invoice_id}}\",\n  \"received_on\": \"2026-08-05\",\n  \"amount\": 400000,\n  \"mode\": \"neft_rtgs\",\n  \"transaction_no\": \"NEFT/2026/884213\",\n  \"proof_signed_id\": \"{{signed_id}}\"\n}"
@@ -3056,7 +3372,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// A collection may carry proof of payment — ticket, then PUT the file.",
+                  "// A collection may carry proof of payment \u2014 ticket, then PUT the file.",
                   "const api = pm.variables.replaceIn(\"{{api_base}}\");",
                   "const token = pm.variables.replaceIn(\"{{access_token}}\");",
                   "pm.sendRequest({",
@@ -3083,7 +3399,7 @@
                 "exec": [
                   "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
                   "",
-                  "// Read the amount out of the request rather than hardcoding it — an earlier",
+                  "// Read the amount out of the request rather than hardcoding it \u2014 an earlier",
                   "// version pinned 400000 here, so editing the body broke an assertion that",
                   "// had nothing to do with the change.",
                   "const sent = JSON.parse(pm.request.body.raw).amount;",
@@ -3117,7 +3433,7 @@
                 "collections"
               ]
             },
-            "description": "Money actually received. A collection may name an invoice or stand alone — the design offers \"Unlinked payment\" as a first-class choice."
+            "description": "Money actually received. A collection may name an invoice or stand alone \u2014 the design offers \"Unlinked payment\" as a first-class choice."
           },
           "event": [
             {
@@ -3165,7 +3481,7 @@
                 "documents"
               ]
             },
-            "description": "Four slots from the design: `application_form`, `tagging_confirmation`, `lead_source_proof`, `other`. Only **`other`** may hold more than one file — a second file in a named slot is `slot_taken` rather than a silent overwrite.\n\n`{{$timestamp}}` in the label keeps re-runs distinguishable.",
+            "description": "Four slots from the design: `application_form`, `tagging_confirmation`, `lead_source_proof`, `other`. Only **`other`** may hold more than one file \u2014 a second file in a named slot is `slot_taken` rather than a silent overwrite.\n\n`{{$timestamp}}` in the label keeps re-runs distinguishable.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"slot\": \"other\",\n  \"label\": \"Allotment letter {{$timestamp}}\",\n  \"signed_id\": \"{{signed_id}}\"\n}"
@@ -3214,7 +3530,7 @@
                   "const docs = pm.response.json().booking.documents;",
                   "pm.test(\"the document is on the booking\", () => pm.expect(docs.length).to.be.above(0));",
                   "",
-                  "// Unlike photos, documents come back with an id — which is what makes",
+                  "// Unlike photos, documents come back with an id \u2014 which is what makes",
                   "// the DELETE below reachable at all.",
                   "pm.collectionVariables.set(\"document_id\", docs[docs.length - 1].id);",
                   "pm.test(\"it carries an id the client can address\", () => {",
@@ -3242,7 +3558,7 @@
                 "{{document_id}}"
               ]
             },
-            "description": "Purges the blob as well as the row — an unreferenced file would sit in storage being paid for forever."
+            "description": "Purges the blob as well as the row \u2014 an unreferenced file would sit in storage being paid for forever."
           },
           "event": [
             {
@@ -3283,7 +3599,7 @@
                 "collections"
               ]
             },
-            "description": "Collected can never exceed invoiced. A payment naming a specific invoice is checked twice — against the booking's total and against that invoice's own amount, which is what catches a payment filed against the wrong invoice (`over_collected_for_invoice`).",
+            "description": "Collected can never exceed invoiced. A payment naming a specific invoice is checked twice \u2014 against the booking's total and against that invoice's own amount, which is what catches a payment filed against the wrong invoice (`over_collected_for_invoice`).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"received_on\": \"2026-08-19\",\n  \"amount\": 99000000,\n  \"mode\": \"cash\"\n}"
@@ -3350,10 +3666,10 @@
     },
     {
       "name": "Error states",
-      "description": "The blocked states the React app has to render. Each returns a typed `error.code`; two more — `account_suspended` and `subscription_lapsed` — are produced by suspending the firm or lapsing its subscription in the admin panel, then calling `Who am I`.",
+      "description": "The blocked states the React app has to render. Each returns a typed `error.code`; two more \u2014 `account_suspended` and `subscription_lapsed` \u2014 are produced by suspending the firm or lapsing its subscription in the admin panel, then calling `Who am I`.",
       "item": [
         {
-          "name": "Unregistered mobile → not_registered",
+          "name": "Unregistered mobile \u2192 not_registered",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3397,7 +3713,7 @@
           ]
         },
         {
-          "name": "Wrong code → invalid_code",
+          "name": "Wrong code \u2192 invalid_code",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3465,7 +3781,7 @@
           ]
         },
         {
-          "name": "No token → unauthorized",
+          "name": "No token \u2192 unauthorized",
           "request": {
             "auth": {
               "type": "noauth"
@@ -3481,7 +3797,7 @@
                 "me"
               ]
             },
-            "description": "Also what a revoked session returns — the session is checked on every request, so signing a device out takes effect immediately rather than when its JWT expires."
+            "description": "Also what a revoked session returns \u2014 the session is checked on every request, so signing a device out takes effect immediately rather than when its JWT expires."
           },
           "event": [
             {
@@ -3499,7 +3815,7 @@
           ]
         },
         {
-          "name": "Agent verifying a channel → forbidden_role",
+          "name": "Agent verifying a channel \u2192 forbidden_role",
           "request": {
             "auth": {
               "type": "bearer",
@@ -3530,7 +3846,7 @@
                 "request_code"
               ]
             },
-            "description": "Only the firm's `super_admin` may act on channels. Reading them still works for everyone — the split is enforced server-side, not in the client.\n\nSelf-contained: the pre-request script signs in as the agent and uses that token, so this holds in a full collection run where you are otherwise the super admin."
+            "description": "Only the firm's `super_admin` may act on channels. Reading them still works for everyone \u2014 the split is enforced server-side, not in the client.\n\nSelf-contained: the pre-request script signs in as the agent and uses that token, so this holds in a full collection run where you are otherwise the super admin."
           },
           "event": [
             {
@@ -3584,7 +3900,7 @@
           ]
         },
         {
-          "name": "Agent dashboard → no money block",
+          "name": "Agent dashboard \u2192 no money block",
           "request": {
             "auth": {
               "type": "bearer",
@@ -3607,7 +3923,7 @@
                 "dashboard"
               ]
             },
-            "description": "An agent gets the dashboard, minus the money. Not a 403 — the screen is legitimately theirs, just smaller — and not zeroes, which would read as \"no revenue\"."
+            "description": "An agent gets the dashboard, minus the money. Not a 403 \u2014 the screen is legitimately theirs, just smaller \u2014 and not zeroes, which would read as \"no revenue\"."
           },
           "event": [
             {
@@ -3615,7 +3931,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"200, not 403 — the screen is theirs\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"200, not 403 \u2014 the screen is theirs\", () => pm.response.to.have.status(200));",
                   "",
                   "const b = pm.response.json();",
                   "pm.test(\"but the money block is absent, not zeroed\", () => {",
@@ -3631,7 +3947,7 @@
     },
     {
       "name": "Sign out",
-      "description": "Deliberately last. Signing out revokes the session, so anything after it would get 401 — which is exactly what an earlier draft of this collection did to itself.",
+      "description": "Deliberately last. Signing out revokes the session, so anything after it would get 401 \u2014 which is exactly what an earlier draft of this collection did to itself.",
       "item": [
         {
           "name": "Sign out",
@@ -3660,7 +3976,7 @@
               "mode": "raw",
               "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
             },
-            "description": "Always 204, whether or not that token was live — whether a token exists is not something an unauthenticated caller needs told.\n\nRevokes the session, so the access token stops working on the very next request rather than when it expires."
+            "description": "Always 204, whether or not that token was live \u2014 whether a token exists is not something an unauthenticated caller needs told.\n\nRevokes the session, so the access token stops working on the very next request rather than when it expires."
           },
           "event": [
             {

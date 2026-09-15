@@ -34,6 +34,17 @@ MANAGER=9820144211
 AGENT=9820144212
 OTHER_FIRM_OWNER=9820312115 # a user in a second firm, for the cross-tenant checks
 
+# Never production. The first thing this does is request sign-in codes for
+# hardcoded mobile numbers — in production that sends a real SMS to whoever owns
+# them — and then it creates bookings, invoices and projects. It could not sign
+# in there anyway (no fixed code), but by then the texts have gone out.
+case "$BASE" in
+  *staging*|*localhost*|*127.0.0.1*) ;;
+  *) echo "Refusing to run against $BASE — this script is for staging only."
+     echo "It requests sign-in codes, which in production texts real people."
+     exit 2 ;;
+esac
+
 command -v jq >/dev/null || { echo "jq is required: brew install jq"; exit 2; }
 
 if [ -t 1 ]; then G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; B=$'\e[1m'; N=$'\e[0m'; else G=; R=; Y=; B=; N=; fi

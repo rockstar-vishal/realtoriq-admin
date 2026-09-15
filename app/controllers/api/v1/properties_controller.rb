@@ -35,6 +35,7 @@ module Api
       def create
         property = Property.new(property_params)
         property.firm = current_firm
+        property.created_by_user = current_user
 
         return render_validation_errors(property.errors) unless property.save
 
@@ -48,7 +49,7 @@ module Api
       end
 
       def add_photos
-        attach_photos(@property, params[:photo_signed_ids] || params[:signed_ids]) do
+        attach_photos(@property, params[:photo_signed_ids] || params[:signed_ids], purpose: "property_photo") do
           render json: { property: PropertySerializer.detail(@property.reload) }, status: :created
         end
       end
@@ -69,7 +70,7 @@ module Api
       end
 
       def base_scope
-        Property.includes(:typology, building: %i[city locality])
+        Property.includes(:typology, :created_by_user, building: %i[city locality])
       end
 
       def filtered_scope
@@ -83,7 +84,9 @@ module Api
         scope = scope.where(building_id: params[:building_id]) if params[:building_id].present?
         scope = scope.where(typology_id: params[:typology_id]) if params[:typology_id].present?
         scope = scope.where(floor_band: params[:floor_band]) if params[:floor_band].present?
-        scope = scope.where(status: params[:status].presence || "available")
+        # `all` is the list chip; omitting status still means available, which is
+        # what every existing caller that does not send the param expects.
+        scope = scope.where(status: params[:status].presence || "available") unless params[:status].to_s == "all"
 
         apply_sort(scope)
       end

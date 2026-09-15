@@ -23,12 +23,14 @@ class Lead < ApplicationRecord
   # to nil or empty whenever Current.firm isn't set, silently.
   belongs_to :assigned_user, -> { unscope(where: :firm_id) },
     class_name: "User", optional: true
-  # Create takes assigned_user_id from the client. #assign checks the firm
-  # itself; this covers the other door.
+  # Create and PATCH both resolve assigned_user_id through User.assignable_scope_for.
+  # This covers console / future write paths that skip that resolver.
   belongs_to_same_firm :assigned_user
 
   has_many :lead_typologies, dependent: :destroy
   has_many :typologies, through: :lead_typologies
+  has_many :lead_projects, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
   # A booking requires a lead (NOT NULL), so the lead cannot outlive it. Declared
   # here rather than relying on Firm's association order, which would make firm
   # deletion depend on where a line happens to sit.
@@ -51,6 +53,7 @@ class Lead < ApplicationRecord
 
   validate :budget_range_is_ordered
   validate :property_type_matches_transaction_type
+  validate :mobile_unique_per_transaction_type
 
   before_validation :normalise_contact_details
   before_validation :assign_code, on: :create
@@ -128,12 +131,19 @@ class Lead < ApplicationRecord
 
   def display_name = name.presence || Phone.format_for_display(mobile)
 
-  # Duplicates are allowed — the design's booking flow shows several leads on
-  # one number — so this informs rather than blocks.
+  # Same number, the other transaction type — sale and rent may coexist. Same
+  # type is refused (see #duplicate_on_mobile_and_type); this is informational.
   def possible_duplicates
     return self.class.none if mobile.blank?
 
     self.class.where(mobile:).where.not(id:).order(created_at: :desc)
+  end
+
+  # The other lead that occupies (firm, mobile, transaction_type), if any.
+  def duplicate_on_mobile_and_type
+    return if mobile.blank? || transaction_type.blank? || firm_id.blank?
+
+    self.class.unscoped.where(firm_id:, mobile:, transaction_type:).where.not(id:).first
   end
 
   private
@@ -162,6 +172,12 @@ class Lead < ApplicationRecord
     return if budget_min.blank? || budget_max.blank? || budget_max >= budget_min
 
     errors.add(:budget_max, "must be greater than or equal to the minimum budget")
+  end
+
+  def mobile_unique_per_transaction_type
+    return if duplicate_on_mobile_and_type.nil?
+
+    errors.add(:mobile, "already has a #{transaction_type} lead")
   end
 
   # The design asks for a property type on sale leads and drops the question

@@ -20,6 +20,7 @@ class Project < ApplicationRecord
 
   has_many :project_typologies, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :typologies, through: :project_typologies
+  has_many :lead_projects, -> { unscope(where: :firm_id) }, dependent: :destroy
 
   # Photos live on the detail screen, not the create form — the design is
   # explicit about that, so they arrive through their own endpoint.
@@ -34,6 +35,7 @@ class Project < ApplicationRecord
   validates :lng, numericality: { in: -180..180 }, allow_nil: true
   validate :has_a_possession_date_or_a_label
   validate :builder_is_available_to_this_firm
+  validate :name_unique_within_source
 
   scope :search, ->(term) {
     next all if term.blank?
@@ -98,5 +100,17 @@ class Project < ApplicationRecord
     return if builder.blank? || builder.global? || builder.firm_id == firm_id
 
     errors.add(:builder_id, "is not available to this firm")
+  end
+
+  # Unique case-insensitively inside own, and separately inside catalog. The
+  # same name may exist once in each list.
+  def name_unique_within_source
+    return if name.blank? || firm_id.blank? || source.blank?
+
+    clash = self.class.unscoped.where(firm_id:, source:)
+      .where("LOWER(name) = ?", name.to_s.downcase)
+    clash = clash.where.not(id:) if id.present?
+
+    errors.add(:name, "has already been taken") if clash.exists?
   end
 end

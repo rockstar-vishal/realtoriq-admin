@@ -5,15 +5,20 @@ module Leads
   # the opening row of its status history — so the dead-leads report can see
   # when a lead entered the pipeline, not only when it left.
   class Create
-    Result = Struct.new(:ok?, :lead, :errors, keyword_init: true)
+    Result = Struct.new(:ok?, :lead, :errors, :error_code, :error_message, :error_details,
+                        keyword_init: true)
 
     MAX_CODE_ATTEMPTS = 5
+    DUPLICATE_INDEX = "index_leads_on_firm_mobile_transaction_type"
 
-    def initialize(firm:, actor:, attributes:, typology_ids: [])
+    def initialize(firm:, actor:, attributes:, typology_ids: [],
+                   copy_project_typologies: false, project_id: nil)
       @firm = firm
       @actor = actor
       @attributes = attributes
       @typology_ids = Array(typology_ids).compact_blank
+      @copy_project_typologies = copy_project_typologies
+      @project_id = project_id.presence
     end
 
     def call
@@ -21,15 +26,21 @@ module Leads
       return failure_without_statuses if status.nil?
 
       lead = build(status)
+      apply_project_defaults(lead)
+      return duplicate_result(lead) if lead.duplicate_on_mobile_and_type
+
       attempts = 0
 
       begin
         Lead.transaction do
           lead.save!
           assign_typologies(lead)
+          map_source_project(lead)
           open_status_history(lead)
         end
-      rescue ActiveRecord::RecordNotUnique
+      rescue ActiveRecord::RecordNotUnique => e
+        return duplicate_result(lead) if e.message.include?(DUPLICATE_INDEX)
+
         attempts += 1
         raise if attempts >= MAX_CODE_ATTEMPTS
 
@@ -41,23 +52,69 @@ module Leads
 
       Result.new(ok?: true, lead:)
     rescue ActiveRecord::RecordInvalid => e
-      Result.new(ok?: false, lead: e.record, errors: e.record.errors)
+      record = e.record
+      return duplicate_result(record) if record.respond_to?(:duplicate_on_mobile_and_type) &&
+        record.duplicate_on_mobile_and_type
+
+      Result.new(ok?: false, lead: record, errors: record.errors)
     end
 
     private
 
-    attr_reader :firm, :actor, :attributes, :typology_ids
+    attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies, :project_id
 
     def build(status)
-      lead = Lead.new(attributes)
+      lead = Lead.new(attributes.except(:assigned_user_id, "assigned_user_id"))
       lead.firm = firm
       lead.lead_status ||= status
 
-      # An agent sees only leads assigned to them, so one they create unassigned
-      # would vanish the moment it saved. Managers may leave it unassigned.
-      lead.assigned_user_id ||= actor.id if actor.agent?
-
+      assign_owner(lead)
       lead
+    end
+
+    # Create may set an owner. Superadmin: any active user in the firm. Anyone
+    # else: active manageables. An agent with no assignee of their own is
+    # assigned to themselves, or the lead would vanish from their worklist.
+    def assign_owner(lead)
+      requested_id = attributes[:assigned_user_id].presence || attributes["assigned_user_id"].presence
+      if requested_id
+        assignee = User.assignable_scope_for(actor).find_by(id: requested_id)
+        if assignee.nil?
+          lead.errors.add(:assigned_user_id, "isn't assignable")
+          raise ActiveRecord::RecordInvalid, lead
+        end
+        lead.assigned_user = assignee
+      elsif actor.agent?
+        lead.assigned_user_id = actor.id
+      end
+    end
+
+    def source_project
+      return @source_project if defined?(@source_project)
+
+      @source_project = project_id.present? ? Project.find_by(id: project_id) : nil
+    end
+
+    # Copy only fields the project actually has, and only into blanks — the
+    # form wins when the broker filled something in.
+    def apply_project_defaults(lead)
+      return if project_id.blank?
+
+      if source_project.nil?
+        lead.errors.add(:project_id, "isn't one of this firm's records")
+        raise ActiveRecord::RecordInvalid, lead
+      end
+
+      if lead.budget_min.blank? && lead.budget_max.blank? && source_project.starting_budget.present?
+        lead.budget_min = source_project.starting_budget
+      end
+      lead.possession_by ||= source_project.possession_on
+      return if lead.notes.present?
+
+      lines = [ "Client's requirements" ]
+      location = [ source_project.locality&.name, source_project.city&.name ].compact_blank.join(", ")
+      lines << "Location: #{location}" if location.present?
+      lead.notes = lines.join("\n")
     end
 
     def default_status = LeadStatus.active.ordered.first
@@ -69,7 +126,25 @@ module Leads
     end
 
     def assign_typologies(lead)
-      typology_ids.each { |id| lead.lead_typologies.create!(typology_id: id) }
+      ids = typology_ids
+      ids = source_project.typology_ids if ids.empty? && copy_project_typologies && source_project
+      ids.each { |id| lead.lead_typologies.create!(typology_id: id) }
+    end
+
+    def map_source_project(lead)
+      return if source_project.nil?
+
+      lead.lead_projects.create!(project: source_project, firm:)
+    end
+
+    def duplicate_result(lead)
+      existing = lead.duplicate_on_mobile_and_type
+      Result.new(
+        ok?: false, lead:,
+        error_code: "duplicate_lead",
+        error_message: "A #{lead.transaction_type} lead already exists for this number.",
+        error_details: existing && { lead_id: existing.id, transaction_type: lead.transaction_type }
+      )
     end
 
     def open_status_history(lead)

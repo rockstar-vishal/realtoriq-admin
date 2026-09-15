@@ -93,6 +93,31 @@ RSpec.describe Booking do
     end
   end
 
+  describe "units" do
+    it "requires a unit number when a project is set" do
+      expect(build(:booking, firm:, project: create(:project, firm:), unit_no: nil)).not_to be_valid
+    end
+
+    it "allows a booking with no project and no unit" do
+      expect(build(:booking, firm:, project: nil, unit_no: nil)).to be_valid
+    end
+
+    it "refuses a second live booking of the same unit on a project" do
+      project = create(:project, firm:)
+      create(:booking, firm:, project:, unit_no: "B-1104")
+
+      expect(build(:booking, firm:, project:, unit_no: "B-1104")).not_to be_valid
+    end
+
+    it "frees the unit after cancel" do
+      project = create(:project, firm:)
+      booking = create(:booking, firm:, project:, unit_no: "B-1104")
+      booking.cancel!(reason: "Client withdrew")
+
+      expect(build(:booking, firm:, project:, unit_no: "B-1104")).to be_valid
+    end
+  end
+
   describe "cancelling" do
     it "requires a reason" do
       booking = create(:booking, firm:)

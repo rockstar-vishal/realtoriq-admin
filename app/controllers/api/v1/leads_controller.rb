@@ -3,8 +3,7 @@
 module Api
   module V1
     class LeadsController < AuthenticatedController
-      before_action :set_lead, only: %i[show update status assign]
-      before_action :require_manager, only: :assign
+      before_action :set_lead, only: %i[show update status matches]
 
       SORTS = {
         "worklist" => :as_worklist,
@@ -29,38 +28,62 @@ module Api
       def create
         result = ::Leads::Create.new(
           firm: current_firm, actor: current_user,
-          attributes: lead_params, typology_ids: params[:typology_ids]
+          attributes: lead_params, typology_ids: params[:typology_ids],
+          copy_project_typologies: !params.key?(:typology_ids),
+          project_id: params[:project_id]
         ).call
 
-        return render_validation_errors(result.errors) unless result.ok?
+        unless result.ok?
+          if result.error_code
+            return render_error(result.error_code, result.error_message,
+                                status: :unprocessable_content, details: result.error_details)
+          end
+
+          return render_validation_errors(result.errors)
+        end
 
         lead = result.lead
 
         render json: {
           lead: detail_payload(lead),
-          # Duplicates are allowed — the design shows several leads on one
-          # number — so this informs the app rather than blocking the save.
-          possible_duplicates: lead.possible_duplicates.limit(5).map { |d| LeadSerializer.list(d) }
+          # The other transaction type on this number, if any — same type is
+          # refused with duplicate_lead. Visibility-filtered so an agent does
+          # not learn about a lead they cannot open.
+          possible_duplicates: lead.possible_duplicates.visible_to(current_user)
+                                   .limit(5).map { |d| LeadSerializer.list(d) }
         }, status: :created
       end
 
       def update
         saved = false
+        assignment_error = nil
 
         # The whole update in one transaction. `replace_typologies` deletes the
         # join rows immediately, so before this a rejected save left the lead
         # with its preferred configurations already gone — a 422 that silently
         # destroyed data the caller never asked to change.
         @lead.transaction do
+          assignment_error = apply_assignment
+          raise ActiveRecord::Rollback if assignment_error
+
           @lead.assign_attributes(update_params)
           replace_typologies if params.key?(:typology_ids)
           saved = @lead.save
           raise ActiveRecord::Rollback unless saved
+
+          record_reassignment_audit if @assignment_changed
         end
 
-        return render_validation_errors(@lead.errors) unless saved
+        return render_assignment_error(assignment_error) if assignment_error
+        return render_lead_save_failure(@lead) unless saved
 
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
+      end
+
+      # LaunchIQ is not wired yet. Same shape the live feed will use, so the
+      # app can ship the empty state against a real endpoint.
+      def matches
+        render json: { matches: [] }, status: :ok
       end
 
       def status
@@ -79,23 +102,60 @@ module Api
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
       end
 
-      def assign
-        assignee = params[:assigned_user_id].presence &&
-          current_firm.users.active.find_by(id: params[:assigned_user_id])
+      private
 
-        if params[:assigned_user_id].present? && assignee.nil?
-          return render_error("unknown_user", "That user isn't in this firm.", status: :not_found)
+      # Superadmin: any active user in the firm. Anyone else: active manageables
+      # (always includes themselves). `null` unassigns and is manager-role+ only
+      # — an agent unassigning would hide the lead from every agent, including
+      # themselves.
+      def apply_assignment
+        return unless params.key?(:assigned_user_id)
+
+        raw = params[:assigned_user_id]
+        if raw.blank?
+          unless current_user.super_admin? || current_user.manager?
+            return { code: "forbidden_role", message: "Only a manager can unassign a lead.",
+                     status: :forbidden }
+          end
+
+          @assignment_changed = @lead.assigned_user_id.present?
+          @lead.assigned_user = nil
+          return
         end
 
-        @lead.update!(assigned_user: assignee)
-        AuditEvent.record!(subject: @lead, firm: current_firm, actor: current_user,
-                           action: "lead.reassigned",
-                           metadata: { to: assignee&.id })
+        assignee = User.assignable_scope_for(current_user).find_by(id: raw)
+        if assignee.nil?
+          return { code: "unknown_user", message: "That user isn't in this firm.", status: :not_found }
+        end
 
-        render json: { lead: detail_payload(@lead) }, status: :ok
+        @assignment_changed = @lead.assigned_user_id != assignee.id
+        @lead.assigned_user = assignee
+        nil
       end
 
-      private
+      def render_assignment_error(error)
+        render_error(error[:code], error[:message], status: error[:status])
+      end
+
+      def render_lead_save_failure(lead)
+        existing = lead.duplicate_on_mobile_and_type
+        if existing
+          return render_error(
+            "duplicate_lead",
+            "A #{lead.transaction_type} lead already exists for this number.",
+            status: :unprocessable_content,
+            details: { lead_id: existing.id, transaction_type: lead.transaction_type }
+          )
+        end
+
+        render_validation_errors(lead.errors)
+      end
+
+      def record_reassignment_audit
+        AuditEvent.record!(subject: @lead, firm: current_firm, actor: current_user,
+                           action: "lead.reassigned",
+                           metadata: { to: @lead.assigned_user_id })
+      end
 
       # Scoped twice on purpose: FirmScoped keeps other tenants out, visible_to
       # keeps other agents' pipelines out.
@@ -110,12 +170,6 @@ module Api
         # Not found rather than forbidden, for another firm's lead *and* another
         # agent's: a 403 would confirm the record exists.
         render_error("not_found", "Lead not found", status: :not_found)
-      end
-
-      def require_manager
-        return if current_user.super_admin? || current_user.manager?
-
-        render_error("forbidden_role", "Only a manager can reassign leads.", status: :forbidden)
       end
 
       def filtered_scope
@@ -142,13 +196,7 @@ module Api
         sort.is_a?(Symbol) ? scope.public_send(sort) : scope.instance_exec(&sort)
       end
 
-      def detail_payload(lead)
-        LeadSerializer.detail(
-          lead,
-          activities: lead.lead_activities.includes(:user).recent_first.limit(20),
-          status_history: lead.lead_status_changes.includes(:from_status, :to_status, :user).recent_first
-        )
-      end
+      def detail_payload(lead) = LeadSerializer.full_detail(lead)
 
       def replace_typologies
         @lead.lead_typologies.destroy_all
@@ -179,14 +227,11 @@ module Api
           :assigned_user_id, :next_action_at, :next_action_note, :notes
         )
       end
+      # project_id is create-only (copy + map). It is not a lead column.
 
-      # Update may not. Reassignment is manager-only and goes through #assign,
-      # which checks the role *and* that the target user is in this firm — and
-      # `assigned_user_id` sitting in this list let a plain PATCH do the same
-      # write with neither check. An agent could hand their own lead to anyone
-      # and lose sight of it, or unassign it and hide it from every agent.
-      #
-      # One column, one door.
+      # Reassignment is applied in #apply_assignment, which checks the
+      # assignable pool — not via assign_attributes, which used to write the
+      # column with neither a role check nor a firm check.
       def update_params = lead_params.except(:assigned_user_id)
     end
   end
