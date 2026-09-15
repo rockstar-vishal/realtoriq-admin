@@ -227,7 +227,7 @@ RSpec.describe "Tenancy isolation" do
 
     it "accepts its own project" do
       booking = build(:booking, firm: mine, lead: create(:lead, firm: mine),
-                                project: create(:project, firm: mine))
+                                project: create(:project, firm: mine), unit_no: "B-1104")
 
       expect(booking).to be_valid
     end
@@ -252,6 +252,45 @@ RSpec.describe "Tenancy isolation" do
     it "still allows no project and no assignee at all" do
       expect(build(:lead, firm: mine, assigned_user: nil)).to be_valid
       expect(build(:booking, firm: mine, lead: create(:lead, firm: mine), project: nil)).to be_valid
+    end
+
+    it "refuses another firm's project on a lead mapping" do
+      their_project = nil
+      Current.firm = theirs
+      their_project = create(:project, firm: theirs)
+      Current.firm = mine
+
+      mapping = build(:lead_project, firm: mine, lead: create(:lead, firm: mine),
+                                     project_id: their_project.id)
+
+      expect(mapping).not_to be_valid
+      expect(mapping.errors[:project_id]).to include("isn't one of this firm's records")
+    end
+
+    it "refuses another firm's user as a manager" do
+      Current.firm = theirs
+      their_boss = create(:user, :manager, firm: theirs)
+      Current.firm = mine
+      report = create(:user, firm: mine)
+
+      link = build(:user_manager, firm: mine, user: report, manager_id: their_boss.id)
+
+      expect(link).not_to be_valid
+      expect(link.errors[:manager_id]).to include("isn't one of this firm's records")
+    end
+  end
+
+  describe "the reporting graph associations" do
+    let(:firm) { create(:firm) }
+
+    it "needs unscoping when Current.firm is unset" do
+      boss = create(:user, :manager, firm:)
+      report = create(:user, firm:)
+      create(:user_manager, user: report, manager: boss, firm:)
+      Current.firm = nil
+
+      expect(report.managers).to eq([ boss ])
+      expect(boss.direct_reports).to eq([ report ])
     end
   end
 end

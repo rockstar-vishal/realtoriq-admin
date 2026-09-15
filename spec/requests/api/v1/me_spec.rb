@@ -29,6 +29,8 @@ RSpec.describe "API v1 authenticated endpoints" do
       expect(body.dig("firm", "code")).to eq(firm.code)
       expect(body.dig("subscription", "entitled")).to be(true)
       expect(body.dig("permissions", "verify_contact_channels")).to be(true)
+      expect(body.dig("permissions", "manage_users")).to be(true)
+      expect(body.dig("permissions", "manage_projects")).to be(true)
       expect(body.dig("limits", "devices")).to eq(3)
     end
 
@@ -38,6 +40,8 @@ RSpec.describe "API v1 authenticated endpoints" do
       get "/api/v1/me", headers: auth_headers(agent)
 
       expect(response.parsed_body.dig("permissions", "verify_contact_channels")).to be(false)
+      expect(response.parsed_body.dig("permissions", "manage_users")).to be(false)
+      expect(response.parsed_body.dig("permissions", "manage_projects")).to be(false)
     end
 
     it "rejects a request with no token" do

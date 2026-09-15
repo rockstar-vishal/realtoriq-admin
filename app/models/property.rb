@@ -13,6 +13,11 @@ class Property < ApplicationRecord
 
   belongs_to :building
   belongs_to :typology
+  belongs_to :created_by_user, -> { unscope(where: :firm_id) },
+    class_name: "User", optional: true
+  belongs_to_same_firm :created_by_user
+
+  has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
 
   has_many_attached :photos
 

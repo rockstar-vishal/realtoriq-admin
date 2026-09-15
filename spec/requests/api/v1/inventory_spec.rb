@@ -42,14 +42,20 @@ RSpec.describe "API v1 inventory" do
       expect(Builder.find_by(name: "Sethi Preferred").firm_id).to eq(firm.id)
     end
 
-    it "lets a firm add a name the platform already uses" do
-      # Otherwise a broker is blocked by a global row they can neither see the
-      # detail of nor edit.
+    it "refuses a name the platform already uses" do
       create(:builder, firm: nil, name: "Aurum Developers")
 
       post "/api/v1/builders", params: { name: "Aurum Developers" }, headers: auth, as: :json
 
-      expect(response).to have_http_status(:created)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "details", "name").join).to match(/master list/)
+    end
+
+    it "refuses an agent creating a builder" do
+      post "/api/v1/builders", params: { name: "Sethi Preferred" }, headers: auth(as: agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
     end
 
     it "refuses a duplicate within the same firm" do
@@ -89,6 +95,26 @@ RSpec.describe "API v1 inventory" do
       body = response.parsed_body["project"]
       expect(body["typologies"].size).to eq(1)
       expect(body["price_band"]).to eq("from" => 14_200_000, "to" => 14_200_000)
+      expect(body["city_id"]).to eq(city.id)
+      expect(body["locality_id"]).to eq(locality.id)
+    end
+
+    it "refuses an agent creating a project" do
+      post "/api/v1/projects", params: {
+        name: "Agent Vista", builder_id: builder.id, city_id: city.id,
+        starting_budget: 14_200_000, possession_label: "Ready"
+      }, headers: auth(as: agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
+    end
+
+    it "refuses a second own project with the same name, case-insensitively" do
+      create_project
+
+      create_project(name: "aurum vista")
+
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "marks anything created here as the firm's own, not catalog" do
@@ -101,6 +127,41 @@ RSpec.describe "API v1 inventory" do
       expect {
         create_project(typologies: [ { typology_id: SecureRandom.uuid, starting_price: 1 } ])
       }.not_to change { Project.across_firms.count }
+    end
+
+    def brochure_signed_id(upload: true)
+      post "/api/v1/uploads", params: {
+        purpose: "project_brochure", filename: "brochure.pdf",
+        byte_size: 11, checksum: "XrY7u+Ae7tCTyyK7j1rNww==", content_type: "application/pdf"
+      }, headers: auth, as: :json
+      signed_id = response.parsed_body["signed_id"]
+      if upload
+        blob = ActiveStorage::Blob.find_signed!(signed_id)
+        ActiveStorage::Blob.service.upload(blob.key, StringIO.new("hello world"))
+      end
+      signed_id
+    end
+
+    it "reports an unfinished brochure as a 422, not a 500" do
+      expect {
+        create_project(brochure_signed_id: brochure_signed_id(upload: false))
+      }.not_to change { Project.across_firms.count }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("upload_incomplete")
+    end
+
+    it "does not replace the brochure when the update is rejected" do
+      create_project(brochure_signed_id: brochure_signed_id)
+      id = response.parsed_body.dig("project", "id")
+      original = Project.across_firms.find(id).brochure.blob.id
+
+      patch "/api/v1/projects/#{id}",
+        params: { name: "", brochure_signed_id: brochure_signed_id },
+        headers: auth, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Project.across_firms.find(id).brochure.blob.id).to eq(original)
     end
 
     it "refuses another firm's private builder" do
@@ -122,6 +183,17 @@ RSpec.describe "API v1 inventory" do
       get "/api/v1/projects", params: { budget_min: 10_000_000 }, headers: auth
 
       expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
+    end
+
+    it "defaults to active projects, and status=all includes archived" do
+      create_project
+      create_project(name: "Old Park", status: "archived")
+
+      get "/api/v1/projects", headers: auth
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
+
+      get "/api/v1/projects", params: { status: "all" }, headers: auth
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to include("Aurum Vista", "Old Park")
     end
 
     it "omits brokerage from the shareable subset" do
@@ -150,6 +222,30 @@ RSpec.describe "API v1 inventory" do
       get "/api/v1/projects", headers: auth(as: agent)
 
       expect(response.parsed_body["projects"].size).to eq(1)
+    end
+
+    it "omits catalog projects from the list and from search" do
+      create_project
+      catalog = create(:project, :catalog, firm:, name: "LaunchIQ Heights", builder:, city:, locality:)
+
+      get "/api/v1/projects", headers: auth
+      expect(response.parsed_body["projects"].map { |p| p["id"] }).not_to include(catalog.id)
+
+      get "/api/v1/projects/search", params: { q: "LaunchIQ" }, headers: auth
+      expect(response.parsed_body["projects"].map { |p| p["id"] }).not_to include(catalog.id)
+
+      get "/api/v1/projects/#{catalog.id}", headers: auth
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("project", "source")).to eq("catalog")
+    end
+
+    it "refuses edits to a catalog project" do
+      catalog = create(:project, :catalog, firm:, name: "LaunchIQ Heights", builder:, city:, locality:)
+
+      patch "/api/v1/projects/#{catalog.id}", params: { name: "Renamed" }, headers: auth, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("catalog_readonly")
     end
   end
 
@@ -202,6 +298,17 @@ RSpec.describe "API v1 inventory" do
       expect(response).to have_http_status(:created)
       expect(body["title"]).to eq("2 BHK in #{locality.name}")
       expect(body["rate_per_sqft"]).to eq(17_101)
+      expect(body.dig("created_by", "id")).to eq(user.id)
+    end
+
+    it "lets an agent source a listing" do
+      post "/api/v1/properties", params: {
+        building_id: building.id, typology_id: typology.id, listing_for: "sale",
+        price: 11_800_000
+      }, headers: auth(as: agent), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body.dig("property", "created_by", "id")).to eq(agent.id)
     end
 
     describe "the confidential note" do
@@ -253,6 +360,18 @@ RSpec.describe "API v1 inventory" do
       get "/api/v1/properties", params: { price_max: 20_000_000 }, headers: auth
 
       expect(response.parsed_body["properties"].size).to eq(1)
+    end
+
+    it "defaults to available listings, and status=all returns every status" do
+      create_property
+      create_property(status: "closed")
+      closed_id = response.parsed_body.dig("property", "id")
+
+      get "/api/v1/properties", headers: auth
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).not_to include(closed_id)
+
+      get "/api/v1/properties", params: { status: "all" }, headers: auth
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).to include(closed_id)
     end
 
     it "filters by locality through the building" do
@@ -401,6 +520,30 @@ RSpec.describe "API v1 inventory" do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    it "refuses another firm's signed_id" do
+      other = create(:firm, status: :active)
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: StringIO.new("hello world"), filename: "photo.png", content_type: "image/png",
+        metadata: { "firm_id" => other.id, "purpose" => "property_photo" }
+      )
+
+      post "/api/v1/properties/#{property.id}/photos",
+        params: { photo_signed_ids: [ blob.signed_id ] }, headers: auth, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid_upload")
+      expect(property.reload.photos).to be_empty
+    end
+
+    it "refuses a ticket issued for a different purpose" do
+      post "/api/v1/properties/#{property.id}/photos",
+        params: { photo_signed_ids: [ signed_id_for(purpose: "project_photo") ] },
+        headers: auth, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid_upload")
+    end
   end
 
   describe "sorting" do
@@ -440,8 +583,8 @@ RSpec.describe "API v1 inventory" do
 
       # A correctness property worth holding on its own: walking every page
       # returns each project exactly once, duplicate names included.
-      it "pages through duplicate names without repeating or dropping any" do
-        4.times { create(:project, firm:, name: "Test") }
+      it "pages without repeating or dropping any project" do
+        4.times { |n| create(:project, firm:, name: "Test #{n}") }
         # across_firms: FirmScoped is fail-closed with no Current.firm in the spec
         # process, so a bare Project.where returns nothing.
         expected = Project.across_firms.where(firm:).pluck(:id)

@@ -28,6 +28,12 @@ FactoryBot.define do
     end
   end
 
+  factory :user_manager do
+    user { association :user }
+    manager { association :user, :manager, firm: user.firm }
+    firm { user.firm }
+  end
+
   factory :contact_channel do
     firm
     kind { :email }

@@ -49,6 +49,18 @@ class User < ApplicationRecord
   has_many :assigned_leads, -> { unscope(where: :firm_id) },
     class_name: "Lead", foreign_key: :assigned_user_id, inverse_of: :assigned_user
 
+  # Unscoped for the same reason as auth_sessions: the join key is not firm_id,
+  # so FirmScoped's fail-closed `firm_id IS NULL` would hide every row.
+  has_many :manager_links, -> { unscope(where: :firm_id) },
+    class_name: "UserManager", foreign_key: :user_id, inverse_of: :user, dependent: :destroy
+  has_many :managers, -> { unscope(where: :firm_id) },
+    through: :manager_links, source: :manager
+
+  has_many :report_links, -> { unscope(where: :firm_id) },
+    class_name: "UserManager", foreign_key: :manager_id, inverse_of: :manager, dependent: :destroy
+  has_many :direct_reports, -> { unscope(where: :firm_id) },
+    through: :report_links, source: :user
+
   before_validation :normalise_contact_details
 
   scope :active_first, -> { order(Arel.sql("CASE WHEN status = 'active' THEN 0 ELSE 1 END"), :name) }
@@ -75,6 +87,59 @@ class User < ApplicationRecord
   end
 
   def can_manage_firm_settings? = super_admin?
+
+  def can_manage_projects? = super_admin?
+
+  # Self plus everyone who reports to this user, directly or through others.
+  # One recursive query; calling this in a loop over users is the N+1 to avoid —
+  # list endpoints should call it once for the current user.
+  #
+  # `across_firms` plus an explicit firm_id, so this does not depend on
+  # Current.firm being set (console, cycle validation, services).
+  def manageables
+    ids = self.class.manageable_ids_for(self)
+    self.class.across_firms.where(id: ids, firm_id: firm_id)
+  end
+
+  def assignable_users
+    manageables.where(status: :active)
+  end
+
+  # Superadmin: every active user in the firm. Anyone else: active manageables,
+  # which always includes themselves.
+  def self.assignable_scope_for(actor)
+    return none if actor.nil?
+
+    actor.super_admin? ? actor.firm.users.where(status: :active) : actor.assignable_users
+  end
+
+  # Ids as strings so UUID comparisons against select_values stay consistent.
+  # The CTE carries a path array so a cycle that slipped past validation cannot
+  # loop the query; DISTINCT covers a person reachable down two managers.
+  def self.manageable_ids_for(user)
+    return [] if user&.id.blank? || user.firm_id.blank?
+
+    sql = sanitize_sql_array([ <<~SQL.squish, id: user.id, firm_id: user.firm_id ])
+      WITH RECURSIVE tree AS (
+        SELECT id, ARRAY[id]::uuid[] AS path
+        FROM users
+        WHERE id = :id AND firm_id = :firm_id
+        UNION ALL
+        SELECT child.id, array_append(tree.path, child.id)
+        FROM tree
+        INNER JOIN user_managers
+          ON user_managers.manager_id = tree.id
+          AND user_managers.firm_id = :firm_id
+        INNER JOIN users child
+          ON child.id = user_managers.user_id
+          AND child.firm_id = :firm_id
+        WHERE NOT child.id = ANY (tree.path)
+      )
+      SELECT DISTINCT id FROM tree
+    SQL
+
+    connection.select_values(sql).map(&:to_s)
+  end
 
   private
 

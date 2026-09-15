@@ -127,11 +127,25 @@ RSpec.describe Lead do
   end
 
   describe "#possible_duplicates" do
-    it "finds other leads on the same number, excluding itself" do
+    it "finds the other transaction type on the same number, excluding itself" do
       first = create(:lead, firm:, mobile: "9820144210")
-      second = create(:lead, firm:, mobile: "+919820144210")
+      second = create(:lead, :rent, firm:, mobile: "+919820144210")
 
       expect(second.possible_duplicates.pluck(:id)).to eq([ first.id ])
+    end
+  end
+
+  describe "uniqueness" do
+    it "refuses a second sale lead on the same number" do
+      create(:lead, firm:, mobile: "9820144210")
+
+      expect(build(:lead, firm:, mobile: "+919820144210")).not_to be_valid
+    end
+
+    it "allows sale and rent on the same number" do
+      create(:lead, firm:, mobile: "9820144210")
+
+      expect(build(:lead, :rent, firm:, mobile: "+919820144210")).to be_valid
     end
   end
 

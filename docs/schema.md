@@ -66,7 +66,8 @@ console session.
 | --- | --- |
 | `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. Logo via Active Storage. |
 | `firm_bank_accounts` | Printed on invoices the broker raises. `account_number` is encrypted (deterministic, so duplicates are still detectable). Partial unique index enforces one primary per firm. |
-| `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. |
+| `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. Disabled users still count toward `plans.max_users`. |
+| `user_managers` | Reporting graph, not a tree: `(user_id, manager_id)` with no cap on how many managers a person has. Superadmins are not stored here — they see the whole firm by default. Agents may be `manager_id`. Cycle-checked in the model; `User#manageables` walks the graph with a recursive CTE that carries a path array so a bad row cannot loop. |
 | `contact_channels` | The **firm's** email / mobile / WhatsApp, one of each. Users have no channels: the login code proves possession at sign-in, which is authentication, not channel verification. WhatsApp is its own row because a firm's WhatsApp Business number is often not its stated contact number. |
 | `one_time_codes` | Login and channel-verification codes, stored as bcrypt digests only. Deliberately **not** firm-scoped — a login code is created before we know who is signing in. |
 | `auth_sessions` | One row per signed-in device. Refresh token stored as a SHA-256 digest. This is what makes a JWT revokable. |
@@ -110,7 +111,10 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   a retry on collision. Brokers read these numbers to each other, so they are not
   random. The max is computed on the digits, not the string, or `L-9999` would
   outrank `L-10000` and start reissuing.
-- **`project_id` is not there yet** — it arrives with the inventory slice.
+- **One lead per `(firm_id, mobile, transaction_type)`.** Same number may exist
+  once as sale and once as rent. `notes` is the free-text requirements box.
+- **Mappings** live in `lead_projects` and `lead_properties` (many, kept after a
+  booking). There is no `leads.project_id`.
 
 Two behaviours worth knowing before writing a query:
 
@@ -129,7 +133,7 @@ lead an agent creates is auto-assigned to them.
 ### Inventory — **built**
 
 `builders` (extended), `projects`, `project_typologies`, `buildings`,
-`properties`. Columns are in the migrations; the rules that aren't obvious:
+`properties`, `lead_projects`, `lead_properties`. Columns are in the migrations; the rules that aren't obvious:
 
 - **`builders` now carries a nullable `firm_id`.** NULL is the platform's
   curated list; a value is one a broker added inline from the project form,
@@ -137,7 +141,13 @@ lead an agent creates is auto-assigned to them.
   fail-closed scope would hide exactly the global rows everyone should see — and
   the guard spec records the exemption. Uniqueness is two partial indexes,
   because Postgres treats NULLs as distinct and a plain `(firm_id, name)` index
-  would let the global list hold a name twice.
+  would let the global list hold a name twice. A firm may not create a name that
+  already sits on the master list.
+- **My Projects names** are unique case-insensitively per firm among `source =
+  own`. Catalog names are unique the same way among `source = catalog`. The same
+  name may exist once in each list. `GET /projects` lists own only.
+- **`properties.created_by_user_id`** is stamped on create (nullable on older
+  rows) and nullified if that user is deleted.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
   broker's typo must not reach every other firm's dropdown. The accepted cost is
   duplication across firms.
@@ -214,6 +224,10 @@ rather than only that it said no.
 - **`customer_name` / `customer_mobile` are snapshots** taken at booking time — correcting a lead
   a year later must not rewrite what was booked.
 - **Managers and super admins only.** Agents get `forbidden_role` on every booking endpoint.
+- **`unit_no` is required when `project_id` is set**, and unique among live rows
+  on `(project_id, unit_no)`. Cancel frees the unit.
+- Booking a **catalog** project copies required fields to an `own` row and stores
+  that id. A name clash with My Projects is `project_name_clash`.
 - Never sum totals over a scope carrying `includes(:invoices, :collections)` — it becomes a LEFT
   JOIN and counts a booking once per associated row, inflating revenue.
   `BookingsController#totals_for` re-selects by id for exactly that reason.

@@ -37,10 +37,20 @@ module Api
         return render_error("lead_required", "A booking needs a lead.", status: :unprocessable_content) if lead.nil?
 
         result = ::Bookings::Create.new(
-          firm: current_firm, actor: current_user, lead:, attributes: booking_params
+          firm: current_firm, actor: current_user, lead:,
+          attributes: booking_params,
+          use_existing: params[:use_existing],
+          new_name: params[:new_name]
         ).call
 
-        return render_validation_errors(result.errors) unless result.ok?
+        unless result.ok?
+          if result.error_code
+            return render_error(result.error_code, result.error_message,
+                                status: :unprocessable_content, details: result.details)
+          end
+
+          return render_validation_errors(result.errors)
+        end
 
         render json: { booking: BookingSerializer.detail(result.booking) }, status: :created
       end
@@ -59,7 +69,7 @@ module Api
         @booking.assign_attributes(booking_params)
         if (failure = would_strand_invoices?) then return failure end
 
-        return render_validation_errors(@booking.errors) unless @booking.save
+        return render_booking_save_failure(@booking) unless @booking.save
 
         render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :ok
       end
@@ -152,6 +162,19 @@ module Api
       def render_validation_errors(errors)
         render_error("invalid", errors.full_messages.to_sentence,
                      status: :unprocessable_content, details: errors.to_hash)
+      end
+
+      def render_booking_save_failure(booking)
+        if booking.errors.of_kind?(:unit_no, :taken)
+          return render_error(
+            "unit_taken",
+            "That unit is already booked on this project.",
+            status: :unprocessable_content,
+            details: { project_id: booking.project_id, unit_no: booking.unit_no }
+          )
+        end
+
+        render_validation_errors(booking.errors)
       end
 
       def per_page

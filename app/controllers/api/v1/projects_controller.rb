@@ -23,6 +23,8 @@ module Api
       include AttachesPhotos
 
       before_action :set_project, only: %i[show update add_photos remove_photo]
+      before_action :require_super_admin, only: %i[create update add_photos remove_photo]
+      before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo]
 
       def index
         scope = filtered_scope
@@ -69,7 +71,13 @@ module Api
           brochure_signed_id: params[:brochure_signed_id]
         ).call
 
-        return render_validation_errors(result.errors) unless result.ok?
+        unless result.ok?
+          if result.error_code
+            return render_error(result.error_code, result.error_message, status: :unprocessable_content)
+          end
+
+          return render_validation_errors(result.errors)
+        end
 
         render json: { project: ProjectSerializer.detail(result.project) }, status: :created
       end
@@ -77,9 +85,28 @@ module Api
       def update
         @project.assign_attributes(project_params)
         replace_typologies if params.key?(:typologies)
-        attach_brochure if params.key?(:brochure_signed_id)
 
-        return render_validation_errors(@project.errors) unless @project.save
+        # Accept (or decide to purge) *before* save, and only after the record
+        # is valid. Attaching first used to purge the brochure on a rejected
+        # PATCH — a failed validation destroyed the file.
+        brochure_blob = nil
+        if params.key?(:brochure_signed_id) && params[:brochure_signed_id].present?
+          accepted = Uploads::AcceptSignedId.new(
+            signed_id: params[:brochure_signed_id], firm: current_firm, purpose: "project_brochure"
+          ).call
+          unless accepted.ok?
+            return render_error(accepted.error_code, accepted.error_message, status: :unprocessable_content)
+          end
+
+          brochure_blob = accepted.blob
+        end
+
+        return render_validation_errors(@project.errors) unless @project.valid?
+
+        Project.transaction do
+          @project.save!
+          apply_brochure(brochure_blob) if params.key?(:brochure_signed_id)
+        end
 
         render json: { project: ProjectSerializer.detail(@project.reload) }, status: :ok
       end
@@ -87,7 +114,7 @@ module Api
       # Photos live on the detail screen rather than the create form — the
       # design says so explicitly, so they get their own endpoint.
       def add_photos
-        attach_photos(@project, params[:photo_signed_ids] || params[:signed_ids]) do
+        attach_photos(@project, params[:photo_signed_ids] || params[:signed_ids], purpose: "project_photo") do
           render json: { project: ProjectSerializer.detail(@project.reload) }, status: :created
         end
       end
@@ -113,7 +140,7 @@ module Api
       end
 
       def filtered_scope
-        scope = base_scope
+        scope = base_scope.from_own
           .search(params[:q])
           .possession_before(params[:possession_before])
           .budget_between(params[:budget_min], params[:budget_max])
@@ -122,13 +149,20 @@ module Api
         scope = scope.where(builder_id: params[:builder_id]) if params[:builder_id].present?
         scope = scope.where(city_id: params[:city_id]) if params[:city_id].present?
         scope = scope.where(locality_id: params[:locality_id]) if params[:locality_id].present?
-        scope = scope.where(status: params[:status].presence || "active")
+        scope = scope.where(status: params[:status].presence || "active") unless params[:status].to_s == "all"
 
         apply_sort(scope)
       end
 
       def apply_sort(scope)
         scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
+      end
+
+      def reject_catalog_mutation
+        return unless @project.from_catalog?
+
+        render_error("catalog_readonly", "Catalog projects cannot be edited.",
+                     status: :unprocessable_content)
       end
 
       def replace_typologies
@@ -139,11 +173,8 @@ module Api
         end
       end
 
-      def attach_brochure
-        signed_id = params[:brochure_signed_id]
-        signed_id.present? ? @project.brochure.attach(signed_id) : @project.brochure.purge_later
-      rescue ActiveSupport::MessageVerifier::InvalidSignature
-        @project.errors.add(:brochure, "isn't a valid upload")
+      def apply_brochure(blob)
+        blob.present? ? @project.brochure.attach(blob) : @project.brochure.purge_later
       end
 
       def render_validation_errors(errors)

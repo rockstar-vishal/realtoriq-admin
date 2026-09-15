@@ -12,7 +12,9 @@ module Api
             source: project.source,
             builder: project.builder && { id: project.builder_id, name: project.builder.name },
             city: project.city&.name,
+            city_id: project.city_id,
             locality: project.locality&.name,
+            locality_id: project.locality_id,
             starting_budget: project.starting_budget,
             # Derived from the typologies, never stored — a stored band can end
             # up disagreeing with the rows it came from.
@@ -49,9 +51,8 @@ module Api
         # One row of typeahead results — what the row shows and nothing more.
         # The full project is one tap away at GET /projects/:id.
         #
-        # `source` is there for later: projects are `own` today, and when the
-        # LaunchIQ catalog is searched too the app can tell a catalog hit from
-        # the firm's own without a contract change.
+        # `source` is `own` on this endpoint: catalog rows are not searchable.
+        # Matches arrive through POST /leads/:id/matches.
         def search_hit(project)
           {
             id: project.id,
@@ -60,7 +61,9 @@ module Api
             source: project.source,
             builder: project.builder && { id: project.builder_id, name: project.builder.name },
             locality: project.locality&.name,
-            city: project.city&.name
+            locality_id: project.locality_id,
+            city: project.city&.name,
+            city_id: project.city_id
           }
         end
 

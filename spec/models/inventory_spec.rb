@@ -57,6 +57,20 @@ RSpec.describe "Inventory models" do
       end
     end
 
+    describe "name uniqueness" do
+      it "refuses a second own project with the same name" do
+        create(:project, firm:, name: "Aurum Vista")
+
+        expect(build(:project, firm:, name: "aurum vista")).not_to be_valid
+      end
+
+      it "allows the same name on the catalog list" do
+        create(:project, firm:, name: "Aurum Vista")
+
+        expect(build(:project, :catalog, firm:, name: "Aurum Vista")).to be_valid
+      end
+    end
+
     describe "builders" do
       it "accepts a global builder" do
         expect(build(:project, firm:, builder: create(:builder, firm: nil))).to be_valid
@@ -160,6 +174,14 @@ RSpec.describe "Inventory models" do
 
     it "rejects a floor band it doesn't recognise" do
       expect(build(:property, firm:, floor_band: "penthouse-ish")).not_to be_valid
+    end
+  end
+
+  describe Builder do
+    it "refuses a firm-owned name that already sits on the master list" do
+      create(:builder, firm: nil, name: "Lodha Group")
+
+      expect(build(:builder, firm:, name: "lodha group")).not_to be_valid
     end
   end
 

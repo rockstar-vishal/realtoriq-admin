@@ -11,7 +11,14 @@ module Api
           firm: current_firm, slot: params[:slot], label: params[:label],
           uploaded_by_user: current_user
         )
-        document.file.attach(params.require(:signed_id))
+        accepted = Uploads::AcceptSignedId.new(
+          signed_id: params.require(:signed_id), firm: current_firm, purpose: "booking_document"
+        ).call
+        unless accepted.ok?
+          return render_error(accepted.error_code, accepted.error_message, status: :unprocessable_content)
+        end
+
+        document.file.attach(accepted.blob)
 
         unless document.save
           return render_error("invalid", document.errors.full_messages.to_sentence,
@@ -19,8 +26,6 @@ module Api
         end
 
         render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :created
-      rescue ActiveSupport::MessageVerifier::InvalidSignature
-        render_error("invalid_upload", "That isn't a valid upload.", status: :unprocessable_content)
       rescue ActiveRecord::RecordNotUnique
         # One file per named slot; only "Others" repeats.
         render_error("slot_taken", "That slot already has a document. Remove it first.",

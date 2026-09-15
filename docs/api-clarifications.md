@@ -132,32 +132,17 @@ This unblocks §3.4, §4.3 and §5.3 together — they were all the same bug.
 
 ## 🔨 #12 — "List users" endpoint for the reassignment picker
 
-**Correct, it does not exist.** There is no `/api/v1/users` route of any kind —
-`GET /api/v1/users` is a 404 today.
+**Built.** `GET /api/v1/users` returns `{ users: [ { id, name, role, mobile, email, status, active, managers } ] }`.
 
-`/me` returns only the signed-in user, so there is genuinely no way to populate
-that dropdown. This needs building; it's small. Proposed:
+- Super admin: the whole firm, including disabled.
+- Anyone else: active manageables (themselves plus reports).
+- No `avatar` — users have no image field.
 
-```
-GET /api/v1/users        → { users: [ { id, name, role, mobile, active } ] }
-```
+Reassignment is `PATCH /api/v1/leads/:id` with `assigned_user_id`. There is no
+`POST /leads/:id/assign`. `assigned_user_id: null` unassigns (manager-role+
+only) and hides the lead from every agent.
 
-Firm-scoped implicitly (the JWT carries the firm), manager+ only, matching the
-role guard already on `assign`. **Confirm you want `avatar`** — users have no
-image field today, so that's a migration rather than a serializer line.
-
-### Also: your reassign example uses the wrong verb
-
-Your document shows `PATCH /api/v1/leads/{lead_id}/assign`. The route is **POST**:
-
-```
-PATCH → 404
-POST  → 200
-```
-
-Body and behaviour are as you have them. `assigned_user_id: null` unassigns —
-which hides the lead from every agent, since agents only see leads assigned to
-them.
+See `docs/api.md` § Users.
 
 ---
 
@@ -317,7 +302,7 @@ page (§3.1) is blocked on the same work.
 ## Suggested order
 
 1. **Deploy** — the CORS fix and `GET /dashboard` are both waiting on it
-2. **`GET /users`** — half a day, unblocks the reassign picker
+2. **`GET /users`** — built; see `docs/api.md` § Users
 3. **Reports** — designed, sizeable, the biggest remaining chunk
 4. **Map Lead / New Matches** — needs a scoring-rules design pass first
 5. **Notifications / push** — its own project
@@ -330,7 +315,8 @@ Items 4, 5, 6.c, 11, 13, 15, 17, 19, 20 and 21 need no work — they're answered
 
 Three things in the document would have cost the team time:
 
-1. `PATCH /leads/{id}/assign` → **POST**
+1. Reassignment is `PATCH /leads/:id` with `assigned_user_id`. There is no
+   `/assign` path.
 2. Booking documents take **`signed_id`** (singular), not `signed_ids: [...]`
 3. Lead statuses are `new/hot/followup/visit_planned/negotiation/booked/dead` —
    **no Warm or Cold**. Drive the filter chips from `GET /reference`

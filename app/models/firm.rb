@@ -12,9 +12,16 @@ class Firm < ApplicationRecord
   belongs_to :city, optional: true
   belongs_to :locality, optional: true
 
+  # Join rows first: a user destroy would otherwise hit RESTRICT on this table
+  # if the association order ran the other way.
+  has_many :user_managers, dependent: :destroy
   has_many :users, dependent: :destroy
   has_many :contact_channels, dependent: :destroy
   has_many :firm_bank_accounts, dependent: :destroy
+  # Join rows before the records they point at, so firm delete does not hit
+  # restrict on lead_projects.project_id / lead_properties.property_id.
+  has_many :lead_projects, dependent: :destroy
+  has_many :lead_properties, dependent: :destroy
   has_many :leads, dependent: :destroy
   has_many :bookings, dependent: :destroy
   has_many :projects, dependent: :destroy

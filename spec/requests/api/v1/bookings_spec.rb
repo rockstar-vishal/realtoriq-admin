@@ -91,7 +91,83 @@ RSpec.describe "API v1 bookings" do
       headers = auth
       create_booking(headers)
 
-      expect { create_booking(headers) }.to change { Booking.across_firms.count }.by(1)
+      expect { create_booking(headers, unit_no: "B-1105") }.to change { Booking.across_firms.count }.by(1)
+    end
+
+    it "requires a unit number when a project is chosen" do
+      project = create(:project, firm:)
+
+      create_booking(auth, project_id: project.id, unit_no: nil)
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "refuses a second live booking of the same unit on a project" do
+      project = create(:project, firm:)
+      headers = auth
+      create_booking(headers, project_id: project.id, unit_no: "B-1104")
+      expect(response).to have_http_status(:created)
+
+      create_booking(headers, project_id: project.id, unit_no: "B-1104", lead_id: create(:lead, firm:).id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("unit_taken")
+    end
+
+    it "frees the unit when the live booking is cancelled" do
+      project = create(:project, firm:)
+      headers = auth
+      create_booking(headers, project_id: project.id, unit_no: "B-1104")
+      id = response.parsed_body.dig("booking", "id")
+
+      post "/api/v1/bookings/#{id}/cancel", params: { reason: "Client withdrew" },
+        headers: headers, as: :json
+
+      create_booking(headers, project_id: project.id, unit_no: "B-1104", lead_id: create(:lead, firm:).id)
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it "copies a catalog project into My Projects on booking" do
+      catalog = create(:project, :catalog, firm:, name: "LaunchIQ Heights")
+      headers = auth
+      create_booking(headers, project_id: catalog.id, unit_no: "A-101")
+
+      expect(response).to have_http_status(:created)
+      booked_project_id = response.parsed_body.dig("booking", "project", "id")
+      expect(booked_project_id).not_to eq(catalog.id)
+      own = Project.across_firms.find(booked_project_id)
+      expect(own.source).to eq("own")
+      expect(own.name).to eq("LaunchIQ Heights")
+    end
+
+    it "asks the client to choose when My Projects already has that catalog name" do
+      catalog = create(:project, :catalog, firm:, name: "Shared Name")
+      existing = create(:project, firm:, name: "Shared Name")
+      headers = auth
+      create_booking(headers, project_id: catalog.id, unit_no: "A-101")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("project_name_clash")
+      expect(response.parsed_body.dig("error", "details", "existing_project_id")).to eq(existing.id)
+
+      create_booking(headers, project_id: catalog.id, unit_no: "A-101", use_existing: true)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body.dig("booking", "project", "id")).to eq(existing.id)
+    end
+
+    it "copies under a new name when the client sends one" do
+      catalog = create(:project, :catalog, firm:, name: "Shared Name")
+      create(:project, firm:, name: "Shared Name")
+      headers = auth
+      create_booking(headers, project_id: catalog.id, unit_no: "A-101",
+                              new_name: "Shared Name (Marketplace)")
+
+      expect(response).to have_http_status(:created)
+      own = Project.across_firms.find(response.parsed_body.dig("booking", "project", "id"))
+      expect(own.source).to eq("own")
+      expect(own.name).to eq("Shared Name (Marketplace)")
     end
   end
 
@@ -216,6 +292,22 @@ RSpec.describe "API v1 bookings" do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    it "reports an unfinished proof as a 422, not a 500" do
+      raise_invoice("INV-1", 400_000)
+      post "/api/v1/uploads", params: {
+        purpose: "collection_proof", filename: "proof.png",
+        byte_size: 11, checksum: "XrY7u+Ae7tCTyyK7j1rNww==", content_type: "image/png"
+      }, headers: headers, as: :json
+
+      post "/api/v1/bookings/#{booking_id}/collections",
+        params: { received_on: "2026-08-18", amount: 1, mode: "cash",
+                  proof_signed_id: response.parsed_body["signed_id"] },
+        headers: headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("upload_incomplete")
+    end
   end
 
   describe "cancelling" do
@@ -271,6 +363,16 @@ RSpec.describe "API v1 bookings" do
       get "/api/v1/bookings", headers: headers
 
       expect(response.parsed_body.dig("meta", "total_count")).to eq(1)
+    end
+
+    it "finds a booking by project name" do
+      headers = auth
+      project = create(:project, firm:, name: "Marina Bay")
+      create_booking(headers, project_id: project.id)
+
+      get "/api/v1/bookings", params: { q: "Marina" }, headers: headers
+
+      expect(response.parsed_body["bookings"].map { |b| b.dig("project", "name") }).to eq([ "Marina Bay" ])
     end
 
     it "does not inflate totals when a booking has invoices and collections" do

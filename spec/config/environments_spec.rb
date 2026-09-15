@@ -21,7 +21,7 @@ RSpec.describe "Environment guarantees" do
     origins = configured.to_s.split(",").map(&:strip).compact_blank
     return origins if origins.any?
 
-    [ env == "staging" ? "*" : "http://localhost:5173" ]
+    env == "staging" ? [ "*" ] : %w[http://localhost:3000 http://127.0.0.1:3000]
   end
 
   around do |example|
@@ -163,6 +163,7 @@ RSpec.describe "Environment guarantees" do
       source = Rails.root.join("config/initializers/cors.rb").read
 
       expect(source).to include('resource "/rails/active_storage/*"')
+      expect(source).to include("http://localhost:3000")
     end
 
     it "never sends credentials, which is what keeps the wildcard safe" do
@@ -172,6 +173,23 @@ RSpec.describe "Environment guarantees" do
       source = Rails.root.join("config/initializers/cors.rb").read
 
       expect(source).not_to match(/credentials:\s*true/)
+    end
+  end
+
+  describe "parameter logging" do
+    it "redacts the sign-in code, which is named code not otp" do
+      filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+
+      expect(filter.filter("code" => "888888")["code"]).to eq("[FILTERED]")
+    end
+  end
+
+  describe "TRUSTED_PROXIES" do
+    it "is wired so a public BFF address can be trusted for X-Forwarded-For" do
+      source = Rails.root.join("config/application.rb").read
+
+      expect(source).to include("TRUSTED_PROXIES")
+      expect(source).to include("trusted_proxies")
     end
   end
 

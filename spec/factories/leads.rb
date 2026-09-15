@@ -92,6 +92,11 @@ FactoryBot.define do
     city
     starting_budget { 14_200_000 }
     possession_on { 18.months.from_now.to_date }
+
+    trait :catalog do
+      source { "catalog" }
+      sequence(:external_ref) { |n| "launchiq-#{n}" }
+    end
   end
 
   factory :property do
@@ -146,5 +151,17 @@ FactoryBot.define do
     received_on { Date.current }
     amount { 50_000 }
     mode { "neft_rtgs" }
+  end
+
+  factory :lead_project do
+    lead { association :lead }
+    firm { lead.firm }
+    project { association :project, firm: lead.firm }
+  end
+
+  factory :lead_property do
+    lead { association :lead }
+    firm { lead.firm }
+    property { association :property, firm: lead.firm }
   end
 end

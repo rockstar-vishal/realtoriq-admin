@@ -41,7 +41,17 @@ module Bookings
         collection = booking.collections.new(attributes)
         collection.firm = booking.firm
         collection.invoice = invoice
-        collection.proof.attach(proof_signed_id) if proof_signed_id.present?
+        if proof_signed_id.present?
+          accepted = Uploads::AcceptSignedId.new(
+            signed_id: proof_signed_id, firm: booking.firm, purpose: "collection_proof"
+          ).call
+          unless accepted.ok?
+            return Result.new(ok?: false, error_code: accepted.error_code,
+                              error_message: accepted.error_message)
+          end
+
+          collection.proof.attach(accepted.blob)
+        end
         collection.save!
 
         AuditEvent.record!(subject: collection, firm: booking.firm, actor:,
@@ -52,9 +62,6 @@ module Bookings
     rescue ActiveRecord::RecordInvalid => e
       Result.new(ok?: false, collection: e.record, error_code: "invalid",
                  error_message: e.record.errors.full_messages.to_sentence)
-    rescue ActiveSupport::MessageVerifier::InvalidSignature
-      Result.new(ok?: false, error_code: "invalid_upload",
-                 error_message: "That attachment isn't a valid upload.")
     end
 
     private

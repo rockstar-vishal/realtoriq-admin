@@ -106,7 +106,7 @@ module Inventory
     def searchable_length = query.scan(SEARCHABLE).size
 
     def base
-      Project.includes(:builder, :city, :locality).where(status: "active")
+      Project.includes(:builder, :city, :locality).from_own.where(status: "active")
     end
 
     def literal_matches

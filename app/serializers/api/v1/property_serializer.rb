@@ -26,6 +26,7 @@ module Api
             building: building_summary(property.building),
             cover_photo_url: photo_urls(property).first,
             photo_count: property.photos.attachments.size,
+            created_by: named_user(property.created_by_user),
             created_at: property.created_at
             # confidential_note is deliberately absent.
           }
@@ -75,6 +76,12 @@ module Api
             id: building.id, name: building.name,
             locality: building.locality&.name, city: building.city&.name
           }
+        end
+
+        def named_user(user)
+          return nil if user.nil?
+
+          { id: user.id, name: user.name }
         end
 
         def building_detail(building)
