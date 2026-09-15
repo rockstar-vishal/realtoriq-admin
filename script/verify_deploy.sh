@@ -139,7 +139,7 @@ rid=$(curl -s -X POST "$API/auth/otp" -H 'Content-Type: application/json' -d "{\
 json="{\"request_id\":\"$rid\",\"code\":\"888888\",\"device\":\"iPhone 15\"}"
 check "sign-in survives a device sent as a string" 200 "$(request POST /auth/verify '' "$json")"
 
-# An agent must not reassign through PATCH what POST /assign refuses.
+# Agents cannot reassign; PATCH assigned_user_id is manager-role+ only.
 request GET '/leads?per_page=1' "$AG" >/dev/null; AG_LEAD=$(field '.leads[0].id // empty')
 if [ -n "$AG_LEAD" ]; then
   request PATCH "/leads/$AG_LEAD" "$AG" "{\"assigned_user_id\":\"$MGR_ID\"}" >/dev/null
@@ -148,7 +148,7 @@ if [ -n "$AG_LEAD" ]; then
     ok "an agent cannot reassign a lead through PATCH"
   else
     bad "an agent cannot reassign a lead through PATCH" "the lead moved — putting it back"
-    request POST "/leads/$AG_LEAD/assign" "$SA" "{\"assigned_user_id\":\"$AG_ID\"}" >/dev/null
+    request PATCH "/leads/$AG_LEAD" "$SA" "{\"assigned_user_id\":\"$AG_ID\"}" >/dev/null
   fi
 else
   skipped "an agent cannot reassign a lead through PATCH" "the agent has no leads"
@@ -189,8 +189,10 @@ if [ -n "$OTHER" ]; then
 
   MOBILE="98$(date +%s | cut -c3-10)"
   request POST /leads "$SA" "{\"mobile\":\"$MOBILE\",\"transaction_type\":\"rent\",\"assigned_user_id\":\"$OTHER_ID\"}" >/dev/null
+  # Assignable-scope fails closed for another firm's user the same way it does
+  # for someone this actor cannot manage. The row is never attached.
   check "a lead cannot be assigned to another firm's user" \
-    "isn't one of this firm's records" "$(field '.error.details.assigned_user_id[0] // "accepted"')"
+    "isn't assignable" "$(field '.error.details.assigned_user_id[0] // "accepted"')"
 else
   skipped "cross-tenant checks" "no second firm at $OTHER_FIRM_OWNER"
 fi
@@ -239,7 +241,7 @@ else
   check "a RERA number pasted with a trailing non-breaking space matches" 1 "$(in_ids "$KALP")"
 
   request GET "/projects/search?q=P$TAG" "$SA" >/dev/null
-  check "a result is slim" '["builder","city","id","locality","name","rera_number","source"]' \
+  check "a result is slim" '["builder","city","city_id","id","locality","locality_id","name","rera_number","source"]' \
     "$(field '.projects[0] | keys | tostring')"
 
   request GET '/projects?sort=recent&per_page=1' "$SA" >/dev/null
