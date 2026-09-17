@@ -98,6 +98,14 @@ RSpec.describe Booking do
       expect(build(:booking, firm:, project: create(:project, firm:), unit_no: nil)).not_to be_valid
     end
 
+    it "can cancel a legacy row that has a project and no unit" do
+      booking = create(:booking, firm:, project: create(:project, firm:), unit_no: "TEMP")
+      booking.update_columns(unit_no: nil)
+
+      expect { booking.cancel!(reason: "Client withdrew") }.not_to raise_error
+      expect(booking.reload).to be_cancelled
+    end
+
     it "allows a booking with no project and no unit" do
       expect(build(:booking, firm:, project: nil, unit_no: nil)).to be_valid
     end

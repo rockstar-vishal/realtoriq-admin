@@ -35,6 +35,10 @@ module Api
 
       rescue_from ActiveRecord::RecordNotFound, with: :not_found
       rescue_from ActionController::ParameterMissing, with: :parameter_missing
+      # RecordInvalid maps to 422 in Rails. This app is not api_only, so the
+      # exception app would serve public/422.html whenever Accept isn't JSON
+      # (Yash's client sent `Accept: /`). Keep the envelope even then.
+      rescue_from ActiveRecord::RecordInvalid, with: :record_invalid
 
       before_action :remove_null_bytes
       before_action :set_request_context
@@ -97,6 +101,12 @@ module Api
 
       def parameter_missing(exception)
         render_error("invalid_request", "Missing parameter: #{exception.param}", status: :bad_request)
+      end
+
+      def record_invalid(exception)
+        errors = exception.record.errors
+        render_error("invalid", errors.full_messages.to_sentence,
+                     status: :unprocessable_content, details: errors.to_hash)
       end
 
       def pagination_meta(pagy)
