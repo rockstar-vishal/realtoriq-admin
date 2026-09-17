@@ -800,7 +800,7 @@ The third is what catches a payment filed against the wrong invoice.
 
 ### Cancelling
 
-`POST /bookings/:id/cancel` with a **required** `reason` (`422 reason_required`).
+`POST /bookings/:id/cancel` with a **required** `reason` (`422 reason_required`). Always JSON — a 422 is `{ "error": { "code", "message", "details" } }`, never Rails' HTML `public/422.html`.
 
 - Sets status to `cancelled` and **nothing else**. Invoices already raised stay
   on record.

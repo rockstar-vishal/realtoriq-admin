@@ -350,6 +350,41 @@ RSpec.describe "API v1 bookings" do
 
       expect(response.parsed_body.dig("error", "code")).to eq("already_cancelled")
     end
+
+    it "cancels a live booking that has a project and no unit_no" do
+      project = create(:project, firm:)
+      booking = create(:booking, firm:, lead:, project:, unit_no: "TEMP")
+      booking.update_columns(unit_no: nil)
+
+      post "/api/v1/bookings/#{booking.id}/cancel",
+        params: { reason: "TEst" },
+        headers: headers.merge("Accept" => "text/html"),
+        as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/json")
+      expect(response.parsed_body.dig("booking", "status")).to eq("cancelled")
+    end
+
+    it "returns the JSON envelope, not public/422.html, when cancel raises RecordInvalid" do
+      create_booking(headers)
+      id = response.parsed_body.dig("booking", "id")
+      booking = Booking.across_firms.find(id)
+      allow_any_instance_of(Booking).to receive(:cancel!).and_wrap_original do
+        booking.errors.add(:unit_no, :blank)
+        raise ActiveRecord::RecordInvalid, booking
+      end
+
+      post "/api/v1/bookings/#{id}/cancel",
+        params: { reason: "TEst" },
+        headers: headers.merge("Accept" => "text/html"),
+        as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.media_type).to eq("application/json")
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid")
+      expect(response.body).not_to include("The change you wanted was rejected")
+    end
   end
 
   describe "GET /bookings" do

@@ -39,7 +39,10 @@ class Booking < ApplicationRecord
   validates :client_paid_percent,
     numericality: { in: 0..100, only_integer: true }, allow_nil: true
   validates :cancellation_reason, presence: true, if: :cancelled?
-  validates :unit_no, presence: true, if: -> { project_id.present? }
+  # Live bookings only: a cancelled row is history, including ones created
+  # before unit_no was required. Re-validating it on cancel would 422 (and
+  # Rails would serve public/422.html to a non-JSON Accept header).
+  validates :unit_no, presence: true, if: -> { live? && project_id.present? }
   validates :unit_no, uniqueness: {
     scope: :project_id,
     conditions: -> { where(status: "live") },
@@ -109,7 +112,10 @@ class Booking < ApplicationRecord
   def registration_done? = registration_done_on.present?
 
   def cancel!(reason:, actor: nil)
-    update!(status: :cancelled, cancelled_at: Time.current, cancellation_reason: reason)
+    assign_attributes(status: :cancelled, cancelled_at: Time.current, cancellation_reason: reason)
+    # Cancel is a status change. Staging still has live rows that would fail
+    # today's validations (project set, unit_no blank). Those must still cancel.
+    save!(validate: false)
 
     AuditEvent.record!(subject: self, firm:, actor:, action: "booking.cancelled",
                        metadata: { reason: })
