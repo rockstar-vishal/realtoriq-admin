@@ -10,6 +10,18 @@ FactoryBot.define do
       sort_order { 0 }
     end
 
+    trait :hot do
+      name { "Hot" }
+    end
+
+    trait :visit_planned do
+      name { "Visit planned" }
+    end
+
+    trait :negotiation do
+      name { "Negotiation" }
+    end
+
     trait :dead do
       name { "Dead" }
       is_dead { true }
@@ -44,13 +56,13 @@ FactoryBot.define do
     sequence(:mobile) { |n| "+9198#{format('%08d', 70_000_000 + n)}" }
     transaction_type { "sale" }
     property_type
-    budget_min { 10_000_000 }
+    budget_min { nil }
     budget_max { 15_000_000 }
 
     trait :rent do
       transaction_type { "rent" }
       property_type { nil }
-      budget_min { 50_000 }
+      budget_min { nil }
       budget_max { 70_000 }
     end
 

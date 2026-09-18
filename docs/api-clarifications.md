@@ -7,6 +7,13 @@ answer was checked against the routing table, not from memory.
 **Full parameter-level reference: [docs/api.md](api.md).** Most of section 3–6
 is answered there in more detail than this document repeats.
 
+> **18 Sep 2026 — lead / project / property list contract moved.** Write a
+> single `budget` (not `budget_min`/`budget_max`). GET budget params are a
+> filter window, not overlap. Default lead sort is NCD, not worklist. Property
+> statuses are `available` · `booked` · `sold_out`. Drawer filters drop `q`.
+> The broker-app screen guide is [`frontend/YASH.md`](../../frontend/YASH.md).
+> Treat `api.md` as current; several tables below are the 10 Sep snapshot.
+
 ## Summary
 
 | | Count | |

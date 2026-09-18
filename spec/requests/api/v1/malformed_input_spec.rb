@@ -118,7 +118,7 @@ RSpec.describe "API v1 malformed input" do
       headers = auth
       typology = create(:typology)
 
-      %w[worklist recent updated].each do |sort|
+      %w[ncd worklist recent updated].each do |sort|
         get "/api/v1/leads", params: { typology_ids: [ typology.id ], sort: }, headers: headers
         expect(response).to have_http_status(:ok), "sort=#{sort} returned #{response.status}"
       end

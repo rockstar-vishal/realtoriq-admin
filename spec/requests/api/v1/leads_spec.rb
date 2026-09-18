@@ -25,7 +25,7 @@ RSpec.describe "API v1 leads" do
   def valid_attributes(overrides = {})
     {
       name: "Rhea Kapoor", mobile: "98201 44210", transaction_type: "sale",
-      property_type_id: property_type.id, budget_min: 12_000_000, budget_max: 16_000_000
+      property_type_id: property_type.id, budget: 16_000_000
     }.merge(overrides)
   end
 
@@ -47,6 +47,21 @@ RSpec.describe "API v1 leads" do
       # The opening row exists so the dead-leads report can see when the lead
       # entered the pipeline, not only when it left.
       expect(body.dig("lead", "status_history").size).to eq(1)
+      expect(body.dig("lead", "budget")).to eq(16_000_000)
+      expect(body.dig("lead", "budget_max")).to eq(16_000_000)
+      expect(body.dig("lead", "budget_min")).to be_nil
+    end
+
+    it "ignores budget_min on write" do
+      post "/api/v1/leads",
+        params: valid_attributes.except(:budget).merge(budget_min: 12_000_000, budget_max: 18_000_000),
+        headers: auth(manager), as: :json
+
+      body = response.parsed_body["lead"]
+      expect(response).to have_http_status(:created)
+      expect(body["budget"]).to be_nil
+      expect(body["budget_min"]).to be_nil
+      expect(body["budget_max"]).to be_nil
     end
 
     it "normalises the mobile" do
@@ -151,12 +166,14 @@ RSpec.describe "API v1 leads" do
         locality: create(:locality, name: "Kolshet"))
 
       post "/api/v1/leads",
-        params: valid_attributes(project_id: project.id, budget_min: nil, budget_max: nil, notes: nil),
+        params: valid_attributes(project_id: project.id, budget: nil, notes: nil),
         headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:created)
       body = response.parsed_body["lead"]
-      expect(body["budget_min"]).to eq(20_000_000)
+      expect(body["budget"]).to eq(20_000_000)
+      expect(body["budget_max"]).to eq(20_000_000)
+      expect(body["budget_min"]).to be_nil
       expect(body["notes"]).to include("Client's requirements")
       expect(body["notes"]).to include("Kolshet")
       expect(body["mapped_projects"].map { |m| m.dig("project", "id") }).to eq([ project.id ])
@@ -171,6 +188,10 @@ RSpec.describe "API v1 leads" do
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body["leads"].size).to eq(3)
+      expect(response.parsed_body["counts"]).to include(
+        "new" => 3, "missed_followup" => 0, "visit_planned" => 0,
+        "visited" => 0, "hot_negotiation" => 0, "booked" => 0
+      )
       expect(response.parsed_body["meta"]).to include("total_count" => 3, "per_page" => 25)
     end
 
@@ -207,24 +228,86 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].first["overdue"]).to be(true)
     end
 
-    it "sorts overdue work to the top" do
+    it "defaults to next-action order with unset dates first" do
       create(:lead, :upcoming, firm:, lead_status: new_status, name: "Later")
-      create(:lead, :overdue, firm:, lead_status: new_status, name: "Now")
+      create(:lead, :overdue, firm:, lead_status: new_status, name: "Overdue")
+      create(:lead, firm:, lead_status: new_status, name: "New", next_action_at: nil)
 
       get "/api/v1/leads", headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["name"] }).to eq(%w[New Overdue Later])
+    end
+
+    it "sorts overdue work to the top when sort=worklist" do
+      create(:lead, firm:, lead_status: new_status, name: "New", next_action_at: nil)
+      create(:lead, :overdue, firm:, lead_status: new_status, name: "Now")
+
+      get "/api/v1/leads", params: { sort: "worklist" }, headers: auth(manager)
 
       expect(response.parsed_body["leads"].first["name"]).to eq("Now")
     end
 
-    it "filters by budget overlap" do
-      straddling = create(:lead, firm:, lead_status: new_status,
-        budget_min: 8_000_000, budget_max: 12_000_000)
-      create(:lead, firm:, lead_status: new_status, budget_min: 100_000, budget_max: 200_000)
+    it "filters by the stored budget amount lying in the window" do
+      in_window = create(:lead, firm:, lead_status: new_status,
+        budget_min: nil, budget_max: 12_000_000)
+      create(:lead, firm:, lead_status: new_status, budget_min: 8_000_000, budget_max: 9_000_000)
 
       get "/api/v1/leads", params: { budget_min: 10_000_000, budget_max: 13_000_000 },
         headers: auth(manager)
 
-      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ straddling.id ])
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ in_window.id ])
+    end
+
+    it "ignores q when a drawer filter is present" do
+      matching_q = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      matching_name = create(:lead, firm:, lead_status: new_status, name: "Beta Shah")
+
+      get "/api/v1/leads", params: { q: "Alpha", name: "Beta" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ matching_name.id ])
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).not_to include(matching_q.id)
+    end
+
+    it "still applies q when only a card filter is present" do
+      matching = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      create(:lead, firm:, lead_status: new_status, name: "Beta Shah")
+
+      get "/api/v1/leads", params: { q: "Alpha", status: "new" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ matching.id ])
+    end
+
+    it "filters visited clients by first_visit_at" do
+      visited = create(:lead, firm:, lead_status: new_status, first_visit_at: 1.day.ago)
+      create(:lead, firm:, lead_status: new_status)
+
+      get "/api/v1/leads", params: { visited: true }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ visited.id ])
+    end
+
+    it "filters hot and negotiation together" do
+      hot_status = create(:lead_status, :hot)
+      negotiation_status = create(:lead_status, :negotiation)
+      hot = create(:lead, firm:, lead_status: hot_status)
+      negotiation = create(:lead, firm:, lead_status: negotiation_status)
+      create(:lead, firm:, lead_status: new_status)
+
+      get "/api/v1/leads", params: { status: "hot_negotiation" }, headers: auth(manager)
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to contain_exactly(hot.id, negotiation.id)
+
+      get "/api/v1/leads", params: { status: %w[hot negotiation] }, headers: auth(manager)
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to contain_exactly(hot.id, negotiation.id)
+    end
+
+    it "keeps card counts unfiltered while the list is filtered" do
+      create(:lead, :overdue, firm:, lead_status: new_status, name: "Overdue New")
+      create(:lead, firm:, lead_status: create(:lead_status, :booked))
+
+      get "/api/v1/leads", params: { q: "no-such-lead" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"]).to eq([])
+      expect(response.parsed_body["counts"]).to include("new" => 1, "missed_followup" => 1, "booked" => 1)
     end
   end
 
@@ -236,6 +319,7 @@ RSpec.describe "API v1 leads" do
       get "/api/v1/leads", headers: auth(agent)
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ agents_lead.id ])
+      expect(response.parsed_body.dig("counts", "new")).to eq(1)
     end
 
     it "shows a manager the whole pipeline" do
@@ -368,6 +452,18 @@ RSpec.describe "API v1 leads" do
       expect(lead.notes).to eq("call tomorrow")
     end
 
+    it "writes budget to budget_max and clears budget_min" do
+      lead.update!(budget_min: 8_000_000, budget_max: 12_000_000)
+
+      patch "/api/v1/leads/#{lead.id}", params: { budget: 20_000_000 },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("lead", "budget")).to eq(20_000_000)
+      expect(lead.reload.budget_min).to be_nil
+      expect(lead.budget_max).to eq(20_000_000)
+    end
+
     it "refuses flipping type when the other type already exists on that mobile" do
       create(:lead, :rent, firm:, mobile: lead.mobile, lead_status: new_status)
 
@@ -498,7 +594,7 @@ RSpec.describe "API v1 leads" do
       headers = auth(super_admin)
 
       patch "/api/v1/leads/#{lead.id}", params: {
-        typology_ids: [ typologies.first.id ], budget_min: 9_000_000, budget_max: 100
+        typology_ids: [ typologies.first.id ], email: "not-an-email"
       }, headers: headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -509,7 +605,7 @@ RSpec.describe "API v1 leads" do
       lead = create(:lead, firm:, name: "Original")
 
       patch "/api/v1/leads/#{lead.id}",
-        params: { name: "Changed", budget_min: 9_000_000, budget_max: 100 },
+        params: { name: "Changed", email: "not-an-email" },
         headers: auth(super_admin), as: :json
 
       expect(response).to have_http_status(:unprocessable_content)

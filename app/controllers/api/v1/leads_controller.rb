@@ -6,10 +6,20 @@ module Api
       before_action :set_lead, only: %i[show update status matches]
 
       SORTS = {
+        "ncd" => :as_ncd,
         "worklist" => :as_worklist,
         "recent" => -> { order(created_at: :desc) },
         "updated" => -> { order(updated_at: :desc) }
       }.freeze
+      DEFAULT_SORT = "ncd"
+
+      # Drawer fields. Heading-card params (`status`, `visited`) are not in this
+      # list — they must not drop `q`, or My Leads search-plus-New would break.
+      DRAWER_KEYS = %w[
+        name mobile email ncd_from ncd_upto budget_min budget_max
+        typology_ids transaction_type property_type_id possession_from possession_to
+        source_id assigned_user_id
+      ].freeze
 
       def index
         leads = filtered_scope
@@ -17,6 +27,7 @@ module Api
 
         render json: {
           leads: records.map { |lead| LeadSerializer.list(lead) },
+          counts: card_counts,
           meta: pagination_meta(@pagy)
         }, status: :ok
       end
@@ -67,6 +78,7 @@ module Api
           raise ActiveRecord::Rollback if assignment_error
 
           @lead.assign_attributes(update_params)
+          apply_budget_write
           replace_typologies if params.key?(:typology_ids)
           saved = @lead.save
           raise ActiveRecord::Rollback unless saved
@@ -175,8 +187,13 @@ module Api
       def filtered_scope
         scope = visible_leads
           .includes(:lead_status, :property_type, :lead_source, :assigned_user, :typologies)
-          .search(params[:q])
+          .search(drawer_filters_present? ? nil : params[:q])
+          .named_like(params[:name])
+          .mobile_like(params[:mobile])
+          .email_like(params[:email])
+          .ncd_between(params[:ncd_from], params[:ncd_upto])
           .with_status(params[:status])
+          .with_visited(params[:visited])
           .budget_between(params[:budget_min], params[:budget_max])
           .possession_between(params[:possession_from], params[:possession_to])
           .for_typologies(params[:typology_ids])
@@ -191,9 +208,48 @@ module Api
         apply_sort(scope)
       end
 
+      def drawer_filters_present?
+        DRAWER_KEYS.any? { |key| params[key].present? }
+      end
+
       def apply_sort(scope)
-        sort = SORTS.fetch(params[:sort].to_s, SORTS["worklist"])
+        sort = SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT])
         sort.is_a?(Symbol) ? scope.public_send(sort) : scope.instance_exec(&sort)
+      end
+
+      # Pipeline totals for the six cards, visibility-scoped and independent of
+      # the current list filter. Cards overlap (New + overdue is both New and
+      # Missed), so these will not sum to meta.total_count.
+      def card_counts
+        now = Time.current
+        sql = <<~SQL.squish
+          COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
+          COUNT(*) FILTER (WHERE leads.next_action_at < :now AND lead_statuses.is_terminal = FALSE),
+          COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
+          COUNT(*) FILTER (WHERE leads.first_visit_at IS NOT NULL),
+          COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation')),
+          COUNT(*) FILTER (WHERE lead_statuses.code = 'booked')
+        SQL
+        row = visible_leads.joins(:lead_status).pick(
+          Arel.sql(Lead.sanitize_sql_array([ sql, { now: } ]))
+        )
+        new_count, missed, visit_planned, visited, hot_negotiation, booked = Array(row)
+
+        {
+          new: new_count.to_i,
+          missed_followup: missed.to_i,
+          visit_planned: visit_planned.to_i,
+          visited: visited.to_i,
+          hot_negotiation: hot_negotiation.to_i,
+          booked: booked.to_i
+        }
+      end
+
+      def apply_budget_write
+        return unless params.key?(:budget)
+
+        @lead.budget_min = nil
+        @lead.budget_max = params[:budget].presence
       end
 
       def detail_payload(lead) = LeadSerializer.full_detail(lead)
@@ -223,16 +279,19 @@ module Api
       def lead_params
         params.permit(
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
-          :budget_min, :budget_max, :possession_by, :lead_source_id, :source_detail,
+          :budget, :possession_by, :lead_source_id, :source_detail,
           :assigned_user_id, :next_action_at, :next_action_note, :notes
         )
       end
       # project_id is create-only (copy + map). It is not a lead column.
+      # `budget` is the single stored amount (written to budget_max). Query
+      # budget_min / budget_max on GET are a filter window, not write fields.
 
       # Reassignment is applied in #apply_assignment, which checks the
       # assignable pool — not via assign_attributes, which used to write the
       # column with neither a role check nor a firm check.
-      def update_params = lead_params.except(:assigned_user_id)
+      # `budget` is not a column; #apply_budget_write maps it onto budget_max.
+      def update_params = lead_params.except(:assigned_user_id, :budget)
     end
   end
 end

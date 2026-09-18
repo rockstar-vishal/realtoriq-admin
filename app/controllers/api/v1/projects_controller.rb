@@ -20,6 +20,13 @@ module Api
       }.freeze
       DEFAULT_SORT = "name"
 
+      # Drawer fields. `status` is a heading pill and must not drop `q`, or
+      # My Projects search with status=active would never run.
+      DRAWER_KEYS = %w[
+        builder_id typology_ids budget_min budget_max city_id locality_id
+        brokerage_min brokerage_max
+      ].freeze
+
       include AttachesPhotos
 
       before_action :set_project, only: %i[show update add_photos remove_photo]
@@ -141,9 +148,10 @@ module Api
 
       def filtered_scope
         scope = base_scope.from_own
-          .search(params[:q])
+          .search(drawer_filters_present? ? nil : params[:q])
           .possession_before(params[:possession_before])
           .budget_between(params[:budget_min], params[:budget_max])
+          .brokerage_between(params[:brokerage_min], params[:brokerage_max])
           .for_typologies(params[:typology_ids])
 
         scope = scope.where(builder_id: params[:builder_id]) if params[:builder_id].present?
@@ -152,6 +160,10 @@ module Api
         scope = scope.where(status: params[:status].presence || "active") unless params[:status].to_s == "all"
 
         apply_sort(scope)
+      end
+
+      def drawer_filters_present?
+        DRAWER_KEYS.any? { |key| params[key].present? }
       end
 
       def apply_sort(scope)

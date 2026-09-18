@@ -6,7 +6,7 @@ class Property < ApplicationRecord
 
   LISTING_FOR = %w[sale rent].freeze
   FLOOR_BANDS = %w[lower middle higher].freeze
-  STATUSES = %w[available under_offer closed].freeze
+  STATUSES = %w[available booked sold_out].freeze
 
   enum :listing_for, LISTING_FOR.index_by(&:itself), prefix: :for
   enum :status, STATUSES.index_by(&:itself), validate: true
@@ -40,6 +40,16 @@ class Property < ApplicationRecord
     scope = all
     scope = scope.where(price: min..) if min.present?
     scope = scope.where(price: ..max) if max.present?
+    scope
+  }
+
+  # NULL carpet drops out of a range — a listing without area is not "600–800".
+  scope :carpet_between, ->(min, max) {
+    next all if min.blank? && max.blank?
+
+    scope = where.not(carpet_area_sqft: nil)
+    scope = scope.where(carpet_area_sqft: min.to_i..) if min.present?
+    scope = scope.where(carpet_area_sqft: ..max.to_i) if max.present?
     scope
   }
 
