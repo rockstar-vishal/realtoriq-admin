@@ -16,6 +16,8 @@ module Api
             locality: project.locality&.name,
             locality_id: project.locality_id,
             starting_budget: project.starting_budget,
+            # Unweighted mean of config rates; null when none can produce a rate.
+            avg_psf: project.avg_psf,
             # Derived from the typologies, never stored — a stored band can end
             # up disagreeing with the rows it came from.
             price_band: project.price_band,

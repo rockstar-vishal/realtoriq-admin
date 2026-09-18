@@ -18,6 +18,7 @@ module Api
             mobile: lead.mobile,
             email: lead.email,
             transaction_type: lead.transaction_type,
+            budget: lead.budget_amount,
             budget_min: lead.budget_min,
             budget_max: lead.budget_max,
             possession_by: lead.possession_by,

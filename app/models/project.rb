@@ -69,6 +69,17 @@ class Project < ApplicationRecord
     where(id: ProjectTypology.unscoped.where(typology_id: ids).select(:project_id))
   }
 
+  # NULL brokerage drops out of a range — a project that does not disclose
+  # percent is not "between 2 and 4".
+  scope :brokerage_between, ->(min, max) {
+    next all if min.blank? && max.blank?
+
+    scope = where.not(brokerage_percent: nil)
+    scope = scope.where(brokerage_percent: min.to_d..) if min.present?
+    scope = scope.where(brokerage_percent: ..max.to_d) if max.present?
+    scope
+  }
+
   scope :alphabetical, -> { order(:name) }
 
   # Derived, never stored: a stored band can end up disagreeing with the rows
@@ -86,6 +97,15 @@ class Project < ApplicationRecord
   def promo_live? = promo_text.present? && (promo_ends_on.nil? || promo_ends_on >= Date.current)
 
   def possession_display = possession_label.presence || possession_on&.strftime("%b %Y")
+
+  # Unweighted mean of configuration rate_per_sqft where both price and carpet
+  # exist. Half-up once. Null when no configuration can produce a rate.
+  def avg_psf
+    rates = project_typologies.filter_map(&:rate_per_sqft)
+    return nil if rates.empty?
+
+    (rates.sum.to_d / rates.size).round(0, :half_up).to_i
+  end
 
   private
 

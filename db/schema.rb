@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_16_013000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_18_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -562,7 +562,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_16_013000) do
     t.check_constraint "floor_band IS NULL OR (floor_band::text = ANY (ARRAY['lower'::character varying::text, 'middle'::character varying::text, 'higher'::character varying::text]))", name: "properties_floor_band_check"
     t.check_constraint "listing_for::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "properties_listing_for_check"
     t.check_constraint "price >= 0", name: "properties_price_check"
-    t.check_constraint "status::text = ANY (ARRAY['available'::character varying::text, 'under_offer'::character varying::text, 'closed'::character varying::text])", name: "properties_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['available'::character varying::text, 'booked'::character varying::text, 'sold_out'::character varying::text])", name: "properties_status_check"
   end
 
   create_table "property_types", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

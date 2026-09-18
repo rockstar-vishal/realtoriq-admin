@@ -9,6 +9,10 @@ class Lead < ApplicationRecord
   # but it is not one — it is next_action_at running late. Kept here so the
   # controller and the client agree on the spelling.
   DERIVED_STATUS_MISSED_FOLLOWUP = "missed_followup"
+  # Convenience for the Hot / Negotiation card. Same as status[]=hot&status[]=negotiation.
+  DERIVED_STATUS_HOT_NEGOTIATION = "hot_negotiation"
+  HOT_NEGOTIATION_CODES = %w[hot negotiation].freeze
+  NCD_ZONE = "Asia/Kolkata"
 
   enum :transaction_type, TRANSACTION_TYPES.index_by(&:itself), validate: true
 
@@ -82,18 +86,77 @@ class Lead < ApplicationRecord
   }
 
   scope :with_status, ->(code) {
-    next all if code.blank?
-    next missed_followup if code == DERIVED_STATUS_MISSED_FOLLOWUP
+    codes = Array(code).flatten.map { |value| value.to_s.strip }.compact_blank
+    next all if codes.empty?
 
-    joins(:lead_status).where(lead_statuses: { code: })
+    missed = codes.delete(DERIVED_STATUS_MISSED_FOLLOWUP)
+    codes.concat(HOT_NEGOTIATION_CODES) if codes.delete(DERIVED_STATUS_HOT_NEGOTIATION)
+    codes.uniq!
+
+    next missed_followup if missed && codes.empty?
+
+    joins(:lead_status).where(lead_statuses: { code: codes })
   }
 
-  # Overlap, not containment: a broker widening the budget filter expects to see
-  # the lead whose range straddles the edge, not to have it hidden.
+  # A single stored amount (budget_max, falling back to leftover budget_min)
+  # inside the filter window. Query params keep the names budget_min / budget_max
+  # because that is the window, not a range overlap on the lead.
   scope :budget_between, ->(min, max) {
+    next all if min.blank? && max.blank?
+
+    amount = "COALESCE(leads.budget_max, leads.budget_min)"
     scope = all
-    scope = scope.where("leads.budget_max IS NULL OR leads.budget_max >= ?", min) if min.present?
-    scope = scope.where("leads.budget_min IS NULL OR leads.budget_min <= ?", max) if max.present?
+    scope = scope.where("#{amount} >= ?", min) if min.present?
+    scope = scope.where("#{amount} <= ?", max) if max.present?
+    scope
+  }
+
+  scope :named_like, ->(term) {
+    next all if term.blank?
+
+    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
+    where("leads.name ILIKE ?", pattern)
+  }
+
+  scope :email_like, ->(term) {
+    next all if term.blank?
+
+    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
+    where("leads.email ILIKE ?", pattern)
+  }
+
+  # Digits only, so "98201 44210" matches the stored E.164 +919820144210.
+  scope :mobile_like, ->(term) {
+    next all if term.blank?
+
+    digits = term.to_s.gsub(/\D/, "")
+    next all if digits.blank?
+
+    where("leads.mobile LIKE ?", "%#{sanitize_sql_like(digits)}%")
+  }
+
+  scope :with_visited, ->(flag) {
+    next all if flag.nil? || flag.to_s.strip == ""
+
+    if ActiveModel::Type::Boolean.new.cast(flag)
+      where.not(first_visit_at: nil)
+    else
+      where(first_visit_at: nil)
+    end
+  }
+
+  # Inclusive IST calendar days: ncd_from at 00:00 through ncd_upto at 23:59:59.
+  scope :ncd_between, ->(from, to) {
+    zone = Time.find_zone(NCD_ZONE)
+    scope = all
+    if from.present?
+      start_at = zone.parse(from.to_s)&.beginning_of_day
+      scope = scope.where(next_action_at: start_at..) if start_at
+    end
+    if to.present?
+      end_at = zone.parse(to.to_s)&.end_of_day
+      scope = scope.where(next_action_at: ..end_at) if end_at
+    end
     scope
   }
 
@@ -115,8 +178,14 @@ class Lead < ApplicationRecord
     where(id: LeadTypology.where(typology_id: ids).select(:lead_id))
   }
 
-  # The list is a worklist, so what needs doing sorts to the top: overdue
-  # followups first, then by when the next action is due, then newest.
+  # Default GET /leads: next action soonest, with no date at all sitting above
+  # overdue — a new lead with nothing scheduled is the thing to pick up first.
+  scope :as_ncd, -> {
+    order(Arel.sql("leads.next_action_at ASC NULLS FIRST, leads.created_at DESC"))
+  }
+
+  # Home dashboard recent strip: overdue followups first, then by when the next
+  # action is due, then newest. GET /leads?sort=worklist still uses this.
   scope :as_worklist, -> {
     order(Arel.sql(<<~SQL.squish))
       CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at < NOW() THEN 0 ELSE 1 END,
@@ -128,6 +197,10 @@ class Lead < ApplicationRecord
   def overdue? = next_action_at.present? && next_action_at.past? && !lead_status.is_terminal?
 
   def visited? = first_visit_at.present?
+
+  # Display / filter amount. Writes store only budget_max; leftover rows may
+  # still have a min and a null max.
+  def budget_amount = budget_max.presence || budget_min
 
   def display_name = name.presence || Phone.format_for_display(mobile)
 

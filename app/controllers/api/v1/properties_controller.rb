@@ -14,6 +14,12 @@ module Api
       }.freeze
       DEFAULT_SORT = "recent"
 
+      # Drawer fields. `status` is a heading pill and must not drop `q`.
+      DRAWER_KEYS = %w[
+        city_id locality_id typology_id price_min price_max carpet_min carpet_max
+        building_id listing_for
+      ].freeze
+
       include AttachesPhotos
 
       before_action :set_property, only: %i[show update add_photos remove_photo]
@@ -75,8 +81,9 @@ module Api
 
       def filtered_scope
         scope = base_scope
-          .search(params[:q])
+          .search(drawer_filters_present? ? nil : params[:q])
           .price_between(params[:price_min], params[:price_max])
+          .carpet_between(params[:carpet_min], params[:carpet_max])
           .in_city(params[:city_id])
           .in_locality(params[:locality_id])
 
@@ -89,6 +96,10 @@ module Api
         scope = scope.where(status: params[:status].presence || "available") unless params[:status].to_s == "all"
 
         apply_sort(scope)
+      end
+
+      def drawer_filters_present?
+        DRAWER_KEYS.any? { |key| params[key].present? }
       end
 
       def apply_sort(scope)

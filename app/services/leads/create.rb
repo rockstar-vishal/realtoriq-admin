@@ -64,12 +64,26 @@ module Leads
     attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies, :project_id
 
     def build(status)
-      lead = Lead.new(attributes.except(:assigned_user_id, "assigned_user_id"))
+      lead = Lead.new(attributes.except(*non_column_keys))
       lead.firm = firm
       lead.lead_status ||= status
+      apply_single_budget(lead)
 
       assign_owner(lead)
       lead
+    end
+
+    # `budget` is not a column — it is written to budget_max with min cleared.
+    # budget_min on the payload is ignored so a leftover range cannot be stored.
+    def non_column_keys
+      [ :assigned_user_id, "assigned_user_id", :budget, "budget", :budget_min, "budget_min" ]
+    end
+
+    def apply_single_budget(lead)
+      return unless attributes.key?(:budget) || attributes.key?("budget")
+
+      lead.budget_min = nil
+      lead.budget_max = attributes[:budget] || attributes["budget"]
     end
 
     # Create may set an owner. Superadmin: any active user in the firm. Anyone
@@ -106,7 +120,7 @@ module Leads
       end
 
       if lead.budget_min.blank? && lead.budget_max.blank? && source_project.starting_budget.present?
-        lead.budget_min = source_project.starting_budget
+        lead.budget_max = source_project.starting_budget
       end
       lead.possession_by ||= source_project.possession_on
       return if lead.notes.present?

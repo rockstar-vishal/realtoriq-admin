@@ -112,7 +112,12 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   random. The max is computed on the digits, not the string, or `L-9999` would
   outrank `L-10000` and start reissuing.
 - **One lead per `(firm_id, mobile, transaction_type)`.** Same number may exist
-  once as sale and once as rent. `notes` is the free-text requirements box.
+  once as sale and once as rent. `notes` is the free-text requirements box
+  (labelled “Detailed Client Requirements” in the app).
+- **Budget is a single amount.** Writes store `budget` in `budget_max` and clear
+  `budget_min`. The `budget_min` column stays for leftover rows; it is not
+  written anymore. `GET /leads` `budget_min` / `budget_max` are a **filter
+  window** on `COALESCE(budget_max, budget_min)`, not a range overlap.
 - **Mappings** live in `lead_projects` and `lead_properties` (many, kept after a
   booking). There is no `leads.project_id`.
 
@@ -121,9 +126,9 @@ Two behaviours worth knowing before writing a query:
 - **"Missed f/u" is not a status.** The design's tab strip carries it but
   `LEAD_STATUSES` does not. It means `next_action_at` in the past on a
   non-terminal lead, and is reachable as `status=missed_followup`.
-- **Budget filtering is overlap, not containment.** A window of ₹1–1.3 Cr returns
-  the lead whose own range is ₹80L–1.2 Cr. Containment would hide exactly the
-  lead a broker widening the filter is looking for.
+  `hot_negotiation` is the hot + negotiation codes together.
+- **Default GET /leads sort is NCD** (`next_action_at ASC NULLS FIRST`). Home
+  dashboard `recent` still uses the overdue-first worklist.
 
 **Visibility**: agents see only leads assigned to them; managers and the super
 admin see the firm's whole pipeline (`Lead.visible_to`). A lead an agent may not
@@ -151,6 +156,9 @@ lead an agent creates is auto-assigned to them.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
   broker's typo must not reach every other firm's dropdown. The accepted cost is
   duplication across firms.
+- **`properties.status`** is `available` · `booked` · `sold_out`. Any status may
+  be patched to any other. Default list is `available`; `status=all` returns
+  every row.
 - **`properties.confidential_note`** never appears in a list payload and never
   in the `shareable` subset. It is returned only by the property detail, where
   the design puts it behind a reveal.
@@ -158,9 +166,10 @@ lead an agent creates is auto-assigned to them.
   every flat in it shares the same pool.
 
 **Derived, never stored**: a project's price and area bands (min/max across its
-typologies) and rate per sqft on both properties and project typologies. A
-stored band can end up disagreeing with the rows it came from. Note that on a
-rental, `price` is monthly rent, so `rate_per_sqft` is rent per sqft per month.
+typologies), per-config rate per sqft, and **`avg_psf`** on the project (unweighted
+mean of those rates). A stored band can end up disagreeing with the rows it came
+from. Note that on a rental, `price` is monthly rent, so `rate_per_sqft` is rent
+per sqft per month.
 
 **Deviation from the original design of this table**: `project_typologies`
 carries only `starting_price` and `starting_carpet_sqft`. The `price_to` /

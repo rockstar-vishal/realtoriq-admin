@@ -185,6 +185,56 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
     end
 
+    it "emits avg_psf as the unweighted mean of configuration rates" do
+      other = create(:typology, name: "3 BHK")
+      create_project(typologies: [
+        { typology_id: typology.id, starting_price: 14_200_000, starting_carpet_sqft: 720 },
+        { typology_id: other.id, starting_price: 20_000_000, starting_carpet_sqft: 800 }
+      ])
+
+      get "/api/v1/projects", headers: auth
+
+      # 14_200_000/720 → 19722; 20_000_000/800 → 25000; mean 22361
+      expect(response.parsed_body["projects"].first["avg_psf"]).to eq(22_361)
+    end
+
+    it "filters by brokerage percent and drops projects with none" do
+      create_project
+      post "/api/v1/projects", params: {
+        name: "Quiet Park", builder_id: builder.id, city_id: city.id,
+        starting_budget: 14_200_000, possession_label: "Ready"
+      }, headers: auth, as: :json
+
+      get "/api/v1/projects", params: { brokerage_min: 4, brokerage_max: 5 }, headers: auth
+
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
+    end
+
+    it "ignores q when a drawer filter is present" do
+      create_project
+      other_city = create(:city)
+      post "/api/v1/projects", params: {
+        name: "Budget Homes", builder_id: builder.id, city_id: other_city.id,
+        starting_budget: 3_000_000, possession_label: "Ready"
+      }, headers: auth, as: :json
+
+      get "/api/v1/projects", params: { q: "Aurum", city_id: other_city.id }, headers: auth
+
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Budget Homes" ])
+    end
+
+    it "still applies q when only the status pill is present" do
+      create_project
+      post "/api/v1/projects", params: {
+        name: "Budget Homes", builder_id: builder.id, city_id: city.id,
+        starting_budget: 3_000_000, possession_label: "Ready"
+      }, headers: auth, as: :json
+
+      get "/api/v1/projects", params: { q: "Aurum", status: "active" }, headers: auth
+
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
+    end
+
     it "defaults to active projects, and status=all includes archived" do
       create_project
       create_project(name: "Old Park", status: "archived")
@@ -364,14 +414,48 @@ RSpec.describe "API v1 inventory" do
 
     it "defaults to available listings, and status=all returns every status" do
       create_property
-      create_property(status: "closed")
-      closed_id = response.parsed_body.dig("property", "id")
+      create_property(status: "sold_out")
+      sold_id = response.parsed_body.dig("property", "id")
 
       get "/api/v1/properties", headers: auth
-      expect(response.parsed_body["properties"].map { |p| p["id"] }).not_to include(closed_id)
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).not_to include(sold_id)
 
       get "/api/v1/properties", params: { status: "all" }, headers: auth
-      expect(response.parsed_body["properties"].map { |p| p["id"] }).to include(closed_id)
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).to include(sold_id)
+    end
+
+    it "lets any status be patched to any other, including sold_out" do
+      create_property
+      id = response.parsed_body.dig("property", "id")
+
+      patch "/api/v1/properties/#{id}", params: { status: "sold_out" }, headers: auth, as: :json
+      expect(response.parsed_body.dig("property", "status")).to eq("sold_out")
+
+      patch "/api/v1/properties/#{id}", params: { status: "booked" }, headers: auth, as: :json
+      expect(response.parsed_body.dig("property", "status")).to eq("booked")
+
+      patch "/api/v1/properties/#{id}", params: { status: "available" }, headers: auth, as: :json
+      expect(response.parsed_body.dig("property", "status")).to eq("available")
+    end
+
+    it "filters by carpet area and drops listings with none" do
+      create_property
+      create_property(carpet_area_sqft: 400)
+      create_property(carpet_area_sqft: nil, price: 9_000_000)
+
+      get "/api/v1/properties", params: { carpet_min: 600, carpet_max: 800, status: "all" },
+        headers: auth
+
+      expect(response.parsed_body["properties"].map { |p| p["carpet_area_sqft"] }).to eq([ 690 ])
+    end
+
+    it "ignores q when a drawer filter is present" do
+      create_property
+      create_property(listing_for: "rent", price: 52_000, description: "Corner flat")
+
+      get "/api/v1/properties", params: { q: "Corner", listing_for: "rent" }, headers: auth
+
+      expect(response.parsed_body["properties"].map { |p| p["listing_for"] }).to eq([ "rent" ])
     end
 
     it "filters by locality through the building" do

@@ -66,22 +66,26 @@ RSpec.describe Lead do
   end
 
   describe "budget filtering" do
-    it "matches ranges that overlap the window, not only those inside it" do
-      straddling = create(:lead, firm:, budget_min: 8_000_000, budget_max: 12_000_000)
-      inside = create(:lead, firm:, budget_min: 10_500_000, budget_max: 11_000_000)
-      below = create(:lead, firm:, budget_min: 1_000_000, budget_max: 2_000_000)
+    it "matches the stored amount inside the window, not a range overlap" do
+      in_window = create(:lead, firm:, budget_min: nil, budget_max: 12_000_000)
+      leftover_min = create(:lead, firm:, budget_min: 12_000_000, budget_max: nil)
+      # Old overlap semantics would include this; the stored max is below the window.
+      outside_max = create(:lead, firm:, budget_min: 8_000_000, budget_max: 9_000_000)
+      below = create(:lead, firm:, budget_min: nil, budget_max: 2_000_000)
 
       found = described_class.budget_between(10_000_000, 13_000_000).pluck(:id)
 
-      expect(found).to include(straddling.id, inside.id)
-      expect(found).not_to include(below.id)
+      expect(found).to include(in_window.id, leftover_min.id)
+      expect(found).not_to include(outside_max.id, below.id)
     end
 
-    it "treats an open-ended budget as matching" do
-      open_ended = create(:lead, firm:, budget_min: 9_000_000, budget_max: nil)
+    it "treats a leftover open-ended min as the stored amount" do
+      leftover = create(:lead, firm:, budget_min: 9_000_000, budget_max: nil)
 
+      expect(described_class.budget_between(8_000_000, 10_000_000).pluck(:id))
+        .to include(leftover.id)
       expect(described_class.budget_between(20_000_000, 30_000_000).pluck(:id))
-        .to include(open_ended.id)
+        .not_to include(leftover.id)
     end
   end
 
@@ -103,6 +107,15 @@ RSpec.describe Lead do
       overdue = create(:lead, :overdue, firm:)
 
       expect(described_class.with_status("missed_followup").pluck(:id)).to eq([ overdue.id ])
+    end
+
+    it "expands hot_negotiation to the hot and negotiation codes" do
+      hot = create(:lead, firm:, lead_status: create(:lead_status, :hot))
+      negotiation = create(:lead, firm:, lead_status: create(:lead_status, :negotiation))
+      create(:lead, firm:)
+
+      expect(described_class.with_status("hot_negotiation").pluck(:id))
+        .to contain_exactly(hot.id, negotiation.id)
     end
   end
 

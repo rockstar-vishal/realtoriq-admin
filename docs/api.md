@@ -34,8 +34,10 @@ observed against a live server; nothing is aspirational.
 
 ```json
 { "lead": { ... } }
-{ "leads": [ ... ], "meta": { ... } }
+{ "leads": [ ... ], "counts": { ... }, "meta": { ... } }
 ```
+
+`counts` is only on `GET /leads` (pipeline card totals). Other lists are `resource` + `meta`.
 
 **Ids** are UUIDv7 strings. They sort by creation time, so "newest first" and
 "highest id first" agree.
@@ -318,7 +320,7 @@ exposes, so the alternative was six round trips for one card.
   "leads": {
     "total": 29, "hot": 14, "todays_followups": 3,
     "missed_followups": 4, "visited": 8, "bookings": 2,
-    "recent": [ /* top 3 of the worklist, same shape as GET /leads */ ]
+    "recent": [ /* top 3 of sort=worklist, same item shape as GET /leads. Not the leads-index NCD default. */ ]
   },
   "money": {
     "revenue_till_date": 68400000, "brokerage_earned": 413000, "bookings_count": 6,
@@ -377,16 +379,16 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 | `name` | string | optional | Nullable by design — brokers capture a number first |
 | `alt_mobile` | string | optional | |
 | `email` | string | optional | |
-| `budget_min` / `budget_max` | integer | optional | Whole rupees; max must be ≥ min |
+| `budget` | integer | optional | Whole rupees. Stored as `budget_max`; `budget_min` is cleared. **Do not send `budget_min` / `budget_max` on write** — they are ignored |
 | `possession_by` | date | optional | **Not** `possession_up_to` |
 | `lead_source_id` | string | optional | |
 | `source_detail` | string | optional | e.g. `"99acres enquiry #48213"` |
 | `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
 | `next_action_at` | timestamp | optional | Drives the "Missed f/u" badge |
 | `next_action_note` | string | optional | |
-| `notes` | text | optional | **Client's requirements.** No separate locality column — put location text here |
+| `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). No separate locality column — put location text here |
 | `typology_ids` | **array** of string | optional | |
-| `project_id` | string | optional | Create-from-project. Copies blank budget / possession / notes from the project and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
+| `project_id` | string | optional | Create-from-project. Copies blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
 
 > **`property_type_id` is a single string. `typology_ids` is an array.**
 > One property type, many configurations. Sending `property_type_id` as an array
@@ -403,28 +405,51 @@ these to each other.
 
 ### `GET /leads`
 
+Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
+
 | Filter | Notes |
 | --- | --- |
-| `q` | Name, mobile or email |
-| `status` | A status `code`, **or `missed_followup`** |
-| `transaction_type` | `sale` · `rent` |
-| `property_type_id`, `source_id`, `assigned_user_id` | |
-| `budget_min`, `budget_max` | **Overlap, not containment** |
-| `possession_from`, `possession_to` | |
-| `typology_ids[]` | Repeat the key |
-| `sort` | `worklist` (default) · `recent` · `updated` |
+| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`) do **not** drop `q` |
+| `status` | A status `code`, **or `missed_followup`**, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation` |
+| `visited` | `true` / `false` — `first_visit_at` present or not |
+| `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
+| `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
+| `transaction_type` | Drawer. `sale` · `rent` |
+| `property_type_id`, `source_id`, `assigned_user_id` | Drawer |
+| `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
+| `possession_from`, `possession_to` | Drawer |
+| `typology_ids[]` | Drawer. Repeat the key |
+| `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` |
 | `page`, `per_page` | |
+
+Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`.
 
 **`missed_followup` is not a real status.** It means `next_action_at` in the past
 on a non-terminal lead. It appears in the design's tab strip beside the real
-statuses, but it will never come back in `lead_statuses`.
+statuses, but it will never come back in `lead_statuses`. `hot_negotiation` is
+the Hot + Negotiation codes together.
 
-**Budget filtering is overlap.** A window of ₹1–1.3 Cr returns the lead whose own
-range is ₹80L–1.2 Cr. Containment would hide exactly the lead a broker widening
-the filter is looking for.
+**Budget on GET is a point-in-window filter**, not overlap. A ₹1–1.3 Cr window
+matches a lead whose stored amount is ₹1.2 Cr, and does **not** match a leftover
+row whose max is ₹90L even if its old min was ₹80L.
 
-`sort=worklist` puts overdue followups first, then by when the next action is
-due, then newest. It is the default because the list is a worklist.
+Default sort is `next_action_at ASC NULLS FIRST, created_at DESC` — leads with
+no next action sit **above** overdue. `sort=worklist` is the old overdue-first
+order. **`GET /dashboard` `leads.recent` still uses worklist**, so the home strip
+and this list disagree by design.
+
+The response includes **`counts`** every time, visibility-scoped and **not**
+narrowed by the current filter:
+
+```json
+"counts": {
+  "new": 4, "missed_followup": 2, "visit_planned": 1,
+  "visited": 3, "hot_negotiation": 5, "booked": 1
+}
+```
+
+Cards overlap (New + overdue NCD is both New and Missed), so counts will not sum
+to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on.
 
 ### Lead payload
 
@@ -433,7 +458,8 @@ due, then newest. It is the default because the list is a worklist.
   "id": "01a0…", "code": "L-0002", "name": "Sneha Desai",
   "display_name": "Sneha Desai",
   "mobile": "+919930371501", "email": "sneha.desai@example.com",
-  "transaction_type": "sale", "budget_min": 8500000, "budget_max": 11000000,
+  "transaction_type": "sale",
+  "budget": 11000000, "budget_min": null, "budget_max": 11000000,
   "possession_by": null,
   "status": { "id": "…", "code": "followup", "name": "Followup",
               "is_dead": false, "is_booked": false, "is_terminal": false },
@@ -448,6 +474,8 @@ due, then newest. It is the default because the list is a worklist.
 
 `display_name` falls back to a formatted mobile when there is no name — use it
 for headings. `overdue` and `visited` are computed; don't derive them yourself.
+**`budget` is the amount to show** (`budget_max`, falling back to leftover
+`budget_min`). Do not render a min–max range from the leftover columns.
 
 The **detail** adds `alt_mobile`, `source`, `source_detail`, `first_visit_at`,
 `dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
@@ -531,8 +559,10 @@ the same way, in their own list. The same name may exist once in each.
 | `typologies` | array of object | optional | `{ typology_id, starting_price, starting_carpet_sqft }` |
 
 **Derived, never sent and never stored**: `price_band`, `area_band` (min/max
-across the typologies) and `rate_per_sqft`. A stored band can end up disagreeing
-with the rows it came from.
+across the typologies), per-config `rate_per_sqft`, and list/detail **`avg_psf`**
+(unweighted mean of those rates; integer; half-up once; `null` if none). A stored
+band can end up disagreeing with the rows it came from. `starting_budget` is not
+recomputed from configurations.
 
 **`promo` is an object and appears only while the promo is live** —
 `{ text, ends_on }`, or absent. An expired promo is omitted entirely rather than
@@ -542,16 +572,21 @@ sent with a past date for you to check.
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Substring of name or address. For a search box, use [`/projects/search`](#get-projectssearch) instead |
-| `status` | `active` (default) · `archived` · `all` (no status filter). Omitting the param is `active`, not every project |
-| `builder_id`, `city_id`, `locality_id` | |
-| `budget_min`, `budget_max` | Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike leads — and a project with no configurations never matches |
-| `possession_before` | date |
-| `typology_ids[]` | Repeat the key |
+| `q` | Substring of name or address. **Ignored when any drawer param is present.** `status` does not drop `q`. For a search box, [`/projects/search`](#get-projectssearch) is the typeahead |
+| `status` | `active` (default) · `archived` · `all` (no status filter). Omitting the param is `active`, not every project. Heading pill — does not drop `q` |
+| `builder_id`, `city_id`, `locality_id` | Drawer |
+| `budget_min`, `budget_max` | Drawer. Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike a lead's stored amount — and a project with no configurations never matches |
+| `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range |
+| `possession_before` | date. Not a drawer field; still applies alongside `q` |
+| `typology_ids[]` | Drawer. Repeat the key |
 | `sort` | **`name`** (default, A–Z) · `recent` (newest first) |
 | `page`, `per_page` | 25 per page by default |
 
 **The list is My Projects only** (`source: own`). Catalog rows are omitted.
+Marketplace is an empty client pill — do not list catalog here.
+
+Drawer params: `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
+`city_id`, `locality_id`, `brokerage_min`, `brokerage_max`.
 
 **The list is paginated and sorted A–Z by default, so a project you just created
 may not be on page 1.** Either pass `sort=recent`, read `meta.total_pages`, or —
@@ -620,7 +655,7 @@ dropdown.
 Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`
-(`available` · `under_offer` · `closed`). Any role may create. List and detail
+(`available` · `booked` · `sold_out`). Any role may create. List and detail
 include `created_by: { id, name }` (or `null` on older rows) — show it when
 `permissions.manage_projects` is true.
 
@@ -630,8 +665,17 @@ minting a private duplicate.
 
 `GET /properties` takes `sort`: **`recent`** (default, newest first) · `name`
 (A–Z by building name — a listing has no name of its own). `status` is
-`available` (default) · `under_offer` · `closed` · `all` (no status filter).
-Omitting the param is `available`, not every listing.
+`available` (default) · `booked` · `sold_out` · `all` (no status filter).
+Omitting the param is `available`, not every listing. **Mark sold** is
+`PATCH { "status": "sold_out" }` from any status; any status may be patched to
+any other.
+
+Also: `q` (ignored when a **drawer** param is set; `status` does not drop `q`),
+`listing_for`, `city_id`, `locality_id`, `typology_id`, `building_id`,
+`price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL carpet drops
+out of a range), `floor_band`. Drawer params: `city_id`, `locality_id`,
+`typology_id`, `price_min`, `price_max`, `carpet_min`, `carpet_max`,
+`building_id`, `listing_for`.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a
@@ -973,7 +1017,8 @@ exists. Do not treat 404 as "deleted".
 help. It needs a billing wall.
 
 **4. Don't recompute money.** `net_income`, `invoiced`, `collected`,
-`outstanding`, `rate_per_sqft`, `price_band` and `area_band` all arrive computed.
+`outstanding`, `rate_per_sqft`, `avg_psf`, `price_band` and `area_band` all
+arrive computed.
 
 **5. Booking and lead status are independent.** Creating a booking does not set
 the lead to `Booked`, and cancelling does not reopen it. If your flow wants that,
@@ -981,6 +1026,16 @@ make the `POST /leads/:id/status` call yourself.
 
 **6. `photos[].id` ≠ the id in the photo URL.** The URL carries the blob id;
 deletion takes the attachment id from `photos[].id`.
+
+**7. Drawer filters drop `q`.** If any drawer param is present, `GET /leads`,
+`GET /projects` and `GET /properties` ignore `q`. Heading pills (`status`) and
+lead cards (`status`, `visited`) do not. Sending `q=Aurum&city_id=…` searches
+only by city.
+
+**8. `budget` on write is not `budget_min` / `budget_max` on GET.** Create and
+PATCH store a single amount in `budget`. On GET those two names are the filter
+window. Sending `budget_min` on POST is ignored. Property statuses are
+`available` · `booked` · `sold_out` — `under_offer` / `closed` 422.
 
 ---
 
