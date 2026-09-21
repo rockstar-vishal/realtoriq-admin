@@ -49,24 +49,35 @@ module Dashboard
       COUNT(*) FILTER (WHERE lead_statuses.code = 'hot'),
       COUNT(*) FILTER (WHERE leads.next_action_at BETWEEN :day_start AND :day_end),
       COUNT(*) FILTER (WHERE leads.next_action_at < :now AND lead_statuses.is_terminal = FALSE),
-      COUNT(*) FILTER (WHERE leads.first_visit_at IS NOT NULL)
+      COUNT(*) FILTER (WHERE leads.first_visit_at IS NOT NULL),
+      COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
+      COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
+      COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation'))
     SQL
 
     def leads_block
-      total, hot, todays_followups, missed_followups, visited =
+      total, hot, todays_followups, missed_followups, visited,
+        new_count, visit_planned, hot_negotiation =
         visible_leads.joins(:lead_status).pick(Arel.sql(counts_select))
+
+      recent = visible_leads
+        .missed_followup
+        .includes(:lead_status, :property_type, :typologies, :assigned_user, :lead_source)
+        .order("leads.next_action_at ASC, leads.created_at DESC")
+        .limit(3).to_a
+      Lead.preload_card_extras(recent)
 
       {
         total: total.to_i,
+        new: new_count.to_i,
         hot: hot.to_i,
+        hot_negotiation: hot_negotiation.to_i,
         todays_followups: todays_followups.to_i,
         missed_followups: missed_followups.to_i,
+        visit_planned: visit_planned.to_i,
         visited: visited.to_i,
         bookings: live_bookings.count,
-        recent: visible_leads
-          .includes(:lead_status, :property_type, :typologies, :assigned_user, :lead_source)
-          .as_worklist.limit(3)
-          .map { |lead| Api::V1::LeadSerializer.list(lead) }
+        recent: recent.map { |lead| Api::V1::LeadSerializer.list(lead) }
       }
     end
 

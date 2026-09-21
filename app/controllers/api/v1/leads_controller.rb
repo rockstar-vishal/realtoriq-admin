@@ -24,6 +24,7 @@ module Api
       def index
         leads = filtered_scope
         @pagy, records = pagy(leads, limit: per_page)
+        Lead.preload_card_extras(records)
 
         render json: {
           leads: records.map { |lead| LeadSerializer.list(lead) },
@@ -60,8 +61,9 @@ module Api
           # The other transaction type on this number, if any — same type is
           # refused with duplicate_lead. Visibility-filtered so an agent does
           # not learn about a lead they cannot open.
-          possible_duplicates: lead.possible_duplicates.visible_to(current_user)
-                                   .limit(5).map { |d| LeadSerializer.list(d) }
+          possible_duplicates: Lead.preload_card_extras(
+            lead.possible_duplicates.visible_to(current_user).limit(5)
+          ).map { |d| LeadSerializer.list(d) }
         }, status: :created
       end
 

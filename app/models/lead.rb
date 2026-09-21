@@ -184,8 +184,9 @@ class Lead < ApplicationRecord
     order(Arel.sql("leads.next_action_at ASC NULLS FIRST, leads.created_at DESC"))
   }
 
-  # Home dashboard recent strip: overdue followups first, then by when the next
-  # action is due, then newest. GET /leads?sort=worklist still uses this.
+  # GET /leads?sort=worklist: overdue followups first, then by when the next
+  # action is due, then newest. The home strip no longer uses this — it is
+  # missed followups only.
   scope :as_worklist, -> {
     order(Arel.sql(<<~SQL.squish))
       CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at < NOW() THEN 0 ELSE 1 END,
@@ -197,6 +198,51 @@ class Lead < ApplicationRecord
   def overdue? = next_action_at.present? && next_action_at.past? && !lead_status.is_terminal?
 
   def visited? = first_visit_at.present?
+
+  # List-card extras. `visit_count` is logged site visits, not the `visited`
+  # badge. `last_followup_comment` is the latest loggable activity body — not
+  # `next_action_note` (that is the planned next action).
+  def visit_count
+    return @visit_count if defined?(@visit_count)
+
+    @visit_count = lead_activities.visit.count
+  end
+
+  def last_followup_comment
+    return @last_followup_comment if defined?(@last_followup_comment)
+
+    @last_followup_comment = lead_activities
+      .where(kind: LeadActivity::LOGGABLE_KINDS)
+      .recent_first
+      .pick(:body)
+  end
+
+  def assign_card_extras(visit_count:, last_followup_comment:)
+    @visit_count = visit_count
+    @last_followup_comment = last_followup_comment
+    self
+  end
+
+  # Two queries for a page of leads, so the list card does not N+1.
+  def self.preload_card_extras(leads)
+    records = Array(leads)
+    ids = records.map(&:id)
+    return records if ids.empty?
+
+    visit_counts = LeadActivity.where(lead_id: ids, kind: "visit").group(:lead_id).count
+    comments = LeadActivity
+      .where(lead_id: ids, kind: LeadActivity::LOGGABLE_KINDS)
+      .select("DISTINCT ON (lead_activities.lead_id) lead_activities.lead_id, lead_activities.body")
+      .order(Arel.sql("lead_activities.lead_id, lead_activities.occurred_at DESC, lead_activities.created_at DESC"))
+      .each_with_object({}) { |row, hash| hash[row.lead_id] = row.body }
+
+    records.each do |lead|
+      lead.assign_card_extras(
+        visit_count: visit_counts.fetch(lead.id, 0),
+        last_followup_comment: comments[lead.id]
+      )
+    end
+  end
 
   # Display / filter amount. Writes store only budget_max; leftover rows may
   # still have a min and a null max.
