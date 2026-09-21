@@ -42,10 +42,32 @@ RSpec.describe "API v1 dashboard" do
         leads = response.parsed_body["leads"]
         expect(leads["total"]).to eq(5)
         expect(leads["hot"]).to eq(2)
+        expect(leads["hot_negotiation"]).to eq(2)
+        expect(leads["new"]).to eq(0)
+        expect(leads["visit_planned"]).to eq(0)
         expect(leads["missed_followups"]).to eq(1)
         expect(leads["todays_followups"]).to eq(1)
         expect(leads["visited"]).to eq(1)
       end
+    end
+
+    it "counts new, visit_planned and hot_negotiation for the home snapshot" do
+      new_status = create(:lead_status, :new_lead)
+      visit_planned = create(:lead_status, :visit_planned)
+      negotiation = create(:lead_status, :negotiation)
+
+      create(:lead, firm:, lead_status: new_status)
+      create(:lead, firm:, lead_status: visit_planned)
+      create(:lead, firm:, lead_status: negotiation)
+      create(:lead, firm:, lead_status: hot)
+
+      get "/api/v1/dashboard", headers: auth
+
+      leads = response.parsed_body["leads"]
+      expect(leads["new"]).to eq(1)
+      expect(leads["visit_planned"]).to eq(1)
+      expect(leads["hot"]).to eq(1)
+      expect(leads["hot_negotiation"]).to eq(2)
     end
 
     # Deliberate, and worth pinning: a followup due at 10am is still "today's"
@@ -65,12 +87,38 @@ RSpec.describe "API v1 dashboard" do
       end
     end
 
-    it "returns the three leads at the top of the worklist" do
-      create_list(:lead, 5, firm:, lead_status: followup)
+    it "returns the most overdue missed followups on the home strip" do
+      travel_to Time.zone.local(2026, 9, 10, 10, 0) do
+        oldest = create(:lead, firm:, lead_status: followup, name: "Oldest",
+                               next_action_at: 5.days.ago)
+        create(:lead, firm:, lead_status: followup, name: "Mid",
+                     next_action_at: 3.days.ago)
+        create(:lead, firm:, lead_status: followup, name: "Newest overdue",
+                     next_action_at: 1.day.ago)
+        create(:lead, firm:, lead_status: followup, name: "Fourth",
+                     next_action_at: 12.hours.ago)
+        create(:lead, firm:, lead_status: followup, name: "Upcoming",
+                     next_action_at: 1.day.from_now)
+        create(:lead, firm:, lead_status: followup, name: "No date")
+        create(:lead, firm:, lead_status: create(:lead_status, :dead), name: "Dead",
+                     next_action_at: 2.days.ago, dead_reason: "Not interested")
+
+        get "/api/v1/dashboard", headers: auth
+
+        names = response.parsed_body.dig("leads", "recent").map { |row| row["name"] }
+        expect(names).to eq([ "Oldest", "Mid", "Newest overdue" ])
+        expect(response.parsed_body.dig("leads", "recent")).to all(include("overdue" => true))
+        expect(names).not_to include("Fourth", "Upcoming", "No date", "Dead")
+        expect(names.first).to eq(oldest.name)
+      end
+    end
+
+    it "sends an empty strip when nothing is overdue" do
+      create_list(:lead, 3, firm:, lead_status: followup)
 
       get "/api/v1/dashboard", headers: auth
 
-      expect(response.parsed_body.dig("leads", "recent").length).to eq(3)
+      expect(response.parsed_body.dig("leads", "recent")).to eq([])
     end
 
     it "sums revenue and brokerage over live bookings" do

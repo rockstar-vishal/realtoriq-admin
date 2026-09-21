@@ -195,6 +195,37 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["meta"]).to include("total_count" => 3, "per_page" => 25)
     end
 
+    it "includes the list-card fields: source, visit count, last followup, created_at" do
+      source = create(:lead_source, name: "99acres")
+      lead = create(:lead, firm:, lead_status: new_status, lead_source: source,
+                           property_type:, first_visit_at: 3.days.ago)
+      create(:lead_activity, firm:, lead:, kind: "visit", body: "First site visit",
+                             occurred_at: 3.days.ago)
+      create(:lead_activity, firm:, lead:, kind: "visit", body: "Second site visit",
+                             occurred_at: 2.days.ago)
+      create(:lead_activity, firm:, lead:, kind: "call", body: "Asked for the floor plan",
+                             occurred_at: 1.day.ago)
+      create(:lead_activity, firm:, lead:, kind: "status_change", body: nil,
+                             occurred_at: Time.current)
+      bare = create(:lead, firm:, lead_status: new_status, property_type:)
+
+      get "/api/v1/leads", headers: auth(manager)
+
+      card = response.parsed_body["leads"].find { |row| row["id"] == lead.id }
+      expect(card["source"]).to include("id" => source.id, "name" => "99acres")
+      expect(card["visit_count"]).to eq(2)
+      expect(card["visited"]).to be(true)
+      expect(card["last_followup_comment"]).to eq("Asked for the floor plan")
+      expect(card["created_at"]).to be_present
+      expect(card["transaction_type"]).to eq("sale")
+      expect(card["property_type"]).to include("id" => property_type.id)
+
+      empty = response.parsed_body["leads"].find { |row| row["id"] == bare.id }
+      expect(empty["source"]).to be_nil
+      expect(empty["visit_count"]).to eq(0)
+      expect(empty["last_followup_comment"]).to be_nil
+    end
+
     it "defaults to 25 per page rather than 1 when the param is absent" do
       create_list(:lead, 2, firm:, lead_status: new_status)
 
@@ -547,6 +578,8 @@ RSpec.describe "API v1 leads" do
         headers: auth(agent), as: :json
 
       expect(response.parsed_body.dig("lead", "visited")).to be(true)
+      expect(response.parsed_body.dig("lead", "visit_count")).to eq(1)
+      expect(response.parsed_body.dig("lead", "last_followup_comment")).to eq("Site visit")
       expect(lead.reload.first_visit_at).to be_present
     end
 

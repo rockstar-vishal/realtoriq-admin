@@ -440,7 +440,7 @@
                 "dashboard"
               ]
             },
-            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
+            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\nHome **Your pipeline** tiles read `total`, `new`, `todays_followups` (label: Today's Calls), `missed_followups`, `visit_planned`, `hot_negotiation`. `hot`, `visited` and `bookings` stay on the payload. This is not `GET /leads` `counts`.\n\n`leads.recent` is at most three **missed followups**, most overdue first — not the worklist.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
           },
           "event": [
             {
@@ -453,11 +453,11 @@
                   "const b = pm.response.json();",
                   "",
                   "pm.test(\"the lead counters are all there\", () => {",
-                  "  [\"total\",\"hot\",\"todays_followups\",\"missed_followups\",\"visited\",\"bookings\"].forEach(k => {",
+                  "  [\"total\",\"new\",\"hot\",\"hot_negotiation\",\"todays_followups\",\"missed_followups\",\"visit_planned\",\"visited\",\"bookings\"].forEach(k => {",
                   "    pm.expect(b.leads[k], k).to.be.a(\"number\");",
                   "  });",
                   "});",
-                  "pm.test(\"the worklist strip is at most three leads\", () => {",
+                  "pm.test(\"the missed-followup strip is at most three leads\", () => {",
                   "  pm.expect(b.leads.recent.length).to.be.at.most(3);",
                   "});",
                   "",
@@ -864,6 +864,17 @@
                   "",
                   "pm.test(\"card counts\", () => {",
                   "  pm.expect(body.counts).to.include.keys(\"new\", \"missed_followup\", \"visit_planned\", \"visited\", \"hot_negotiation\", \"booked\");",
+                  "});",
+                  "",
+                  "pm.test(\"list card fields\", () => {",
+                  "  if (!body.leads.length) return;",
+                  "  const l = body.leads[0];",
+                  "  pm.expect(l).to.have.property(\"source\");",
+                  "  pm.expect(l.visit_count).to.be.a(\"number\");",
+                  "  pm.expect(l).to.have.property(\"last_followup_comment\");",
+                  "  pm.expect(l.created_at).to.be.a(\"string\");",
+                  "  pm.expect(l).to.have.property(\"budget\");",
+                  "  pm.expect(l).to.have.property(\"transaction_type\");",
                   "});"
                 ]
               }

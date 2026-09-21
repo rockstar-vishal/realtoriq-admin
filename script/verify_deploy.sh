@@ -61,6 +61,9 @@ tidy_up() {
                  -H 'Content-Type: application/json' -d '{"status":"archived"}' ;;
       booking) curl -s -o /dev/null -X POST "$API/bookings/$id/cancel" -H "Authorization: Bearer $token" \
                  -H 'Content-Type: application/json' -d "{\"reason\":\"Deploy verification $TAG - not a real booking\"}" ;;
+      lead)    curl -s -o /dev/null -X POST "$API/leads/$id/status" -H "Authorization: Bearer $token" \
+                 -H 'Content-Type: application/json' \
+                 -d "{\"status\":\"dead\",\"reason\":\"Deploy verification $TAG\"}" ;;
     esac
   done < "$TRACK_FILE"
   rm -f "$BODY_FILE" "$TRACK_FILE" "$FAIL_FILE" "$BODY_FILE".race.*
@@ -80,6 +83,11 @@ bad() {
   [ -s "$BODY_FILE" ] && printf "        response: %s\n" "$(head -c 240 "$BODY_FILE" | tr '\n' ' ')"
 }
 check() { if [ "$3" = "$2" ]; then ok "$1"; else bad "$1" "expected $2, got $3${4:+ — $4}"; fi; }
+check_gt() {
+  if [ -n "$2" ] && [ "$2" -gt 0 ] 2>/dev/null; then ok "$1"
+  else bad "$1" "expected > 0, got ${2:-empty}"
+  fi
+}
 
 # request METHOD PATH TOKEN [JSON] — prints the status; the body lands in $BODY_FILE.
 request() {
@@ -109,6 +117,19 @@ create_project() {
 }
 
 in_ids() { field "[.projects[].id] | map(select(. == \"$1\")) | length"; }
+in_lead_ids() { field "[.leads[].id] | map(select(. == \"$1\")) | length"; }
+in_property_ids() { field "[.properties[].id] | map(select(. == \"$1\")) | length"; }
+
+# Unique 10-digit mobiles for this run. $1 is a small integer offset.
+lead_mobile() { printf '98%08d' $(( (${TAG#DV} + $1) % 100000000 )); }
+
+# Creates a rent lead (no property_type_id) and records it to mark dead on exit.
+create_lead() {
+  local token=$1 json=$2
+  request POST /leads "$token" "$json" >/dev/null
+  LEAD_ID=$(field '.lead.id // empty')
+  [ -n "$LEAD_ID" ] && track lead "$token" "$LEAD_ID"
+}
 
 printf "${B}Verifying %s${N}  (run %s)\n" "$BASE" "$TAG"
 
@@ -206,7 +227,7 @@ admin_cors=$(curl -s -o /dev/null -D- -X OPTIONS "$BASE/admin/firms" \
 check "admin panel stays closed cross-origin" 0 "$admin_cors"
 
 # ══════════════════════════════════════════════════════════════════════════════
-section "This deploy — project search, sort, and input handling"
+section "Previous deploy — project search, sort, and input handling"
 
 status=$(request GET '/projects/search?q=aurum' "$SA")
 if [ "$status" = 404 ]; then
@@ -250,6 +271,147 @@ fi
 
 check "a NUL byte in a search no longer returns 500 (leads)" 200 "$(request GET '/leads?q=a%00b' "$SA")"
 check "a NUL byte in a search no longer returns 500 (projects)" 200 "$(request GET '/projects?q=a%00b' "$SA")"
+
+# ══════════════════════════════════════════════════════════════════════════════
+section "This deploy — Yash screens API"
+
+# Home snapshot counters. Additive on GET /dashboard; missing keys means this
+# slice is not on the box yet. `recent` is the missed-followup strip (max 3).
+request GET /dashboard "$SA" >/dev/null
+check "GET /dashboard has home snapshot keys" \
+  '["bookings","hot","hot_negotiation","missed_followups","new","todays_followups","total","visit_planned","visited"]' \
+  "$(field '.leads | del(.recent) | keys | sort | tostring')"
+
+# Pipeline card totals. Independent of the list filter — an empty search still
+# carries the object. Missing keys means this slice is not on the box yet.
+request GET "/leads?q=NoSuchLead$TAG" "$SA" >/dev/null
+check "GET /leads returns counts" '["booked","hot_negotiation","missed_followup","new","visit_planned","visited"]' \
+  "$(field '(.counts // {}) | keys | sort | tostring')"
+check "  the filtered list can be empty while counts remain" 0 "$(field '.leads | length')"
+
+json="{\"mobile\":\"$(lead_mobile 1)\",\"transaction_type\":\"rent\",\"budget\":18000000,\"name\":\"BudgetWrite $TAG\"}"
+create_lead "$SA" "$json"
+if [ -n "$LEAD_ID" ]; then
+  check "POST budget writes budget_max and clears budget_min" 18000000 "$(field '.lead.budget')"
+  check "  leftover column budget_min is null" null "$(field '.lead.budget_min')"
+  check "  stored budget_max matches" 18000000 "$(field '.lead.budget_max')"
+else
+  bad "POST budget writes budget_max and clears budget_min" "lead was not created"
+fi
+
+json="{\"mobile\":\"$(lead_mobile 2)\",\"transaction_type\":\"rent\",\"budget_min\":12000000,\"name\":\"BudgetIgnored $TAG\"}"
+create_lead "$SA" "$json"
+if [ -n "$LEAD_ID" ]; then
+  check "budget_min on write is ignored" null "$(field '.lead.budget_min')"
+else
+  bad "budget_min on write is ignored" "lead was not created"
+fi
+
+create_project "$SA" "FromProject $TAG"
+FROM_PROJECT=$PROJECT_ID
+json="{\"mobile\":\"$(lead_mobile 3)\",\"transaction_type\":\"rent\",\"project_id\":\"$FROM_PROJECT\"}"
+create_lead "$SA" "$json"
+if [ -n "$LEAD_ID" ]; then
+  check "create-from-project copies starting_budget into budget_max" 9900000 "$(field '.lead.budget_max')"
+  check "  and does not write budget_min" null "$(field '.lead.budget_min')"
+else
+  bad "create-from-project copies starting_budget into budget_max" "lead was not created"
+fi
+
+json="{\"mobile\":\"$(lead_mobile 4)\",\"transaction_type\":\"rent\",\"name\":\"NcdSort-$TAG-overdue\",\"next_action_at\":\"2020-01-01T00:00:00+05:30\"}"
+create_lead "$SA" "$json"; OVERDUE_LEAD=$LEAD_ID
+json="{\"mobile\":\"$(lead_mobile 5)\",\"transaction_type\":\"rent\",\"name\":\"NcdSort-$TAG-null\"}"
+create_lead "$SA" "$json"; NULL_LEAD=$LEAD_ID
+if [ -n "$NULL_LEAD" ] && [ -n "$OVERDUE_LEAD" ]; then
+  request GET "/leads?q=NcdSort-$TAG" "$SA" >/dev/null
+  check "default sort puts unset NCD above overdue" "$NULL_LEAD" "$(field '.leads[0].id')"
+  request GET "/leads?q=NcdSort-$TAG&sort=worklist" "$SA" >/dev/null
+  check "sort=worklist still puts overdue first" "$OVERDUE_LEAD" "$(field '.leads[0].id')"
+else
+  bad "default sort puts unset NCD above overdue" "could not create the two leads"
+fi
+
+json="{\"mobile\":\"$(lead_mobile 6)\",\"transaction_type\":\"rent\",\"name\":\"DrawerAlpha $TAG\"}"
+create_lead "$SA" "$json"; ALPHA_LEAD=$LEAD_ID
+json="{\"mobile\":\"$(lead_mobile 7)\",\"transaction_type\":\"rent\",\"name\":\"DrawerBeta $TAG\"}"
+create_lead "$SA" "$json"; BETA_LEAD=$LEAD_ID
+if [ -n "$ALPHA_LEAD" ] && [ -n "$BETA_LEAD" ]; then
+  request GET "/leads?q=DrawerAlpha&name=DrawerBeta%20$TAG" "$SA" >/dev/null
+  check "a drawer filter drops q" 1 "$(in_lead_ids "$BETA_LEAD")"
+  check "  the q-only match is gone" 0 "$(in_lead_ids "$ALPHA_LEAD")"
+  request GET "/leads?q=DrawerAlpha%20$TAG&status=new" "$SA" >/dev/null
+  check "status=new does not drop q" 1 "$(in_lead_ids "$ALPHA_LEAD")"
+else
+  bad "a drawer filter drops q" "could not create the two leads"
+fi
+
+json="{\"mobile\":\"$(lead_mobile 8)\",\"transaction_type\":\"rent\",\"name\":\"Visited $TAG\"}"
+create_lead "$SA" "$json"; VISIT_LEAD=$LEAD_ID
+if [ -n "$VISIT_LEAD" ]; then
+  json='{"kind":"visit","body":"deploy verification site visit"}'
+  check "logging a visit" 201 "$(request POST "/leads/$VISIT_LEAD/activities" "$SA" "$json")"
+  request GET "/leads?visited=true&q=Visited%20$TAG" "$SA" >/dev/null
+  check "visited=true is first_visit_at" 1 "$(in_lead_ids "$VISIT_LEAD")"
+  request GET "/leads?q=Visited%20$TAG" "$SA" >/dev/null
+  check "list card visit_count after a visit" 1 "$(field '.leads[0].visit_count')"
+  check "  last_followup_comment is the visit body" "deploy verification site visit" \
+    "$(field '.leads[0].last_followup_comment')"
+else
+  bad "visited=true is first_visit_at" "lead was not created"
+fi
+
+json="{\"mobile\":\"$(lead_mobile 9)\",\"transaction_type\":\"rent\",\"name\":\"HotCard $TAG\"}"
+create_lead "$SA" "$json"; HOT_LEAD=$LEAD_ID
+if [ -n "$HOT_LEAD" ]; then
+  json='{"status":"hot"}'
+  request POST "/leads/$HOT_LEAD/status" "$SA" "$json" >/dev/null
+  request GET "/leads?status=hot_negotiation&q=HotCard%20$TAG" "$SA" >/dev/null
+  check "status=hot_negotiation returns a hot lead" 1 "$(in_lead_ids "$HOT_LEAD")"
+else
+  bad "status=hot_negotiation returns a hot lead" "lead was not created"
+fi
+
+create_project "$SA" "Psf $TAG" \
+  ",\"brokerage_percent\":4.5,\"typologies\":[{\"typology_id\":\"$TYPOLOGY\",\"starting_price\":14200000,\"starting_carpet_sqft\":720}]"
+PSF_PROJECT=$PROJECT_ID
+if [ -n "$PSF_PROJECT" ]; then
+  request GET "/projects?q=Psf%20$TAG" "$SA" >/dev/null
+  check "project list includes avg_psf" 19722 "$(field '.projects[0].avg_psf')"
+  request GET '/projects?brokerage_min=4&brokerage_max=5&sort=recent&per_page=50' "$SA" >/dev/null
+  check "brokerage_min/max keeps a 4.5% project" 1 "$(in_ids "$PSF_PROJECT")"
+  request GET "/projects?q=NoSuchProject$TAG&status=active" "$SA" >/dev/null
+  check "project status pill does not drop q" 0 "$(field '.meta.total_count')"
+  request GET "/projects?q=NoSuchProject$TAG&builder_id=$BUILDER" "$SA" >/dev/null
+  check_gt "project drawer filter drops q" "$(field '.meta.total_count')"
+else
+  bad "project list includes avg_psf" "project was not created"
+fi
+
+json="{\"name\":\"Bldg $TAG\",\"city_id\":\"$CITY\"}"
+check "create a building for property checks" 201 "$(request POST /buildings "$SA" "$json")"
+BUILDING_ID=$(field '.building.id // empty')
+if [ -n "$BUILDING_ID" ]; then
+  json="{\"building_id\":\"$BUILDING_ID\",\"typology_id\":\"$TYPOLOGY\",\"listing_for\":\"sale\",\"price\":11800000,\"carpet_area_sqft\":400}"
+  request POST /properties "$SA" "$json" >/dev/null
+  json="{\"building_id\":\"$BUILDING_ID\",\"typology_id\":\"$TYPOLOGY\",\"listing_for\":\"sale\",\"price\":11800000,\"carpet_area_sqft\":690}"
+  check "create a property" 201 "$(request POST /properties "$SA" "$json")"
+  PROP_ID=$(field '.property.id // empty')
+  if [ -n "$PROP_ID" ]; then
+    json='{"status":"sold_out"}'
+    check "PATCH status=sold_out" 200 "$(request PATCH "/properties/$PROP_ID" "$SA" "$json")"
+    check "  payload says sold_out" sold_out "$(field '.property.status')"
+    json='{"status":"available"}'
+    check "sold_out is reversible" 200 "$(request PATCH "/properties/$PROP_ID" "$SA" "$json")"
+    request GET '/properties?carpet_min=600&carpet_max=800&sort=recent&per_page=50' "$SA" >/dev/null
+    check "carpet_min/max keeps a 690 sqft listing" 1 "$(in_property_ids "$PROP_ID")"
+    request GET "/properties?q=NoSuchListing$TAG&listing_for=sale" "$SA" >/dev/null
+    check_gt "property drawer filter drops q" "$(field '.meta.total_count')"
+  else
+    bad "PATCH status=sold_out" "property was not created"
+  fi
+else
+  bad "create a building for property checks" "building was not created"
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 section "Server — nginx"

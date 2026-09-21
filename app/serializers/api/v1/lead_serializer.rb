@@ -7,8 +7,8 @@ module Api
     # is the client's job.
     module LeadSerializer
       class << self
-        # The list card in the design: name, meta line, budget · project,
-        # status, next action, visited badge.
+        # The list card: name, status, sale · property type, visit count,
+        # configuration · budget, source, last followup comment, NCD, created.
         def list(lead)
           {
             id: lead.id,
@@ -26,10 +26,13 @@ module Api
             property_type: named(lead.property_type),
             typologies: lead.typologies.map { |t| named(t) },
             assigned_user: named(lead.assigned_user),
+            source: named(lead.lead_source),
             next_action_at: lead.next_action_at,
             next_action_note: lead.next_action_note,
+            last_followup_comment: lead.last_followup_comment,
             overdue: lead.overdue?,
             visited: lead.visited?,
+            visit_count: lead.visit_count,
             created_at: lead.created_at,
             updated_at: lead.updated_at
           }
@@ -40,7 +43,6 @@ module Api
         def detail(lead, activities: [], status_history: [])
           list(lead).merge(
             alt_mobile: lead.alt_mobile,
-            source: named(lead.lead_source),
             source_detail: lead.source_detail,
             first_visit_at: lead.first_visit_at,
             dead_reason: lead.dead_reason,

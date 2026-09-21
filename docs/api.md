@@ -318,9 +318,10 @@ exposes, so the alternative was six round trips for one card.
 ```json
 {
   "leads": {
-    "total": 29, "hot": 14, "todays_followups": 3,
-    "missed_followups": 4, "visited": 8, "bookings": 2,
-    "recent": [ /* top 3 of sort=worklist, same item shape as GET /leads. Not the leads-index NCD default. */ ]
+    "total": 29, "new": 4, "hot": 14, "hot_negotiation": 19,
+    "todays_followups": 3, "missed_followups": 4,
+    "visit_planned": 2, "visited": 8, "bookings": 2,
+    "recent": [ /* at most 3 missed followups, most overdue first; same item shape as GET /leads */ ]
   },
   "money": {
     "revenue_till_date": 68400000, "brokerage_earned": 413000, "bookings_count": 6,
@@ -354,10 +355,25 @@ counters cover only leads assigned to them.
 | --- | --- |
 | `revenue_till_date` | Σ `agreement_value` over **live** bookings — gross value sold |
 | `brokerage_earned` | Σ `net_income` — what the firm keeps. A different number |
+| `new` | Status code `new` |
+| `visit_planned` | Status code `visit_planned` — not `visited` |
+| `hot_negotiation` | Status `hot` **or** `negotiation`. `hot` is still hot-only |
 | `visited` | Leads with `first_visit_at` set — ever, not this month |
-| `todays_followups` | `next_action_at` falls today |
+| `todays_followups` | `next_action_at` falls today. Home tile label: **Today's Calls** |
 | `missed_followups` | `next_action_at` in the past on a non-terminal lead |
 | `cancelled` | Counted **separately** and excluded from every figure above |
+
+The home **Your pipeline** snapshot uses six of these: `total`, `new`,
+`todays_followups`, `missed_followups`, `visit_planned`, `hot_negotiation`.
+`hot`, `visited` and `bookings` remain on the payload. This set is **not**
+`GET /leads` `counts` (that one has Visited + Booked and has no Total / today's).
+There is no `status=todays_followup`; the Today's Calls tile lists via
+`ncd_from` / `ncd_upto` for today (IST).
+
+**`leads.recent` is the missed-followup strip under the grid** — at most three,
+most overdue first (`next_action_at ASC`), same item shape as `GET /leads`.
+It is **not** the worklist and not the leads-index NCD default. Empty if
+nothing is overdue. "View all" is `GET /leads?status=missed_followup`.
 
 **`todays_followups` and `missed_followups` overlap.** A followup due at 10am is
 still "today's" at 5pm *and* already overdue. That is deliberate: the tiles
@@ -435,8 +451,8 @@ row whose max is ₹90L even if its old min was ₹80L.
 
 Default sort is `next_action_at ASC NULLS FIRST, created_at DESC` — leads with
 no next action sit **above** overdue. `sort=worklist` is the old overdue-first
-order. **`GET /dashboard` `leads.recent` still uses worklist**, so the home strip
-and this list disagree by design.
+order. **`GET /dashboard` `leads.recent` is missed followups only** (at most
+three, most overdue first), so the home strip and this list disagree by design.
 
 The response includes **`counts`** every time, visibility-scoped and **not**
 narrowed by the current filter:
@@ -466,9 +482,13 @@ to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on
   "property_type": { "id": "…", "name": "Under construction" },
   "typologies": [ { "id": "…", "name": "2 BHK" } ],
   "assigned_user": { "id": "…", "name": "Rohit Shah" },
+  "source": { "id": "…", "name": "99acres" },
   "next_action_at": "2026-08-17T00:35:56.587+05:30",
   "next_action_note": "Chase for documents",
-  "overdue": true, "visited": false
+  "last_followup_comment": "Asked for the floor plan",
+  "overdue": true, "visited": true, "visit_count": 1,
+  "created_at": "2026-08-10T11:04:02.114+05:30",
+  "updated_at": "2026-08-17T00:35:56.587+05:30"
 }
 ```
 
@@ -477,7 +497,23 @@ for headings. `overdue` and `visited` are computed; don't derive them yourself.
 **`budget` is the amount to show** (`budget_max`, falling back to leftover
 `budget_min`). Do not render a min–max range from the leftover columns.
 
-The **detail** adds `alt_mobile`, `source`, `source_detail`, `first_visit_at`,
+List-card fields (also on detail, which extends this shape):
+
+| UI | Field |
+| --- | --- |
+| Lead Name | `display_name` |
+| Status | `status.name` (code/colour on the same object) |
+| Sale / Rent | `transaction_type` |
+| Under Construction | `property_type.name` — `null` on rent |
+| Visits: 1 | **`visit_count`** — logged `kind=visit` activities. Not the `visited` badge (`first_visit_at`) |
+| Configuration | `typologies[].name` |
+| Budget | `budget` (integer rupees) |
+| Source | `source.name` — `null` when unset. `source_detail` is detail-only |
+| Last Followup Comments | **`last_followup_comment`** — body of the latest call / WhatsApp / visit / note. `null` if none. Truncate + "show more" on the client. Not `next_action_note` |
+| Next Action Date | `next_action_at` |
+| Created At | `created_at` |
+
+The **detail** adds `alt_mobile`, `source_detail`, `first_visit_at`,
 `dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
 `mapped_properties[]`, `activities[]` (latest 20) and `status_history[]`.
 
@@ -509,9 +545,8 @@ firm). An unknown or out-of-line id is `404 unknown_user`. Omitting the key
 leaves the owner alone.
 
 `kind` is `call` · `whatsapp` · `visit` · `note`. (`status_change` exists but is
-written by the server.) `body` is required. Logging a **`visit`** sets
-`first_visit_at`, and the response returns the refreshed lead so you can update
-the badge without a second request.
+written by the server.) `body` is required. Logging a **`visit`** sets `first_visit_at` and increments `visit_count` on
+the returned lead, so you can refresh the card without a second request.
 
 There is **no delete**. `dead` is the terminal state and it carries a reason, so
 the dead-leads report can explain itself.
