@@ -1336,10 +1336,10 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Every accepted field. Send only what changed \u2014 this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.",
+            "description": "Every accepted field. Send only what changed \u2014 this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"emi\": {\n    \"loan_amount\": 8000000,\n    \"annual_rate\": \"8.50\",\n    \"tenure_years\": 20\n  }\n}"
             }
           },
           "event": [
@@ -2175,7 +2175,7 @@
                 "projects"
               ]
             },
-            "description": "My Projects only (`source: own`). Marketplace is an empty client pill \u2014 do not list catalog here.\n\nFilters: `q` (dropped if any drawer param is set; `status` does not drop `q`), `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `brokerage_min`, `brokerage_max` (NULL brokerage drops out), `typology_ids[]`, `status` (`active` default \u00b7 `archived` \u00b7 `all`).\n\nList/detail include `avg_psf` (unweighted mean of config rates). **Budget filtering matches a project if *any* of its typologies starts in the window.**"
+            "description": "My Projects only (`source: own`). Marketplace is an empty client pill \u2014 do not list catalog here.\n\nFilters: `q` (project name, builder, city, locality, or RERA — not the street address; dropped if any drawer param is set; `status` does not drop `q`), `name` (project name only, AND-ed with the other drawer filters), `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `brokerage_min`, `brokerage_max` (NULL brokerage drops out), `typology_ids[]`, `status` (`active` default \u00b7 `archived` \u00b7 `all`).\n\nList/detail include `avg_psf` (unweighted mean of config rates). **Budget filtering matches a project if *any* of its typologies starts in the window.**"
           },
           "event": [
             {
@@ -2206,7 +2206,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/projects?status=active&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&brokerage_min=1&brokerage_max=10&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1&sort=recent",
+              "raw": "{{api_base}}/projects?status=active&name=Aurum&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&brokerage_min=1&brokerage_max=10&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1&sort=recent",
               "host": [
                 "{{api_base}}"
               ],
@@ -2217,6 +2217,10 @@
                 {
                   "key": "status",
                   "value": "active"
+                },
+                {
+                  "key": "name",
+                  "value": "Aurum"
                 },
                 {
                   "key": "builder_id",
@@ -2268,7 +2272,7 @@
                 }
               ]
             },
-            "description": "Every filter on the projects index. `status` is `active` or `archived` \u2014 there is no destroy anywhere in inventory, archiving is the status change. Drawer params drop `q`; the Active pill does not. `brokerage_min`/`brokerage_max` skip projects with NULL brokerage. List rows include `avg_psf`."
+            "description": "Every filter on the projects index. `status` is `active` or `archived` \u2014 there is no destroy anywhere in inventory, archiving is the status change. `name` is the project name and is AND-ed with the other drawer filters. Drawer params drop `q`; the Active pill does not. `brokerage_min`/`brokerage_max` skip projects with NULL brokerage. List rows include `avg_psf`."
           },
           "event": [
             {
@@ -2564,7 +2568,7 @@
                 }
               ]
             },
-            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nTypo-tolerant on the name, exact fragments on the RERA number. Ranked exact \u2192 prefix \u2192 contains \u2192 typo, capped at 10. `meta.more` is true when there are more than 10.\n\nA hit carries only what a row shows \u2014 tap through to `GET /projects/:id` for the rest."
+            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nLiteral match on project name, builder, city, locality, or RERA. Typo-tolerant on the project name only, and only when nothing matched as typed. Ranked exact \u2192 prefix \u2192 contains, capped at 10. `meta.more` is true when there are more than 10. Optional `status`: `active` (default) \u00b7 `archived` \u00b7 `all`.\n\nA hit carries only what a row shows \u2014 tap through to `GET /projects/:id` for the rest."
           },
           "event": [
             {
@@ -2813,7 +2817,7 @@
                 "properties"
               ]
             },
-            "description": "Filters: `q` (dropped if any drawer param is set; `status` does not drop `q`), `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default \u00b7 `booked` \u00b7 `sold_out` \u00b7 `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` \u2014 so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
+            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description \u2014 not the city; dropped if any drawer param is set; `status` does not drop `q`; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default \u00b7 `booked` \u00b7 `sold_out` \u00b7 `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` \u2014 so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
           },
           "event": [
             {
@@ -2902,7 +2906,7 @@
                 }
               ]
             },
-            "description": "Every filter on the properties index. `status` is `available` / `booked` / `sold_out`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`. Drawer params drop `q`. `carpet_min`/`carpet_max` skip listings with no carpet.\n\nNo list payload carries `confidential_note`, whatever the filter."
+            "description": "Every filter on the properties index. `q` matches the card title, the building name, or the description \u2014 not the city. `status` is `available` / `booked` / `sold_out`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`. Drawer params drop `q`. `carpet_min`/`carpet_max` skip listings with no carpet.\n\nNo list payload carries `confidential_note`, whatever the filter."
           },
           "event": [
             {

@@ -83,6 +83,9 @@ module Api
 
           @lead.assign_attributes(update_params)
           apply_budget_write
+          apply_emi
+          raise ActiveRecord::Rollback if @emi_rejected
+
           replace_typologies if params.key?(:typology_ids)
           saved = @lead.save
           raise ActiveRecord::Rollback unless saved
@@ -91,6 +94,7 @@ module Api
         end
 
         return render_assignment_error(assignment_error) if assignment_error
+        return render_validation_errors(@lead.errors) if @emi_rejected
         return render_lead_save_failure(@lead) unless saved
 
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
@@ -257,6 +261,44 @@ module Api
         @lead.budget_max = params[:budget].presence
       end
 
+      # Nested on purpose. These are not lead_params, and assign_attributes
+      # would 500 on an `emi` key that is not a column. Omitting the key leaves
+      # a saved calculation alone. A present object must carry all three inputs.
+      def apply_emi
+        return unless params.key?(:emi)
+
+        raw = params[:emi]
+        data = raw.respond_to?(:permit) ? raw.permit(:loan_amount, :annual_rate, :tenure_years) : {}
+        amount = whole_number(data[:loan_amount])
+        tenure = whole_number(data[:tenure_years])
+        rate = decimal_rate(data[:annual_rate])
+
+        if amount.nil? || tenure.nil? || rate.nil?
+          @lead.errors.add(:base, "EMI needs a loan amount, rate, and tenure")
+          @emi_rejected = true
+          return
+        end
+
+        @lead.emi_loan_amount = amount
+        @lead.emi_annual_rate = rate.round(2, :half_up)
+        @lead.emi_tenure_years = tenure
+        @lead.emi_saved_at = Time.current
+      end
+
+      def whole_number(value)
+        string = value.to_s.strip
+        return nil unless string.match?(/\A\d+\z/)
+
+        string.to_i
+      end
+
+      def decimal_rate(value)
+        string = value.to_s.strip
+        return nil unless string.match?(/\A\d+(\.\d+)?\z/)
+
+        string.to_d
+      end
+
       def detail_payload(lead) = LeadSerializer.full_detail(lead)
 
       def replace_typologies
@@ -285,7 +327,8 @@ module Api
         params.permit(
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
           :budget, :possession_by, :lead_source_id, :source_detail,
-          :assigned_user_id, :notes
+          :assigned_user_id, :notes,
+          emi: %i[loan_amount annual_rate tenure_years]
         )
       end
 
@@ -304,7 +347,9 @@ module Api
       # assignable pool — not via assign_attributes, which used to write the
       # column with neither a role check nor a firm check.
       # `budget` is not a column; #apply_budget_write maps it onto budget_max.
-      def update_params = lead_params.except(:assigned_user_id, :budget)
+      # `emi` is permitted so the development log does not call it unpermitted,
+      # then stripped: it is not a column, and assign_attributes would 500.
+      def update_params = lead_params.except(:assigned_user_id, :budget, :emi)
     end
   end
 end

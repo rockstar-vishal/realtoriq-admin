@@ -22,8 +22,11 @@ module Api
 
       # Drawer fields. `status` is a heading pill and must not drop `q`, or
       # My Projects search with status=active would never run.
+      # `name` is the advanced-search project name. It drops `q`, like every
+      # other drawer field, and is applied on its own so a name plus a city
+      # still filters by both.
       DRAWER_KEYS = %w[
-        builder_id typology_ids budget_min budget_max city_id locality_id
+        name builder_id typology_ids budget_min budget_max city_id locality_id
         brokerage_min brokerage_max
       ].freeze
 
@@ -44,7 +47,7 @@ module Api
       end
 
       def search
-        result = Inventory::ProjectSearch.new(query: params[:q]).call
+        result = Inventory::ProjectSearch.new(query: params[:q], status: params[:status]).call
 
         unless result.ok?
           return render_error(result.error_code, result.error_message,
@@ -154,6 +157,7 @@ module Api
       def filtered_scope
         scope = base_scope.from_own
           .search(drawer_filters_present? ? nil : params[:q])
+          .named_like(params[:name])
           .possession_before(params[:possession_before])
           .budget_between(params[:budget_min], params[:budget_max])
           .brokerage_between(params[:brokerage_min], params[:brokerage_max])

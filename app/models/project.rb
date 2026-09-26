@@ -38,11 +38,30 @@ class Project < ApplicationRecord
   validate :builder_is_available_to_this_firm
   validate :name_unique_within_source
 
+  # Search box: name, builder, city, locality, RERA. The street address is not
+  # searched — location means the city and locality on the card.
+  TEXT_SEARCH_SQL = <<~SQL.squish.freeze
+    projects.name ILIKE :q
+    OR projects.rera_number ILIKE :q
+    OR builders.name ILIKE :q
+    OR cities.name ILIKE :q
+    OR localities.name ILIKE :q
+  SQL
+
   scope :search, ->(term) {
     next all if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    where("projects.name ILIKE :q OR projects.address ILIKE :q", q: pattern)
+    left_joins(:builder, :city, :locality).where(TEXT_SEARCH_SQL, q: pattern)
+  }
+
+  # Advanced-search "project name". Substring of the name only, so it can sit
+  # beside the other drawer filters. `q` cannot: a drawer param drops it.
+  scope :named_like, ->(term) {
+    next all if term.blank?
+
+    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
+    where("projects.name ILIKE ?", pattern)
   }
 
   scope :possession_before, ->(date) {

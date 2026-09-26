@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_26_010000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -474,6 +474,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_010000) do
     t.text "notes"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "emi_loan_amount"
+    t.decimal "emi_annual_rate", precision: 5, scale: 2
+    t.integer "emi_tenure_years"
+    t.datetime "emi_saved_at"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
@@ -486,6 +490,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_010000) do
     t.index ["next_action_at"], name: "index_leads_on_next_action_at"
     t.index ["property_type_id"], name: "index_leads_on_property_type_id"
     t.check_constraint "budget_max IS NULL OR budget_min IS NULL OR budget_max >= budget_min", name: "leads_budget_range_check"
+    t.check_constraint "emi_annual_rate IS NULL OR emi_annual_rate >= 6::numeric AND emi_annual_rate <= 14::numeric", name: "leads_emi_annual_rate_check"
+    t.check_constraint "emi_loan_amount IS NULL AND emi_annual_rate IS NULL AND emi_tenure_years IS NULL AND emi_saved_at IS NULL OR emi_loan_amount IS NOT NULL AND emi_annual_rate IS NOT NULL AND emi_tenure_years IS NOT NULL AND emi_saved_at IS NOT NULL", name: "leads_emi_all_or_nothing_check"
+    t.check_constraint "emi_loan_amount IS NULL OR emi_loan_amount >= 500000 AND emi_loan_amount <= 50000000", name: "leads_emi_loan_amount_check"
+    t.check_constraint "emi_tenure_years IS NULL OR emi_tenure_years >= 1 AND emi_tenure_years <= 30", name: "leads_emi_tenure_years_check"
     t.check_constraint "transaction_type::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "leads_transaction_type_check"
   end
 

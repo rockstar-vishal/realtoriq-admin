@@ -223,6 +223,39 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Budget Homes" ])
     end
 
+    it "matches name, builder, city, locality and RERA, and not the street address" do
+      lodha = create(:builder, firm: nil, name: "Lodha Group")
+      thane = create(:city, name: "Thane")
+      kolshet = create(:locality, city: thane, name: "Kolshet")
+      create_project(
+        name: "Aurum Vista", builder_id: lodha.id, city_id: thane.id, locality_id: kolshet.id,
+        address: "Palm Beach Road", rera_number: "P51700054321"
+      )
+      create_project(name: "Other Park", address: "Aurum Vista Marg")
+
+      headers = auth
+      names = ->(q) {
+        get "/api/v1/projects", params: { q: }, headers: headers
+        response.parsed_body["projects"].map { |p| p["name"] }
+      }
+
+      expect(names.call("Aurum")).to eq([ "Aurum Vista" ])
+      expect(names.call("Lodha")).to eq([ "Aurum Vista" ])
+      expect(names.call("Thane")).to eq([ "Aurum Vista" ])
+      expect(names.call("Kolshet")).to eq([ "Aurum Vista" ])
+      expect(names.call("54321")).to eq([ "Aurum Vista" ])
+      expect(names.call("Palm Beach")).to eq([])
+    end
+
+    it "keeps the project name when another drawer filter is set" do
+      create_project
+      create_project(name: "Budget Homes")
+
+      get "/api/v1/projects", params: { name: "Aurum", city_id: city.id }, headers: auth
+
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Vista" ])
+    end
+
     it "still applies q when only the status pill is present" do
       create_project
       post "/api/v1/projects", params: {
@@ -451,11 +484,42 @@ RSpec.describe "API v1 inventory" do
 
     it "ignores q when a drawer filter is present" do
       create_property
-      create_property(listing_for: "rent", price: 52_000, description: "Corner flat")
+      create_property(listing_for: "rent", price: 52_000, description: "Sea facing")
 
       get "/api/v1/properties", params: { q: "Corner", listing_for: "rent" }, headers: auth
 
       expect(response.parsed_body["properties"].map { |p| p["listing_for"] }).to eq([ "rent" ])
+    end
+
+    it "matches the card title, the building name and the description, and not the city" do
+      locality.update!(name: "Kharghar")
+      city.update!(name: "Navi Mumbai")
+      building.update!(name: "Seawoods Grand")
+      create_property
+
+      headers = auth
+      titles = ->(q) {
+        get "/api/v1/properties", params: { q: }, headers: headers
+        response.parsed_body["properties"].map { |p| p["title"] }
+      }
+
+      expect(titles.call("2 BHK in Kharghar")).to eq([ "2 BHK in Kharghar" ])
+      expect(titles.call("2 BHK")).to eq([ "2 BHK in Kharghar" ])
+      expect(titles.call("Kharghar")).to eq([ "2 BHK in Kharghar" ])
+      expect(titles.call("Seawoods")).to eq([ "2 BHK in Kharghar" ])
+      expect(titles.call("Corner")).to eq([ "2 BHK in Kharghar" ])
+      expect(titles.call("Navi Mumbai")).to eq([])
+    end
+
+    it "leaves booked and sold listings out of a search that does not ask for them" do
+      building.update!(name: "Seawoods Grand")
+      create_property(status: "sold_out", description: "Seawoods Grand penthouse")
+
+      get "/api/v1/properties", params: { q: "Seawoods" }, headers: auth
+      expect(response.parsed_body["properties"]).to eq([])
+
+      get "/api/v1/properties", params: { q: "Seawoods", status: "sold_out" }, headers: auth
+      expect(response.parsed_body["properties"].size).to eq(1)
     end
 
     it "filters by locality through the building" do

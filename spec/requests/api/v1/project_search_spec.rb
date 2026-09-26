@@ -135,6 +135,33 @@ RSpec.describe "API v1 project search" do
     end
   end
 
+  describe "builder and location" do
+    it "finds a project by its builder, city or locality" do
+      project("Aurum Vista")
+
+      expect(hit_names("Lodha")).to eq([ "Aurum Vista" ])
+      expect(hit_names("Thane")).to eq([ "Aurum Vista" ])
+      expect(hit_names("Kolshet")).to eq([ "Aurum Vista" ])
+    end
+
+    it "does not match the street address" do
+      project("Aurum Vista", address: "Palm Beach Road")
+
+      expect(hit_names("Palm Beach")).to eq([])
+    end
+
+    it "searches archived projects when asked, and leaves them out otherwise" do
+      project("Aurum Vista")
+      project("Aurum Archive", status: "archived")
+
+      expect(hit_names("aurum")).to eq([ "Aurum Vista" ])
+
+      get "/api/v1/projects/search", params: { q: "aurum", status: "archived" }, headers: auth
+
+      expect(response.parsed_body["projects"].map { |p| p["name"] }).to eq([ "Aurum Archive" ])
+    end
+  end
+
   describe "what is searched" do
     it "only returns this firm's projects" do
       other = create(:firm)
@@ -227,6 +254,12 @@ RSpec.describe "API v1 project search" do
     # Trigram similarity cannot tell a typo from a name that merely starts the
     # same way, so mixing both into one ranked list padded short queries with
     # unrelated projects and set a false "keep typing".
+    #
+    # The shared builder is "Lodha Group", and "lod" is now a literal builder
+    # match — which would return every project in this example. A builder name
+    # that does not contain the query keeps the example about project names.
+    let(:builder) { create(:builder, firm: nil, name: "Meridian Group") }
+
     before do
       project("Lodha Amara")
       project("Lotus Park")

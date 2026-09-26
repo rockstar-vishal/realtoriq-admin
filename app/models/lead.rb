@@ -51,6 +51,16 @@ class Lead < ApplicationRecord
   validates :email, allow_blank: true, format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :budget_min, :budget_max,
     numericality: { greater_than: 0, only_integer: true }, allow_nil: true
+  # Slider bounds. A stored calculation outside them cannot be shown on the control.
+  validates :emi_loan_amount,
+    numericality: { only_integer: true, greater_than_or_equal_to: 500_000, less_than_or_equal_to: 50_000_000 },
+    allow_nil: true
+  validates :emi_annual_rate,
+    numericality: { greater_than_or_equal_to: 6, less_than_or_equal_to: 14 },
+    allow_nil: true
+  validates :emi_tenure_years,
+    numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 30 },
+    allow_nil: true
   validates :dead_reason, presence: true, if: -> { lead_status&.is_dead? }
 
   validate :budget_range_is_ordered

@@ -734,4 +734,99 @@ RSpec.describe "API v1 leads" do
       expect(lead.reload.typologies.map(&:id)).to eq([ typologies.first.id ])
     end
   end
+
+  describe "PATCH /leads/:id emi" do
+    let!(:lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
+
+    def emi_body(overrides = {})
+      { emi: { loan_amount: 8_000_000, annual_rate: "8.50", tenure_years: 20 }.merge(overrides) }
+    end
+
+    it "ignores emi on create — the calculation is a later save" do
+      post "/api/v1/leads",
+        params: valid_attributes(emi: { loan_amount: 8_000_000, annual_rate: "8.50", tenure_years: 20 }),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      lead = Lead.across_firms.find(response.parsed_body.dig("lead", "id"))
+      expect(lead.emi_saved_at).to be_nil
+    end
+
+    it "stores the inputs and returns a plain decimal rate" do
+      patch "/api/v1/leads/#{lead.id}", params: emi_body, headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:ok)
+      emi = response.parsed_body.dig("lead", "emi")
+      expect(emi["loan_amount"]).to eq(8_000_000)
+      expect(emi["tenure_years"]).to eq(20)
+      expect(emi["annual_rate"]).not_to include("e")
+      expect(emi["annual_rate"].to_d).to eq(BigDecimal("8.5"))
+      expect(emi["saved_at"]).to be_present
+      expect(response.parsed_body["lead"]).not_to have_key("emi_loan_amount")
+
+      lead.reload
+      expect(lead.emi_loan_amount).to eq(8_000_000)
+      expect(lead.notes).to be_nil
+    end
+
+    it "leaves a saved calculation alone when emi is omitted" do
+      patch "/api/v1/leads/#{lead.id}", params: emi_body, headers: auth(agent), as: :json
+      saved_at = lead.reload.emi_saved_at
+
+      patch "/api/v1/leads/#{lead.id}", params: { notes: "call tomorrow" },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.emi_saved_at).to eq(saved_at)
+      expect(lead.emi_loan_amount).to eq(8_000_000)
+      expect(lead.notes).to eq("call tomorrow")
+    end
+
+    it "does not put emi on the list card" do
+      patch "/api/v1/leads/#{lead.id}", params: emi_body, headers: auth(agent), as: :json
+
+      get "/api/v1/leads", headers: auth(agent)
+
+      card = response.parsed_body["leads"].find { |row| row["id"] == lead.id }
+      expect(card).not_to have_key("emi")
+
+      get "/api/v1/leads/#{lead.id}", headers: auth(agent)
+      expect(response.parsed_body.dig("lead", "emi", "loan_amount")).to eq(8_000_000)
+    end
+
+    it "rejects a rate outside the slider" do
+      patch "/api/v1/leads/#{lead.id}", params: emi_body(annual_rate: "15"),
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(lead.reload.emi_saved_at).to be_nil
+    end
+
+    it "rejects an emi object that is missing an input" do
+      patch "/api/v1/leads/#{lead.id}", params: { emi: { loan_amount: 8_000_000 } },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid")
+      expect(lead.reload.emi_loan_amount).to be_nil
+    end
+
+    it "returns 404 for another firm's lead" do
+      other = create(:lead, firm: create(:firm), lead_status: new_status)
+
+      patch "/api/v1/leads/#{other.id}", params: emi_body, headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(other.reload.emi_saved_at).to be_nil
+    end
+
+    it "returns 404 when an agent saves onto a lead they cannot see" do
+      someone_elses = create(:lead, firm:, lead_status: new_status, assigned_user: manager)
+
+      patch "/api/v1/leads/#{someone_elses.id}", params: emi_body, headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(someone_elses.reload.emi_saved_at).to be_nil
+    end
+  end
 end
