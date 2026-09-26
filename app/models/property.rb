@@ -18,6 +18,7 @@ class Property < ApplicationRecord
   belongs_to_same_firm :created_by_user
 
   has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visit_properties, -> { unscope(where: :firm_id) }, dependent: :restrict_with_error
 
   has_many_attached :photos
 

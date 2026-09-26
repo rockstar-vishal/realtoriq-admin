@@ -175,11 +175,11 @@ Mapping your proposed filters to what actually exists:
 | Project/Property | ❌ not filterable — leads have no project link yet. See §4.2 |
 | Budget range | `budget_min` / `budget_max` — **overlap, not containment** |
 | Configuration/BHK | `typology_ids[]`, repeated |
-| Today's follow-ups only | Use `status=missed_followup` for overdue. A "today" window is not built — say if you need it |
+| Today's follow-ups only | `ncd_from` / `ncd_upto` for today (IST). Overdue is `missed_followup=true` |
 | Missed calls only | ❌ not built — there is no call log |
 
-**`status=missed_followup` is not a real status.** It means `next_action_at` in
-the past on a non-terminal lead, and it will never appear in `lead_statuses`.
+**`missed_followup=true` is not a real status.** It means `next_action_at <= now` on
+a non-terminal lead, and it will never appear in `lead_statuses`.
 
 **Budget filtering is overlap.** A ₹1–1.3 Cr window returns the lead whose own
 range is ₹80L–1.2 Cr — deliberately, so widening the filter doesn't hide the lead
@@ -192,14 +192,14 @@ you're looking for.
 
 `POST /api/v1/leads/{id}/activities` — your two examples are correct.
 
-- **`kind`** is `call` · `whatsapp` · `visit` · `note`. (`status_change` exists in
-  the enum but is written by the server on a status transition — don't send it.)
+- **`kind`** is `call` · `whatsapp` · `note`. (`status_change` and historical
+  `visit` rows exist; don't send either. A site visit is `POST /leads/:id/visits`.)
 - **`outcome` is free text, not an enum.** A plain string column, no validation.
   If you want a fixed vocabulary, tell us the list and we'll constrain it —
   otherwise it stays open and reporting on it later will be messy.
 - **`body` is required** for every kind you can send.
-- Logging **`kind: "visit"`** sets `first_visit_at`, and the response returns the
-  refreshed lead so you can update the "visited" badge without a second call.
+- A lead is **visited** when it has at least one `lead_visits` row. There is
+  no `first_visit_at`.
 
 **3.3.a — which screens should call it:** Log Call, Log Site Visit, and any
 WhatsApp/Note action. All four map to `kind`. Email is **not** a valid kind

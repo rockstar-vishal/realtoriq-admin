@@ -28,7 +28,6 @@ module Api
             assigned_user: named(lead.assigned_user),
             source: named(lead.lead_source),
             next_action_at: lead.next_action_at,
-            next_action_note: lead.next_action_note,
             last_followup_comment: lead.last_followup_comment,
             overdue: lead.overdue?,
             visited: lead.visited?,
@@ -44,13 +43,12 @@ module Api
           list(lead).merge(
             alt_mobile: lead.alt_mobile,
             source_detail: lead.source_detail,
-            first_visit_at: lead.first_visit_at,
             dead_reason: lead.dead_reason,
             dead_at: lead.dead_at,
             booked_at: lead.booked_at,
             notes: lead.notes,
-            mapped_projects: lead.lead_projects.map { |mapping| mapped_project(mapping) },
-            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(mapping) },
+            mapped_projects: lead.lead_projects.map { |mapping| mapped_project(lead, mapping) },
+            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
             status_history: status_history.map { |change| history_entry(change) }
           )
@@ -89,10 +87,14 @@ module Api
           { id: record.id, name: record.name }
         end
 
-        def mapped_project(mapping)
+        def mapped_project(lead, mapping)
           project = mapping.project
+          stats = lead.project_visit_stats[project.id.to_s] || EMPTY_SITE_STATS
           {
             id: mapping.id,
+            visited: stats[:visit_count].positive?,
+            visit_count: stats[:visit_count],
+            last_visited_on: ist_date(stats[:last_visited_at]),
             project: {
               id: project.id,
               name: project.name,
@@ -106,10 +108,14 @@ module Api
           }
         end
 
-        def mapped_property(mapping)
+        def mapped_property(lead, mapping)
           property = mapping.property
+          stats = lead.property_visit_stats[property.id.to_s] || EMPTY_SITE_STATS
           {
             id: mapping.id,
+            visited: stats[:visit_count].positive?,
+            visit_count: stats[:visit_count],
+            last_visited_on: ist_date(stats[:last_visited_at]),
             property: {
               id: property.id,
               title: property.title,
@@ -118,6 +124,14 @@ module Api
               price: property.price
             }
           }
+        end
+
+        EMPTY_SITE_STATS = { visit_count: 0, last_visited_at: nil }.freeze
+
+        def ist_date(time)
+          return nil if time.nil?
+
+          time.in_time_zone(Lead::NCD_ZONE).to_date.iso8601
         end
 
         def history_entry(change)

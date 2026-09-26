@@ -37,6 +37,8 @@ class User < ApplicationRecord
   # condition with it. Here the key is user_id, so `firm_id IS NULL` survives
   # and the association silently returns nothing.
   has_many :auth_sessions, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :notifications, -> { unscope(where: :firm_id) }, dependent: :delete_all
+  has_many :push_subscriptions, -> { unscope(where: :firm_id) }, dependent: :delete_all
 
   # A broker leaving must not take the firm's pipeline with them — their leads
   # are unassigned and stay, and the timeline keeps what happened while ceasing

@@ -165,7 +165,7 @@ bin/rails assets:precompile
 bin/rails server -e staging
 ```
 
-Background jobs, if you need them (OTP email delivery is the only user today):
+Background jobs. OTP email uses them, and follow-up reminders do not fire unless this process is running (`config/recurring.yml` schedules the scanner every minute on staging):
 
 ```bash
 bin/jobs

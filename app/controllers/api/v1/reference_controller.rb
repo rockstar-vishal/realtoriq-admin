@@ -51,7 +51,8 @@ module Api
             { id: s.id, name: s.name, code: s.code, category: s.category }
           },
           lead_statuses: LeadStatus.active.ordered.map { |s|
-            { id: s.id, name: s.name, code: s.code, is_dead: s.is_dead, is_booked: s.is_booked }
+            { id: s.id, name: s.name, code: s.code, is_dead: s.is_dead, is_booked: s.is_booked,
+              is_terminal: s.is_terminal }
           },
           property_types: PropertyType.active.ordered.map { |t|
             { id: t.id, name: t.name, code: t.code }

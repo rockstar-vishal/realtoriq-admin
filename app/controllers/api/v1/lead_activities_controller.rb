@@ -39,8 +39,6 @@ module Api
 
         render json: {
           activity: LeadActivitySerializer.call(result.activity),
-          # A visit sets first_visit_at, so the client can refresh the badge
-          # without a second request. visit_count / last_followup_comment too.
           lead: LeadSerializer.list(@lead.reload)
         }, status: :created
       end

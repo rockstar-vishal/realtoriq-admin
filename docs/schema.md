@@ -96,7 +96,7 @@ reports writable without hardcoding names in SQL), `property_types`.
 
 ### Leads — **built**
 
-`leads`, `lead_typologies`, `lead_activities`, `lead_status_changes`, as
+`leads`, `lead_followups`, `lead_typologies`, `lead_activities`, `lead_status_changes`, as
 designed. Columns are in the migrations; the rules that aren't obvious from them:
 
 - **`name` is nullable.** Brokers capture a number off a portal before anything
@@ -113,7 +113,12 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   outrank `L-10000` and start reissuing.
 - **One lead per `(firm_id, mobile, transaction_type)`.** Same number may exist
   once as sale and once as rent. `notes` is the free-text requirements box
-  (labelled “Detailed Client Requirements” in the app).
+  (labelled “Detailed Client Requirements” in the app). Follow-up comments live
+  only on `lead_followups.comment`.
+- **NCD (`leads.next_action_at`) is a copy** written by `Leads::RecordFollowup`.
+  There is no `leads.next_action_note`. A followup without a datetime leaves the
+  current NCD. Dead and booked clear it. `last_followup_comment` on the API is
+  the latest followup comment, not an activity body.
 - **Budget is a single amount.** Writes store `budget` in `budget_max` and clear
   `budget_min`. The `budget_min` column stays for leftover rows; it is not
   written anymore. `GET /leads` `budget_min` / `budget_max` are a **filter
@@ -124,11 +129,11 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
 Two behaviours worth knowing before writing a query:
 
 - **"Missed f/u" is not a status.** The design's tab strip carries it but
-  `LEAD_STATUSES` does not. It means `next_action_at` in the past on a
-  non-terminal lead, and is reachable as `status=missed_followup`.
+  `LEAD_STATUSES` does not. It means `next_action_at <= now` on a
+  non-terminal lead, and is reachable as `missed_followup=true`.
   `hot_negotiation` is the hot + negotiation codes together.
 - **Default GET /leads sort is NCD** (`next_action_at ASC NULLS FIRST`). Home
-  dashboard `recent` still uses the overdue-first worklist.
+  dashboard `recent` is missed followups only (most overdue first).
 
 **Visibility**: agents see only leads assigned to them; managers and the super
 admin see the firm's whole pipeline (`Lead.visible_to`). A lead an agent may not
@@ -190,8 +195,14 @@ what the broker earns is not the client's business.
 
 ### Still to build
 
-**`visits`** — `lead_id`, `project_id`/`property_id`, `scheduled_at`, `status`,
-`notes`, `outcome`.
+**`lead_visits`** — built. A completed outing: `firm_id`, `lead_id`, `user_id`
+(the logger), `visited_at` (IST start of the calendar day), optional `notes`.
+Sites are optional joins in `lead_visit_projects` / `lead_visit_properties`
+and must already be mapped when **added** to a visit (create, or new ids on
+PATCH). Ids already on a visit stay after the lead unmaps them until the
+outing is edited. A lead is visited when it has at least one row.
+`leads.first_visit_at` is gone. Scheduling, status, and outcome are not in
+this table.
 
 **Matching** — the design's "Map Lead" and "Show New Matches". The data it needs
 (typology starting prices and areas, lead budgets and preferred configurations)
@@ -248,7 +259,11 @@ control for it.
 
 ### Ancillary
 
-**`notifications`** — `user_id`, `kind`, `title`, `body`, `read_at`, `data`.
+**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due` or `test`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+
+**`push_subscriptions`** — one browser per row: `user_id`, `auth_session_id`, encrypted `endpoint` / `p256dh` / `auth_key`. Deleted when the session is revoked.
+
+**`notification_dispatch_states`** — global watermark (`key`, `last_dispatched_at`). Not firm-scoped. The follow-up scanner's first run only plants the cursor.
 **`news_articles`** — global, platform-published: `category`, `title`, `body`,
 `read_minutes`, `published_at`, image.
 

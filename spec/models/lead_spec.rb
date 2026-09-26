@@ -97,16 +97,31 @@ RSpec.describe Lead do
       expect(described_class.missed_followup.pluck(:id)).to eq([ overdue.id ])
     end
 
+    it "includes a followup due exactly now" do
+      due_now = create(:lead, firm:, next_action_at: Time.current)
+      create(:lead, :upcoming, firm:)
+
+      expect(described_class.missed_followup.pluck(:id)).to eq([ due_now.id ])
+    end
+
     it "excludes leads in a terminal status, which need no chasing" do
       create(:lead, :overdue, firm:, lead_status: create(:lead_status, :dead), dead_reason: "Gone")
 
       expect(described_class.missed_followup.count).to eq(0)
     end
 
-    it "is reachable through with_status by its documented name" do
-      overdue = create(:lead, :overdue, firm:)
+    it "is not reachable as a status code" do
+      create(:lead, :overdue, firm:)
 
-      expect(described_class.with_status("missed_followup").pluck(:id)).to eq([ overdue.id ])
+      expect(described_class.with_status("missed_followup")).to be_empty
+    end
+
+    it "filters through with_missed_followup" do
+      overdue = create(:lead, :overdue, firm:)
+      upcoming = create(:lead, :upcoming, firm:)
+
+      expect(described_class.with_missed_followup(true).pluck(:id)).to eq([ overdue.id ])
+      expect(described_class.with_missed_followup(false).pluck(:id)).to eq([ upcoming.id ])
     end
 
     it "expands hot_negotiation to the hot and negotiation codes" do

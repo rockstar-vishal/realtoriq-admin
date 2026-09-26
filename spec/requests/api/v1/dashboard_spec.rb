@@ -34,7 +34,8 @@ RSpec.describe "API v1 dashboard" do
                      next_action_at: 2.days.ago)
         create(:lead, firm:, lead_status: followup, assigned_user: agent,
                      next_action_at: Time.current + 4.hours)
-        create(:lead, firm:, lead_status: followup, first_visit_at: 3.days.ago)
+        visited_lead = create(:lead, firm:, lead_status: followup)
+        create(:lead_visit, firm:, lead: visited_lead, visited_at: 3.days.ago)
 
         get "/api/v1/dashboard", headers: auth
 
@@ -49,6 +50,15 @@ RSpec.describe "API v1 dashboard" do
         expect(leads["todays_followups"]).to eq(1)
         expect(leads["visited"]).to eq(1)
       end
+    end
+
+    it "does not count a historical visit activity as visited" do
+      activity_only = create(:lead, firm:, lead_status: followup)
+      create(:lead_activity, firm:, lead: activity_only, kind: "visit", body: "Old site visit")
+
+      get "/api/v1/dashboard", headers: auth
+
+      expect(response.parsed_body.dig("leads", "visited")).to eq(0)
     end
 
     it "counts new, visit_planned and hot_negotiation for the home snapshot" do
@@ -72,7 +82,7 @@ RSpec.describe "API v1 dashboard" do
 
     # Deliberate, and worth pinning: a followup due at 10am is still "today's"
     # at 5pm *and* already overdue. The tiles deep-link to the leads list, and
-    # `status=missed_followup` there uses the same `< now` rule — so a tile that
+    # `missed_followup=true` there uses the same `<= now` rule — so a tile that
     # disagreed with the list it opens would be the real bug.
     it "counts a followup earlier today as both today's and missed" do
       travel_to Time.zone.local(2026, 9, 10, 17, 0) do

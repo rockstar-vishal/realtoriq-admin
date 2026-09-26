@@ -29,7 +29,7 @@ module Api
 
       include AttachesPhotos
 
-      before_action :set_project, only: %i[show update add_photos remove_photo]
+      before_action :set_project, only: %i[show update add_photos remove_photo visitors]
       before_action :require_super_admin, only: %i[create update add_photos remove_photo]
       before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo]
 
@@ -68,6 +68,11 @@ module Api
 
       def show
         render json: { project: ProjectSerializer.detail(@project) }, status: :ok
+      end
+
+      def visitors
+        render json: Inventory::VisitorList.new(site: @project, user: current_user, page: params[:page]).as_json,
+               status: :ok
       end
 
       def create

@@ -74,6 +74,20 @@ Rails.application.routes.draw do
       get "me",        to: "me#show"
       get "reference", to: "reference#index"
 
+      resources :notifications, only: %i[index] do
+        collection do
+          get :unread_count
+          post :mark_all_read
+          post :test
+        end
+        member { patch :read }
+      end
+
+      get    "push_subscriptions", to: "push_subscriptions#show"
+      post   "push_subscriptions", to: "push_subscriptions#create"
+      delete "push_subscriptions", to: "push_subscriptions#destroy"
+      get    "push_subscriptions/vapid_public_key", to: "push_subscriptions#vapid_public_key"
+
       resources :users, only: %i[index create show update] do
         resources :managers, only: %i[create destroy], controller: "user_managers",
           param: :manager_id
@@ -95,6 +109,8 @@ Rails.application.routes.draw do
         # Flat controller names on purpose — an Api::V1::Leads module would
         # shadow the top-level Leads:: service namespace.
         resources :activities, only: %i[index create], controller: "lead_activities"
+        resources :followups, only: %i[index create], controller: "lead_followups"
+        resources :visits, only: %i[index create update], controller: "lead_visits"
         resources :projects, only: %i[create destroy], controller: "lead_projects"
         resources :properties, only: %i[create destroy], controller: "lead_properties"
       end
@@ -112,6 +128,7 @@ Rails.application.routes.draw do
         collection { get :search }
 
         member do
+          get :visitors
           # Photos live on the detail screen, not the create form.
           post   "photos", to: "projects#add_photos"
           delete "photos/:photo_id", to: "projects#remove_photo", as: :photo
@@ -120,6 +137,7 @@ Rails.application.routes.draw do
 
       resources :properties, only: %i[index create show update] do
         member do
+          get :visitors
           post   "photos", to: "properties#add_photos"
           delete "photos/:photo_id", to: "properties#remove_photo", as: :photo
         end
