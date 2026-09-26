@@ -22,7 +22,7 @@ module Api
 
       include AttachesPhotos
 
-      before_action :set_property, only: %i[show update add_photos remove_photo]
+      before_action :set_property, only: %i[show update add_photos remove_photo visitors]
 
       def index
         @pagy, records = pagy(filtered_scope, limit: per_page)
@@ -36,6 +36,11 @@ module Api
 
       def show
         render json: { property: PropertySerializer.detail(@property) }, status: :ok
+      end
+
+      def visitors
+        render json: Inventory::VisitorList.new(site: @property, user: current_user, page: params[:page]).as_json,
+               status: :ok
       end
 
       def create

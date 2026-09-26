@@ -27,6 +27,10 @@ gem "pagy", "~> 9.3"
 # JWT access/refresh tokens for the broker API
 gem "jwt", "~> 2.9"
 
+# Browser push (VAPID). The inbox stays in Postgres; this only delivers a payload
+# to the subscription endpoint the browser already handed us.
+gem "web-push", "~> 3.0"
+
 # Cross-origin requests from the React broker app
 gem "rack-cors"
 

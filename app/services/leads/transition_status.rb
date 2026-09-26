@@ -9,12 +9,13 @@ module Leads
   class TransitionStatus
     Result = Struct.new(:ok?, :lead, :error_code, :error_message, keyword_init: true)
 
-    def initialize(lead:, to_status:, actor:, reason: nil, note: nil)
+    def initialize(lead:, to_status:, actor:, reason: nil, note: nil, booked_at: nil)
       @lead = lead
       @to_status = to_status
       @actor = actor
       @reason = reason.to_s.strip.presence
       @note = note.to_s.strip.presence
+      @booked_at = booked_at
     end
 
     def call
@@ -43,7 +44,7 @@ module Leads
 
     private
 
-    attr_reader :lead, :to_status, :actor, :reason, :note
+    attr_reader :lead, :to_status, :actor, :reason, :note, :booked_at
 
     def apply_status_columns(_from_status)
       lead.lead_status = to_status
@@ -58,7 +59,10 @@ module Leads
         lead.dead_at = nil
       end
 
-      lead.booked_at = Time.current if to_status.is_booked?
+      lead.booked_at = booked_at.presence || Time.current if to_status.is_booked?
+      # Today's Calls counts any NCD that falls today, including booked/dead.
+      # Clearing here so a terminal lead leaves the call list.
+      lead.next_action_at = nil if to_status.is_terminal?
     end
 
     def record_history(from_status)

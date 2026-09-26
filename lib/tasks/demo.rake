@@ -151,6 +151,7 @@ namespace :demo do
       status_name = attrs.delete(:status)
       source_name = attrs.delete(:source)
       assignee = attrs.delete(:assigned)
+      note = attrs.delete(:next_action_note)
 
       lead = firm.leads.create!(
         **attrs,
@@ -158,6 +159,12 @@ namespace :demo do
         lead_source: source.call(source_name),
         assigned_user: assignee
       )
+
+      if note.present?
+        lead.lead_followups.create!(
+          firm:, user: assignee, comment: note, next_action_at: lead.next_action_at
+        )
+      end
 
       typology_names.each do |name|
         found = typology.call(name)

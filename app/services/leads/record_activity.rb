@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
 module Leads
-  # Logging what the broker did. Some activities also move the lead: a visit is
-  # what makes the design's "visited" badge true, so it is derived from the
-  # timeline rather than set separately, and the two cannot disagree.
+  # Logging what the broker did. Site visits are LeadVisit rows, not activities.
   class RecordActivity
     Result = Struct.new(:ok?, :activity, :errors, keyword_init: true)
 
@@ -28,8 +26,6 @@ module Leads
           firm: lead.firm, user: actor, kind:, body:, outcome:,
           occurred_at: occurred_at.presence || Time.current
         )
-
-        mark_visited(activity) if kind == "visit"
       end
 
       Result.new(ok?: true, activity:)
@@ -40,14 +36,6 @@ module Leads
     private
 
     attr_reader :lead, :actor, :kind, :body, :occurred_at, :outcome
-
-    # Earliest visit wins: logging an older visit after a newer one should move
-    # the first-visit date back, not leave it at whatever was recorded first.
-    def mark_visited(activity)
-      return if lead.first_visit_at.present? && lead.first_visit_at <= activity.occurred_at
-
-      lead.update!(first_visit_at: activity.occurred_at)
-    end
 
     def failure(attribute, message)
       errors = ActiveModel::Errors.new(LeadActivity.new)

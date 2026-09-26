@@ -82,6 +82,20 @@ FactoryBot.define do
     body { "Spoke about the 3 BHK" }
     occurred_at { Time.current }
   end
+
+  factory :lead_visit do
+    firm { lead.firm }
+    lead
+    user { association :user, firm: lead.firm }
+    visited_at { Time.find_zone("Asia/Kolkata").now.beginning_of_day }
+  end
+
+  factory :lead_followup do
+    firm { lead.firm }
+    lead
+    user { association :user, firm: lead.firm }
+    comment { "Asked for the floor plan" }
+  end
 end
 
 FactoryBot.define do

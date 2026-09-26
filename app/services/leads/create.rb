@@ -5,6 +5,15 @@ module Leads
   # the opening row of its status history — so the dead-leads report can see
   # when a lead entered the pipeline, not only when it left.
   class Create
+    class FollowupFailed < StandardError
+      attr_reader :result
+
+      def initialize(result)
+        @result = result
+        super(result.error_message)
+      end
+    end
+
     Result = Struct.new(:ok?, :lead, :errors, :error_code, :error_message, :error_details,
                         keyword_init: true)
 
@@ -12,13 +21,14 @@ module Leads
     DUPLICATE_INDEX = "index_leads_on_firm_mobile_transaction_type"
 
     def initialize(firm:, actor:, attributes:, typology_ids: [],
-                   copy_project_typologies: false, project_id: nil)
+                   copy_project_typologies: false, project_id: nil, followup: nil)
       @firm = firm
       @actor = actor
       @attributes = attributes
       @typology_ids = Array(typology_ids).compact_blank
       @copy_project_typologies = copy_project_typologies
       @project_id = project_id.presence
+      @followup_attrs = followup
     end
 
     def call
@@ -37,7 +47,11 @@ module Leads
           assign_typologies(lead)
           map_source_project(lead)
           open_status_history(lead)
+          record_opening_followup(lead)
         end
+      rescue FollowupFailed => e
+        return Result.new(ok?: false, lead:, error_code: e.result.error_code,
+                          error_message: e.result.error_message, errors: e.result.errors)
       rescue ActiveRecord::RecordNotUnique => e
         return duplicate_result(lead) if e.message.include?(DUPLICATE_INDEX)
 
@@ -61,7 +75,20 @@ module Leads
 
     private
 
-    attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies, :project_id
+    attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies, :project_id,
+      :followup_attrs
+
+    # `budget` is not a column — it is written to budget_max with min cleared.
+    # budget_min on the payload is ignored so a leftover range cannot be stored.
+    # NCD and follow-up comments are not lead columns on write; they go through
+    # RecordFollowup so a client cannot overwrite the log or the current NCD.
+    def non_column_keys
+      [
+        :assigned_user_id, "assigned_user_id", :budget, "budget", :budget_min, "budget_min",
+        :next_action_at, "next_action_at", :next_action_note, "next_action_note",
+        :followup, "followup"
+      ]
+    end
 
     def build(status)
       lead = Lead.new(attributes.except(*non_column_keys))
@@ -71,12 +98,6 @@ module Leads
 
       assign_owner(lead)
       lead
-    end
-
-    # `budget` is not a column — it is written to budget_max with min cleared.
-    # budget_min on the payload is ignored so a leftover range cannot be stored.
-    def non_column_keys
-      [ :assigned_user_id, "assigned_user_id", :budget, "budget", :budget_min, "budget_min" ]
     end
 
     def apply_single_budget(lead)
@@ -159,6 +180,22 @@ module Leads
         error_message: "A #{lead.transaction_type} lead already exists for this number.",
         error_details: existing && { lead_id: existing.id, transaction_type: lead.transaction_type }
       )
+    end
+
+    def record_opening_followup(lead)
+      raw = followup_attrs
+      return if raw.blank?
+
+      comment = raw[:comment] || raw["comment"]
+      ncd = raw[:next_action_at] || raw["next_action_at"]
+      return if comment.blank? && ncd.blank?
+
+      result = RecordFollowup.new(
+        lead:, actor:, comment:, next_action_at: ncd
+      ).call
+      return if result.ok?
+
+      raise FollowupFailed, result
     end
 
     def open_status_history(lead)

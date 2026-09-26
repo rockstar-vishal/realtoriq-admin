@@ -52,6 +52,42 @@ RSpec.describe "API v1 leads" do
       expect(body.dig("lead", "budget_min")).to be_nil
     end
 
+    it "creates the first followup in the same transaction" do
+      when_at = 2.days.from_now.change(usec: 0)
+
+      post "/api/v1/leads",
+        params: valid_attributes(followup: { comment: "Opening call", next_action_at: when_at.iso8601 }),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      lead = Lead.across_firms.find(response.parsed_body.dig("lead", "id"))
+      expect(lead.next_action_at).to eq(when_at)
+      expect(lead.lead_followups.sole.comment).to eq("Opening call")
+      expect(response.parsed_body.dig("lead", "last_followup_comment")).to eq("Opening call")
+    end
+
+    it "ignores top-level next_action_at on create — NCD is a followup write" do
+      post "/api/v1/leads",
+        params: valid_attributes(next_action_at: 2.days.from_now.iso8601, next_action_note: "ignored"),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      lead = Lead.across_firms.find(response.parsed_body.dig("lead", "id"))
+      expect(lead.next_action_at).to be_nil
+      expect(lead.lead_followups.count).to eq(0)
+      expect(response.parsed_body["lead"]).not_to have_key("next_action_note")
+    end
+
+    it "refuses a nested followup with a date and no comment" do
+      post "/api/v1/leads",
+        params: valid_attributes(followup: { next_action_at: 2.days.from_now.iso8601 }),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("comment_required")
+      expect(Lead.across_firms.count).to eq(0)
+    end
+
     it "ignores budget_min on write" do
       post "/api/v1/leads",
         params: valid_attributes.except(:budget).merge(budget_min: 12_000_000, budget_max: 18_000_000),
@@ -198,13 +234,13 @@ RSpec.describe "API v1 leads" do
     it "includes the list-card fields: source, visit count, last followup, created_at" do
       source = create(:lead_source, name: "99acres")
       lead = create(:lead, firm:, lead_status: new_status, lead_source: source,
-                           property_type:, first_visit_at: 3.days.ago)
-      create(:lead_activity, firm:, lead:, kind: "visit", body: "First site visit",
-                             occurred_at: 3.days.ago)
-      create(:lead_activity, firm:, lead:, kind: "visit", body: "Second site visit",
-                             occurred_at: 2.days.ago)
-      create(:lead_activity, firm:, lead:, kind: "call", body: "Asked for the floor plan",
-                             occurred_at: 1.day.ago)
+                           property_type:)
+      create(:lead_visit, firm:, lead:, visited_at: 3.days.ago)
+      create(:lead_visit, firm:, lead:, visited_at: 2.days.ago)
+      create(:lead_followup, firm:, lead:, comment: "Asked for the floor plan",
+                            created_at: 1.day.ago)
+      create(:lead_activity, firm:, lead:, kind: "call", body: "This is not the card comment",
+                             occurred_at: Time.current)
       create(:lead_activity, firm:, lead:, kind: "status_change", body: nil,
                              occurred_at: Time.current)
       bare = create(:lead, firm:, lead_status: new_status, property_type:)
@@ -249,14 +285,41 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ target.id ])
     end
 
-    it "filters to overdue followups through the derived tab" do
+    it "filters to overdue followups through missed_followup, not status" do
       overdue = create(:lead, :overdue, firm:, lead_status: new_status)
       create(:lead, :upcoming, firm:, lead_status: new_status)
 
-      get "/api/v1/leads", params: { status: "missed_followup" }, headers: auth(manager)
+      get "/api/v1/leads", params: { missed_followup: true }, headers: auth(manager)
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ overdue.id ])
       expect(response.parsed_body["leads"].first["overdue"]).to be(true)
+    end
+
+    it "does not treat missed_followup as a status code" do
+      create(:lead, :overdue, firm:, lead_status: new_status)
+
+      get "/api/v1/leads", params: { status: "missed_followup" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"]).to eq([])
+    end
+
+    it "ANDs missed_followup with a real status" do
+      overdue_new = create(:lead, :overdue, firm:, lead_status: new_status)
+      create(:lead, :overdue, firm:, lead_status: create(:lead_status, :hot))
+      create(:lead, :upcoming, firm:, lead_status: new_status)
+
+      get "/api/v1/leads", params: { status: "new", missed_followup: true }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ overdue_new.id ])
+    end
+
+    it "still applies q when only missed_followup is present" do
+      matching = create(:lead, :overdue, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      create(:lead, :overdue, firm:, lead_status: new_status, name: "Beta Shah")
+
+      get "/api/v1/leads", params: { q: "Alpha", missed_followup: true }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ matching.id ])
     end
 
     it "defaults to next-action order with unset dates first" do
@@ -308,13 +371,26 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ matching.id ])
     end
 
-    it "filters visited clients by first_visit_at" do
-      visited = create(:lead, firm:, lead_status: new_status, first_visit_at: 1.day.ago)
+    it "filters visited clients by lead visits, not a stored timestamp" do
+      visited = create(:lead, firm:, lead_status: new_status)
+      create(:lead_visit, firm:, lead: visited)
       create(:lead, firm:, lead_status: new_status)
 
       get "/api/v1/leads", params: { visited: true }, headers: auth(manager)
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ visited.id ])
+    end
+
+    it "does not treat a historical visit activity as visited" do
+      historical = create(:lead, firm:, lead_status: new_status)
+      create(:lead_activity, firm:, lead: historical, kind: "visit", body: "Old site visit")
+
+      get "/api/v1/leads", params: { visited: false }, headers: auth(manager)
+
+      row = response.parsed_body["leads"].find { |lead| lead["id"] == historical.id }
+      expect(row["visited"]).to be(false)
+      expect(row["visit_count"]).to eq(0)
+      expect(response.parsed_body.dig("counts", "visited")).to eq(0)
     end
 
     it "filters hot and negotiation together" do
@@ -495,6 +571,19 @@ RSpec.describe "API v1 leads" do
       expect(lead.budget_max).to eq(20_000_000)
     end
 
+    it "ignores next_action_at on PATCH — NCD only moves via a followup" do
+      original = 3.days.from_now
+      lead.update!(next_action_at: original)
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { next_action_at: 1.day.from_now.iso8601, next_action_note: "rewrite" },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.next_action_at).to be_within(1.second).of(original)
+      expect(lead.lead_followups.count).to eq(0)
+    end
+
     it "refuses flipping type when the other type already exists on that mobile" do
       create(:lead, :rent, firm:, mobile: lead.mobile, lead_status: new_status)
 
@@ -527,6 +616,8 @@ RSpec.describe "API v1 leads" do
     end
 
     it "records the reason, the history row and a timeline entry" do
+      lead.update!(next_action_at: 2.days.from_now)
+
       post "/api/v1/leads/#{lead.id}/status",
         params: { status: dead_status.code, reason: "Bought elsewhere" },
         headers: auth(manager), as: :json
@@ -535,6 +626,7 @@ RSpec.describe "API v1 leads" do
       lead.reload
       expect(lead.dead_reason).to eq("Bought elsewhere")
       expect(lead.dead_at).to be_present
+      expect(lead.next_action_at).to be_nil
       expect(lead.lead_status_changes.into_dead.count).to eq(1)
       expect(lead.lead_activities.status_change.count).to eq(1)
     end
@@ -572,28 +664,13 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body.dig("activity", "kind")).to eq("call")
     end
 
-    it "sets the visited badge from a visit, so the two cannot disagree" do
+    it "rejects kind=visit because site visits are lead visits" do
       post "/api/v1/leads/#{lead.id}/activities",
         params: { kind: "visit", body: "Site visit" },
         headers: auth(agent), as: :json
 
-      expect(response.parsed_body.dig("lead", "visited")).to be(true)
-      expect(response.parsed_body.dig("lead", "visit_count")).to eq(1)
-      expect(response.parsed_body.dig("lead", "last_followup_comment")).to eq("Site visit")
-      expect(lead.reload.first_visit_at).to be_present
-    end
-
-    it "keeps the earliest visit when an older one is logged later" do
-      headers = auth(agent)
-      post "/api/v1/leads/#{lead.id}/activities",
-        params: { kind: "visit", body: "Recent", occurred_at: 1.day.ago },
-        headers: headers, as: :json
-
-      post "/api/v1/leads/#{lead.id}/activities",
-        params: { kind: "visit", body: "Older", occurred_at: 10.days.ago },
-        headers: headers, as: :json
-
-      expect(lead.reload.first_visit_at).to be_within(1.minute).of(10.days.ago)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(lead.lead_visits).to be_empty
     end
 
     it "refuses a hand-written status_change" do

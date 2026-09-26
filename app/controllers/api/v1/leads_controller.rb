@@ -13,8 +13,9 @@ module Api
       }.freeze
       DEFAULT_SORT = "ncd"
 
-      # Drawer fields. Heading-card params (`status`, `visited`) are not in this
-      # list — they must not drop `q`, or My Leads search-plus-New would break.
+      # Drawer fields. Heading-card params (`status`, `visited`,
+      # `missed_followup`) are not in this list — they must not drop `q`, or
+      # My Leads search-plus-New would break.
       DRAWER_KEYS = %w[
         name mobile email ncd_from ncd_upto budget_min budget_max
         typology_ids transaction_type property_type_id possession_from possession_to
@@ -42,7 +43,8 @@ module Api
           firm: current_firm, actor: current_user,
           attributes: lead_params, typology_ids: params[:typology_ids],
           copy_project_typologies: !params.key?(:typology_ids),
-          project_id: params[:project_id]
+          project_id: params[:project_id],
+          followup: followup_params
         ).call
 
         unless result.ok?
@@ -196,6 +198,7 @@ module Api
           .ncd_between(params[:ncd_from], params[:ncd_upto])
           .with_status(params[:status])
           .with_visited(params[:visited])
+          .with_missed_followup(params[:missed_followup])
           .budget_between(params[:budget_min], params[:budget_max])
           .possession_between(params[:possession_from], params[:possession_to])
           .for_typologies(params[:typology_ids])
@@ -226,9 +229,9 @@ module Api
         now = Time.current
         sql = <<~SQL.squish
           COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
-          COUNT(*) FILTER (WHERE leads.next_action_at < :now AND lead_statuses.is_terminal = FALSE),
+          COUNT(*) FILTER (WHERE leads.next_action_at <= :now AND lead_statuses.is_terminal = FALSE),
           COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
-          COUNT(*) FILTER (WHERE leads.first_visit_at IS NOT NULL),
+          COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM lead_visits WHERE lead_visits.lead_id = leads.id)),
           COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation')),
           COUNT(*) FILTER (WHERE lead_statuses.code = 'booked')
         SQL
@@ -282,8 +285,16 @@ module Api
         params.permit(
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
           :budget, :possession_by, :lead_source_id, :source_detail,
-          :assigned_user_id, :next_action_at, :next_action_note, :notes
+          :assigned_user_id, :notes
         )
+      end
+
+      def followup_params
+        raw = params[:followup]
+        return if raw.blank?
+        return unless raw.respond_to?(:permit)
+
+        raw.permit(:comment, :next_action_at)
       end
       # project_id is create-only (copy + map). It is not a lead column.
       # `budget` is the single stored amount (written to budget_max). Query

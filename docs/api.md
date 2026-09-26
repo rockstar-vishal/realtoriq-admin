@@ -15,6 +15,7 @@ observed against a live server; nothing is aspirational.
 - [Bookings and money](#bookings-and-money)
 - [File uploads](#file-uploads)
 - [Firm contact channels](#firm-contact-channels)
+- [Notifications](#notifications)
 - [Error codes](#error-codes)
 - [Traps worth knowing](#traps-worth-knowing)
 
@@ -207,7 +208,7 @@ localities[]     id, city_id, name, pincode      ← flat, filter by city_id you
 builders[]       id, name, global
 typologies[]     id, name, code, bedrooms
 lead_sources[]   id, name, code, category
-lead_statuses[]  id, name, code, is_dead, is_booked
+lead_statuses[]  id, name, code, is_dead, is_booked, is_terminal
 property_types[] id, name, code
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
@@ -358,9 +359,9 @@ counters cover only leads assigned to them.
 | `new` | Status code `new` |
 | `visit_planned` | Status code `visit_planned` — not `visited` |
 | `hot_negotiation` | Status `hot` **or** `negotiation`. `hot` is still hot-only |
-| `visited` | Leads with `first_visit_at` set — ever, not this month |
+| `visited` | Leads with at least one `lead_visits` row — ever, not this month |
 | `todays_followups` | `next_action_at` falls today. Home tile label: **Today's Calls** |
-| `missed_followups` | `next_action_at` in the past on a non-terminal lead |
+| `missed_followups` | `next_action_at <= now` on a non-terminal lead |
 | `cancelled` | Counted **separately** and excluded from every figure above |
 
 The home **Your pipeline** snapshot uses six of these: `total`, `new`,
@@ -373,11 +374,11 @@ There is no `status=todays_followup`; the Today's Calls tile lists via
 **`leads.recent` is the missed-followup strip under the grid** — at most three,
 most overdue first (`next_action_at ASC`), same item shape as `GET /leads`.
 It is **not** the worklist and not the leads-index NCD default. Empty if
-nothing is overdue. "View all" is `GET /leads?status=missed_followup`.
+nothing is overdue. "View all" is `GET /leads?missed_followup=true`.
 
 **`todays_followups` and `missed_followups` overlap.** A followup due at 10am is
 still "today's" at 5pm *and* already overdue. That is deliberate: the tiles
-deep-link to `GET /leads`, and `status=missed_followup` there uses the same
+deep-link to `GET /leads`, and `missed_followup=true` there uses the same
 rule — a tile that disagreed with the list it opens would be the real bug.
 
 **`this_fy` is the Indian financial year, 1 April to 31 March.** A 31 March
@@ -400,9 +401,8 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 | `lead_source_id` | string | optional | |
 | `source_detail` | string | optional | e.g. `"99acres enquiry #48213"` |
 | `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
-| `next_action_at` | timestamp | optional | Drives the "Missed f/u" badge |
-| `next_action_note` | string | optional | |
-| `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). No separate locality column — put location text here |
+| `followup` | object | optional | Opening followup. `{ comment, next_action_at }`. `comment` is required if you send a datetime (otherwise `422 comment_required` and the lead is not created). Top-level `next_action_at` / `next_action_note` are **ignored** — NCD only moves via this nested object or `POST /leads/:id/followups` |
+| `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). Not a follow-up comment. No separate locality column — put location text here |
 | `typology_ids` | **array** of string | optional | |
 | `project_id` | string | optional | Create-from-project. Copies blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
 
@@ -425,9 +425,10 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`) do **not** drop `q` |
-| `status` | A status `code`, **or `missed_followup`**, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation` |
-| `visited` | `true` / `false` — `first_visit_at` present or not |
+| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`, `missed_followup`) do **not** drop `q` |
+| `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
+| `visited` | `true` / `false` — at least one `lead_visits` row, or none |
+| `missed_followup` | `true` / `false` — `next_action_at <= now` on a non-terminal lead. ANDs with `status` |
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
@@ -440,9 +441,11 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`.
 
-**`missed_followup` is not a real status.** It means `next_action_at` in the past
-on a non-terminal lead. It appears in the design's tab strip beside the real
-statuses, but it will never come back in `lead_statuses`. `hot_negotiation` is
+**`missed_followup` is not a real status.** Send it as `missed_followup=true`
+(same shape as `visited`). It means `next_action_at <= now` on a non-terminal
+lead. It appears in the design's tab strip beside the real statuses, but it
+will never come back in `lead_statuses`. `status=missed_followup` looks up a
+code that does not exist and returns an empty list. `hot_negotiation` is
 the Hot + Negotiation codes together.
 
 **Budget on GET is a point-in-window filter**, not overlap. A ₹1–1.3 Cr window
@@ -484,7 +487,6 @@ to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on
   "assigned_user": { "id": "…", "name": "Rohit Shah" },
   "source": { "id": "…", "name": "99acres" },
   "next_action_at": "2026-08-17T00:35:56.587+05:30",
-  "next_action_note": "Chase for documents",
   "last_followup_comment": "Asked for the floor plan",
   "overdue": true, "visited": true, "visit_count": 1,
   "created_at": "2026-08-10T11:04:02.114+05:30",
@@ -505,35 +507,58 @@ List-card fields (also on detail, which extends this shape):
 | Status | `status.name` (code/colour on the same object) |
 | Sale / Rent | `transaction_type` |
 | Under Construction | `property_type.name` — `null` on rent |
-| Visits: 1 | **`visit_count`** — logged `kind=visit` activities. Not the `visited` badge (`first_visit_at`) |
+| Visits: 1 | **`visit_count`** — number of `lead_visits` rows. `visited` is the same fact (`visit_count > 0`) |
 | Configuration | `typologies[].name` |
 | Budget | `budget` (integer rupees) |
 | Source | `source.name` — `null` when unset. `source_detail` is detail-only |
-| Last Followup Comments | **`last_followup_comment`** — body of the latest call / WhatsApp / visit / note. `null` if none. Truncate + "show more" on the client. Not `next_action_note` |
-| Next Action Date | `next_action_at` |
+| Last Followup Comments | **`last_followup_comment`** — `comment` of the latest `lead_followups` row. `null` if none. Truncate + "show more" on the client. **Not** an activity body, and there is no `next_action_note` |
+| Next Action Date | `next_action_at` — copy of the last followup that sent a datetime. Cleared when the lead becomes dead or booked |
 | Created At | `created_at` |
 
-The **detail** adds `alt_mobile`, `source_detail`, `first_visit_at`,
+The **detail** adds `alt_mobile`, `source_detail`,
 `dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
 `mapped_properties[]`, `activities[]` (latest 20) and `status_history[]`.
+There is no `first_visit_at`.
 
 `mapped_projects[].id` / `mapped_properties[].id` are the **join ids** that
 `DELETE` takes. The nested `project` / `property` is the inventory row.
+Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
+(`YYYY-MM-DD` in IST, or `null`). A siteless visit does not flip these.
 
 ### Other lead endpoints
 
 | | |
 | --- | --- |
 | `GET /leads/:id` | Detail, with timeline, mappings and status history |
-| `PATCH /leads/:id` | Same fields as create except `project_id` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile |
-| `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status |
+| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup |
+| `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
+| `GET /leads/:id/followups` | Newest first. `{ followups: [{ id, comment, next_action_at, user, created_at }], meta }`. Default 25 |
+| `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
 | `GET /leads/:id/activities` | |
-| `POST /leads/:id/activities` | `{ kind, body, occurred_at, outcome }` |
+| `GET /leads/:id/visits` | Newest `visited_at` first. `{ visits, meta }`. Default 25 |
+| `POST /leads/:id/visits` | `{ visited_on, notes, project_ids, property_ids }` — see below. `201` `{ visit }` only. Refetch the lead for `visited` and mapped flags |
+| `PATCH /leads/:id/visits/:id` | `{ visited_on, notes, project_ids, property_ids }`. Omit a key to leave it; `""` clears notes; `[]` clears that site list. New site ids must be mapped (`422 not_mapped`). Ids already on this visit may stay after the lead unmaps them. Does not change `user_id`. No delete |
+| `POST /leads/:id/activities` | `{ kind, body, occurred_at, outcome }` — `call` / `whatsapp` / `note`. `kind=visit` is rejected |
 | `POST /leads/:id/projects` | `{ project_id }` — map a My Projects or catalog row. Anyone who can see the lead. `201` returns the refreshed lead |
 | `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
 | `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
 | `POST /leads/:id/matches` | Show New Matches. **Stub:** `{ "matches": [] }` until LaunchIQ. Do not fake this from `GET /projects` |
+
+**`POST /leads/:id/followups`** is the only write path for a follow-up comment
+and for moving NCD. One transaction: insert the row, copy `next_action_at` onto
+the lead if a datetime was parsed, then optionally `Leads::TransitionStatus`.
+
+| Field | |
+| --- | --- |
+| `comment` | **required.** Blank is `422 comment_required` |
+| `next_action_at` | optional timestamp. Omit or blank to **leave** the lead's current NCD. There is no way to clear NCD except by moving to a terminal status |
+| `status` | optional status **code**. Same as `POST /leads/:id/status`. Do **not** call that endpoint as well |
+| `reason` | required when `status` is a dead status (`422 reason_required`); the followup is rolled back |
+| `booked_on` | required when `status` is a booked status (`422 application_date_required`). IST start of day, stored on `leads.booked_at`. **Does not create a booking row** |
+
+A failed status change rolls back the followup. Dead and booked clear
+`leads.next_action_at`. Unknown `status` is `422 unknown_status`.
 
 Many mappings are allowed. They stay after a booking. A booking does **not** require a mapping.
 
@@ -544,9 +569,27 @@ from their **active manageables** (the super admin: any active user in the
 firm). An unknown or out-of-line id is `404 unknown_user`. Omitting the key
 leaves the owner alone.
 
-`kind` is `call` · `whatsapp` · `visit` · `note`. (`status_change` exists but is
-written by the server.) `body` is required. Logging a **`visit`** sets `first_visit_at` and increments `visit_count` on
-the returned lead, so you can refresh the card without a second request.
+`kind` is `call` · `whatsapp` · `note`. (`status_change` and historical `visit`
+rows exist, but the client cannot write them.) `body` is required.
+
+**`POST /leads/:id/visits`** records an outing that already happened. It does
+not change `lead.status` or `next_action_at`. `visited_on` is `YYYY-MM-DD`,
+stored as IST start of day. A date after today IST is `422 future_visited_at`.
+Missing `visited_on` is `422 visited_on_required`. `project_ids` and
+`property_ids` are optional; every id must already be mapped or the response
+is `422 not_mapped`. A siteless visit still increments `visit_count`.
+
+**`PATCH /leads/:id/visits/:id`** may change date, notes, and sites. Omit a
+site key to leave that set; send `[]` to clear it (the visit may become
+siteless). Ids **already on this visit** may stay even if the lead later
+unmapped them. **New** ids must be on the lead’s current mappings or the
+response is `422 not_mapped`. Unmapping a lead does not rewrite visit joins;
+edit is how a broker drops a site from that outing. `user_id` does not change.
+
+`GET /projects/:id/visitors` and `GET /properties/:id/visitors` return
+`visit_count` (outings that included that site) and `visitors` (distinct leads
+the caller can see: `display_name`, `visit_count`, `last_visited_on`). An agent
+does not see another agent's clients in the count.
 
 There is **no delete**. `dead` is the terminal state and it carries a reason, so
 the dead-leads report can explain itself.
@@ -958,6 +1001,63 @@ authentication, not channel verification.
 
 ---
 
+## Notifications
+
+The inbox is the record. Browser push is a best-effort delivery of an inbox row
+to this browser. A `201` from the test endpoint means the push service accepted
+the message, not that the broker saw it.
+
+VAPID keys live in Rails credentials under `vapid` (`public_key`, `private_key`,
+optional `subject`). Generate a pair with `bin/rails notifications:generate_vapid`
+and paste it in. Do not commit the private key. The page reads the public key
+from the API so it cannot drift from the private key.
+
+`notification_mode` `none` suppresses follow-up reminders. `all` and `important`
+both deliver them. A test ignores the mode. There is no `PATCH /me` for the mode.
+
+Follow-up reminders go only to the lead's assignee, and only once the scanner's
+watermark has passed that `next_action_at`. The first run of
+`Notifications::DispatchDueFollowups.call` plants the watermark and sends
+nothing. From a console, `Notifications::SendTest.to_user(user)` pushes to
+every device that broker has registered.
+
+| | |
+| --- | --- |
+| `GET /notifications` | `{ notifications, meta }` including `meta.unread_count` |
+| `GET /notifications/unread_count` | `{ unread_count }` |
+| `PATCH /notifications/:id/read` | `{ notification }`. Another user's row is 404 |
+| `POST /notifications/mark_all_read` | `{ unread_count: 0 }` |
+| `POST /notifications/test` | This session only. 201 `{ notification, push }` or 422 `no_subscription` / `push_rejected` / `push_key_mismatch`. 503 `push_not_configured` |
+| `GET /push_subscriptions` | `{ push_subscription: { subscribed } }`. No endpoint or keys |
+| `POST /push_subscriptions` | `{ endpoint, p256dh, auth, content_encoding? }` → `{ push_subscription: { subscribed: true } }` |
+| `DELETE /push_subscriptions` | 204. This session only |
+| `GET /push_subscriptions/vapid_public_key` | `{ vapid_public_key }` or 503 `push_not_configured` |
+
+A notification looks like:
+
+```json
+{
+  "id": "…",
+  "kind": "followup_due",
+  "title": "Follow up — Rhea Kapoor",
+  "body": "Due 26 Sep, 4:30 PM",
+  "read_at": null,
+  "data": { "page": "leads", "item": "…" },
+  "created_at": "2026-09-26T16:30:00.000+05:30"
+}
+```
+
+`kind` is `followup_due` or `test`.
+
+`data.page` is the screen (`leads`, `projects`, `properties`, `bookings`,
+`settings`, `team`, `reports`, `subscription`, or `home`). With `data.item` the
+row opens that record's show page (`/leads/<item>`). With `data.params` and no
+`item`, it opens the list plus that query (`filter=missed_followup`). No
+`page`, or a page the app does not have, means the row is not clickable. An
+`item` and `params` together: the show page wins and the filter is ignored.
+
+---
+
 ## Error codes
 
 Switch on `code`. The `message` is for humans and may be reworded.
@@ -989,6 +1089,9 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
 | `duplicate_lead` | 422 | That mobile already has this transaction type. `details.lead_id`, `details.transaction_type` |
+| `comment_required` | 422 | A followup (nested on create, or `POST /leads/:id/followups`) needs “what was discussed” |
+| `unknown_status` | 422 | `status` is not a seeded lead-status code |
+| `application_date_required` | 422 | Marking a lead booked via a followup needs `booked_on` |
 | `catalog_readonly` | 422 | Catalog projects cannot be edited |
 
 ### Money
@@ -1013,6 +1116,15 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `upload_incomplete` | 422 | Ticket issued, file never arrived. Photos, brochure, documents, collection proof |
 | `too_many_photos` | 422 | 20 per listing |
 | `slot_taken` | 422 | A named document slot already has a file |
+
+### Notifications
+
+| Code | Status | |
+| --- | --- | --- |
+| `no_subscription` | 422 | This test had no browser registered for the targeted session or user |
+| `push_not_configured` | 503 | VAPID keys are missing from credentials |
+| `push_rejected` | 422 | The push service refused, or the subscription was already gone |
+| `push_key_mismatch` | 422 | The VAPID key does not match the key the browser subscribed with. The subscription is kept |
 
 ---
 
@@ -1071,6 +1183,11 @@ only by city.
 PATCH store a single amount in `budget`. On GET those two names are the filter
 window. Sending `budget_min` on POST is ignored. Property statuses are
 `available` · `booked` · `sold_out` — `under_offer` / `closed` 422.
+
+**9. NCD is not a PATCH field.** `next_action_at` and `next_action_note` on
+`POST /leads` or `PATCH /leads/:id` are dropped. Send `followup: { comment,
+next_action_at }` on create, or `POST /leads/:id/followups`. `notes` is Detailed
+Client Requirements, not a follow-up comment.
 
 ---
 

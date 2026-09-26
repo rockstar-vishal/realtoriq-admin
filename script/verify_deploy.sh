@@ -318,7 +318,7 @@ else
   bad "create-from-project copies starting_budget into budget_max" "lead was not created"
 fi
 
-json="{\"mobile\":\"$(lead_mobile 4)\",\"transaction_type\":\"rent\",\"name\":\"NcdSort-$TAG-overdue\",\"next_action_at\":\"2020-01-01T00:00:00+05:30\"}"
+json="{\"mobile\":\"$(lead_mobile 4)\",\"transaction_type\":\"rent\",\"name\":\"NcdSort-$TAG-overdue\",\"followup\":{\"comment\":\"Opening call\",\"next_action_at\":\"2020-01-01T00:00:00+05:30\"}}"
 create_lead "$SA" "$json"; OVERDUE_LEAD=$LEAD_ID
 json="{\"mobile\":\"$(lead_mobile 5)\",\"transaction_type\":\"rent\",\"name\":\"NcdSort-$TAG-null\"}"
 create_lead "$SA" "$json"; NULL_LEAD=$LEAD_ID
@@ -348,16 +348,21 @@ fi
 json="{\"mobile\":\"$(lead_mobile 8)\",\"transaction_type\":\"rent\",\"name\":\"Visited $TAG\"}"
 create_lead "$SA" "$json"; VISIT_LEAD=$LEAD_ID
 if [ -n "$VISIT_LEAD" ]; then
-  json='{"kind":"visit","body":"deploy verification site visit"}'
-  check "logging a visit" 201 "$(request POST "/leads/$VISIT_LEAD/activities" "$SA" "$json")"
+  json='{"visited_on":"2020-01-15","notes":"deploy verification site visit"}'
+  check "logging a visit" 201 "$(request POST "/leads/$VISIT_LEAD/visits" "$SA" "$json")"
   request GET "/leads?visited=true&q=Visited%20$TAG" "$SA" >/dev/null
-  check "visited=true is first_visit_at" 1 "$(in_lead_ids "$VISIT_LEAD")"
+  check "visited=true is a lead_visits row" 1 "$(in_lead_ids "$VISIT_LEAD")"
   request GET "/leads?q=Visited%20$TAG" "$SA" >/dev/null
   check "list card visit_count after a visit" 1 "$(field '.leads[0].visit_count')"
-  check "  last_followup_comment is the visit body" "deploy verification site visit" \
+  check "  last_followup_comment is not the visit body" null \
+    "$(field '.leads[0].last_followup_comment')"
+  json='{"comment":"deploy verification followup"}'
+  check "logging a followup" 201 "$(request POST "/leads/$VISIT_LEAD/followups" "$SA" "$json")"
+  request GET "/leads?q=Visited%20$TAG" "$SA" >/dev/null
+  check "  last_followup_comment is the followup comment" "deploy verification followup" \
     "$(field '.leads[0].last_followup_comment')"
 else
-  bad "visited=true is first_visit_at" "lead was not created"
+  bad "visited=true is a lead_visits row" "lead was not created"
 fi
 
 json="{\"mobile\":\"$(lead_mobile 9)\",\"transaction_type\":\"rent\",\"name\":\"HotCard $TAG\"}"

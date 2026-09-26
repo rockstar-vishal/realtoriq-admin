@@ -5,10 +5,6 @@ class Lead < ApplicationRecord
   include FirmScoped
 
   TRANSACTION_TYPES = %w[sale rent].freeze
-  # The design's tab strip carries "Missed f/u" alongside the real statuses,
-  # but it is not one — it is next_action_at running late. Kept here so the
-  # controller and the client agree on the spelling.
-  DERIVED_STATUS_MISSED_FOLLOWUP = "missed_followup"
   # Convenience for the Hot / Negotiation card. Same as status[]=hot&status[]=negotiation.
   DERIVED_STATUS_HOT_NEGOTIATION = "hot_negotiation"
   HOT_NEGOTIATION_CODES = %w[hot negotiation].freeze
@@ -40,6 +36,8 @@ class Lead < ApplicationRecord
   # deletion depend on where a line happens to sit.
   has_many :bookings, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_activities, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_followups, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visits, -> { unscope(where: :firm_id) }, dependent: :destroy
   # delete_all, not destroy: LeadStatusChange is readonly at the application
   # layer, and readonly blocks destroy as well as update — so instantiating
   # these to cascade would raise. A direct DELETE is also what we want, since
@@ -79,21 +77,33 @@ class Lead < ApplicationRecord
     where("leads.name ILIKE :q OR leads.mobile ILIKE :q OR leads.email ILIKE :q", q: pattern)
   }
 
+  # Overdue NCD on a lead that is still in play. Not a status — the tab
+  # strip shows it next to real pipeline stages, but the filter is
+  # next_action_at <= now on a non-terminal lead. Subquery rather than a
+  # join so it composes with `with_status` (which already joins lead_statuses).
   scope :missed_followup, -> {
-    joins(:lead_status)
-      .where(lead_statuses: { is_terminal: false })
-      .where(next_action_at: ...Time.current)
+    where(next_action_at: ..Time.current)
+      .where(lead_status_id: LeadStatus.where(is_terminal: false).select(:id))
+  }
+
+  # Card / drawer boolean, same shape as `visited`. `true` is the missed
+  # strip; `false` is everything that is not overdue.
+  scope :with_missed_followup, ->(flag) {
+    next all if flag.nil? || flag.to_s.strip == ""
+
+    if ActiveModel::Type::Boolean.new.cast(flag)
+      missed_followup
+    else
+      where.not(id: missed_followup.select(:id))
+    end
   }
 
   scope :with_status, ->(code) {
     codes = Array(code).flatten.map { |value| value.to_s.strip }.compact_blank
     next all if codes.empty?
 
-    missed = codes.delete(DERIVED_STATUS_MISSED_FOLLOWUP)
     codes.concat(HOT_NEGOTIATION_CODES) if codes.delete(DERIVED_STATUS_HOT_NEGOTIATION)
     codes.uniq!
-
-    next missed_followup if missed && codes.empty?
 
     joins(:lead_status).where(lead_statuses: { code: codes })
   }
@@ -138,10 +148,11 @@ class Lead < ApplicationRecord
   scope :with_visited, ->(flag) {
     next all if flag.nil? || flag.to_s.strip == ""
 
+    visited_leads = LeadVisit.select(:lead_id)
     if ActiveModel::Type::Boolean.new.cast(flag)
-      where.not(first_visit_at: nil)
+      where(id: visited_leads)
     else
-      where(first_visit_at: nil)
+      where.not(id: visited_leads)
     end
   }
 
@@ -189,32 +200,39 @@ class Lead < ApplicationRecord
   # missed followups only.
   scope :as_worklist, -> {
     order(Arel.sql(<<~SQL.squish))
-      CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at < NOW() THEN 0 ELSE 1 END,
+      CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at <= NOW() THEN 0 ELSE 1 END,
       leads.next_action_at ASC NULLS LAST,
       leads.created_at DESC
     SQL
   }
 
-  def overdue? = next_action_at.present? && next_action_at.past? && !lead_status.is_terminal?
+  def overdue? = next_action_at.present? && next_action_at <= Time.current && !lead_status.is_terminal?
 
-  def visited? = first_visit_at.present?
+  def visited? = visit_count.positive?
 
-  # List-card extras. `visit_count` is logged site visits, not the `visited`
-  # badge. `last_followup_comment` is the latest loggable activity body — not
-  # `next_action_note` (that is the planned next action).
+  # One query per side for the detail screen's visited / not visited flags.
+  def project_visit_stats
+    @project_visit_stats ||= site_visit_stats(LeadVisitProject, :project_id)
+  end
+
+  def property_visit_stats
+    @property_visit_stats ||= site_visit_stats(LeadVisitProperty, :property_id)
+  end
+
+  # List-card extras. `visit_count` is LeadVisit rows. `visited` is the same
+  # fact (count > 0), not a stored timestamp. `last_followup_comment` is the
+  # latest followup row — not an activity body and not Detailed Client
+  # Requirements (`notes`).
   def visit_count
     return @visit_count if defined?(@visit_count)
 
-    @visit_count = lead_activities.visit.count
+    @visit_count = lead_visits.count
   end
 
   def last_followup_comment
     return @last_followup_comment if defined?(@last_followup_comment)
 
-    @last_followup_comment = lead_activities
-      .where(kind: LeadActivity::LOGGABLE_KINDS)
-      .recent_first
-      .pick(:body)
+    @last_followup_comment = lead_followups.recent_first.pick(:comment)
   end
 
   def assign_card_extras(visit_count:, last_followup_comment:)
@@ -229,12 +247,12 @@ class Lead < ApplicationRecord
     ids = records.map(&:id)
     return records if ids.empty?
 
-    visit_counts = LeadActivity.where(lead_id: ids, kind: "visit").group(:lead_id).count
-    comments = LeadActivity
-      .where(lead_id: ids, kind: LeadActivity::LOGGABLE_KINDS)
-      .select("DISTINCT ON (lead_activities.lead_id) lead_activities.lead_id, lead_activities.body")
-      .order(Arel.sql("lead_activities.lead_id, lead_activities.occurred_at DESC, lead_activities.created_at DESC"))
-      .each_with_object({}) { |row, hash| hash[row.lead_id] = row.body }
+    visit_counts = LeadVisit.where(lead_id: ids).group(:lead_id).count
+    comments = LeadFollowup
+      .where(lead_id: ids)
+      .select("DISTINCT ON (lead_followups.lead_id) lead_followups.lead_id, lead_followups.comment")
+      .order(Arel.sql("lead_followups.lead_id, lead_followups.created_at DESC, lead_followups.id DESC"))
+      .each_with_object({}) { |row, hash| hash[row.lead_id] = row.comment }
 
     records.each do |lead|
       lead.assign_card_extras(
@@ -247,6 +265,18 @@ class Lead < ApplicationRecord
   # Display / filter amount. Writes store only budget_max; leftover rows may
   # still have a min and a null max.
   def budget_amount = budget_max.presence || budget_min
+
+  def site_visit_stats(join_model, site_key)
+    join_model
+      .joins(:lead_visit)
+      .where(lead_visits: { lead_id: id })
+      .group(site_key)
+      .pluck(site_key, Arel.sql("COUNT(*)"), Arel.sql("MAX(lead_visits.visited_at)"))
+      .to_h do |site_id, count, last_at|
+        [ site_id.to_s, { visit_count: count.to_i, last_visited_at: last_at } ]
+      end
+  end
+  private :site_visit_stats
 
   def display_name = name.presence || Phone.format_for_display(mobile)
 
