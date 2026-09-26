@@ -86,7 +86,7 @@ module Leads
       [
         :assigned_user_id, "assigned_user_id", :budget, "budget", :budget_min, "budget_min",
         :next_action_at, "next_action_at", :next_action_note, "next_action_note",
-        :followup, "followup"
+        :followup, "followup", :emi, "emi"
       ]
     end
 

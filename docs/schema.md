@@ -119,6 +119,10 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   There is no `leads.next_action_note`. A followup without a datetime leaves the
   current NCD. Dead and booked clear it. `last_followup_comment` on the API is
   the latest followup comment, not an activity body.
+- **Quick EMI is one calculation.** `emi_loan_amount` (whole rupees), `emi_annual_rate`
+  (`decimal(5,2)`), `emi_tenure_years`, and `emi_saved_at` are all null or all
+  set. The monthly figure is not a column. Bounds match the sliders: 5 lakh to
+  5 crore, 6–14%, 1–30 years.
 - **Budget is a single amount.** Writes store `budget` in `budget_max` and clear
   `budget_min`. The `budget_min` column stays for leftover rows; it is not
   written anymore. `GET /leads` `budget_min` / `budget_max` are a **filter

@@ -10,8 +10,10 @@ module Inventory
   #
   # Two stages, and the order is the point:
   #
-  # 1. **Literal matches** — the name or RERA number contains what was typed.
-  #    Ranked exact, then starts-with, then contains.
+  # 1. **Literal matches** — the project name, builder, city, locality, or RERA
+  #    number contains what was typed. Ranked exact, then starts-with, then
+  #    contains, on the project name and RERA number. The street address is
+  #    not searched.
   # 2. **Fuzzy matches, only when stage 1 finds nothing** and the query is at
   #    least FUZZY_MIN_LENGTH characters. This is the "did you mean" case.
   #
@@ -23,9 +25,9 @@ module Inventory
   # of Godrej, so stage 1 answers it and Godavari is never considered. Fuzzy
   # matching is kept for what it is good at: text that matches nothing as typed.
   #
-  # The name is matched fuzzily; the RERA number never is. People misspell
-  # names. A near-miss registration number is a *different* project, so
-  # surfacing it would be wrong rather than forgiving.
+  # The project name is matched fuzzily; the builder, location and RERA number
+  # never are. People misspell names. A near-miss registration number is a
+  # *different* project, and a near-miss builder is a different builder.
   #
   # Tenancy comes from Project's FirmScoped default scope, like every other
   # project read. Only active projects are searched, matching GET /projects.
@@ -67,8 +69,9 @@ module Inventory
     Result = Struct.new(:ok?, :projects, :query, :more, :fuzzy, :error_code, :error_message, :details,
                         keyword_init: true)
 
-    def initialize(query:)
+    def initialize(query:, status: nil)
       @query = normalise(query)
+      @status = resolved_status(status)
     end
 
     def call
@@ -88,7 +91,7 @@ module Inventory
 
     private
 
-    attr_reader :query
+    attr_reader :query, :status
 
     # A query sent as an array or object is not a query: treating it as blank
     # gives the same clear query_too_short as an empty box, instead of searching
@@ -105,13 +108,19 @@ module Inventory
 
     def searchable_length = query.scan(SEARCHABLE).size
 
+    # `status` nil means every status (`status=all`). Anything else is a real
+    # project status; an unrecognised value was already folded back to active.
     def base
-      Project.includes(:builder, :city, :locality).from_own.where(status: "active")
+      scope = Project.includes(:builder, :city, :locality).from_own
+      scope = scope.where(status: status) if status
+      scope
     end
 
     def literal_matches
       base
-        .where("projects.name ILIKE :contains OR projects.rera_number ILIKE :contains", contains:)
+        .joins(:builder, :city)
+        .left_joins(:locality)
+        .where(Project::TEXT_SEARCH_SQL, q: contains)
         .order(literal_ranking)
     end
 
@@ -173,6 +182,15 @@ module Inventory
       Project.connection.exec_query(
         Project.sanitize_sql_array([ "SELECT set_config(?, ?, true)", name, value ]), "search settings"
       )
+    end
+
+    # active, unless the caller asked for archived or for every status.
+    def resolved_status(raw)
+      value = raw.is_a?(String) ? raw.strip : ""
+      return nil if value == "all"
+      return value if Project::STATUSES.include?(value)
+
+      "active"
     end
 
     def escaped = Project.sanitize_sql_like(query)

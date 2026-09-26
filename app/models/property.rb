@@ -28,13 +28,20 @@ class Property < ApplicationRecord
   validates :carpet_area_sqft,
     numericality: { greater_than: 0, only_integer: true }, allow_nil: true
 
+  # The card title is "{typology} in {locality}" — that whole string, either
+  # half of it, the building name, or the description. The city is not part
+  # of the title and is not searched.
   scope :search, ->(term) {
     next all if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    joins(:building).where(
-      "buildings.name ILIKE :q OR properties.description ILIKE :q", q: pattern
-    )
+    left_joins(:typology, building: :locality).where(<<~SQL.squish, q: pattern)
+      buildings.name ILIKE :q
+      OR properties.description ILIKE :q
+      OR typologies.name ILIKE :q
+      OR localities.name ILIKE :q
+      OR CONCAT_WS(' in ', NULLIF(typologies.name, ''), NULLIF(localities.name, '')) ILIKE :q
+    SQL
   }
 
   scope :price_between, ->(min, max) {

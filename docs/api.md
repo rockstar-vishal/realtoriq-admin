@@ -520,6 +520,17 @@ The **detail** adds `alt_mobile`, `source_detail`,
 `mapped_properties[]`, `activities[]` (latest 20) and `status_history[]`.
 There is no `first_visit_at`.
 
+Detail includes `emi` or `null`. The list card does not. `emi` is the last Quick EMI save:
+
+| Field | |
+| --- | --- |
+| `loan_amount` | Whole rupees, 500000–50000000 |
+| `annual_rate` | Decimal **string**, two places, 6–14. Not a JSON number, so `8.5` is not `"0.85e1"` |
+| `tenure_years` | Integer years, 1–30 |
+| `saved_at` | ISO 8601. Render the calendar date in `Asia/Kolkata` |
+
+`PATCH` with `emi: { loan_amount, annual_rate, tenure_years }` replaces that calculation. All three keys are required when `emi` is present (`422 invalid` otherwise, or when a value is outside the bounds). The server sets `saved_at`. Send `annual_rate` as a string (`"8.50"`). Computed EMI, interest, and total are not stored.
+
 `mapped_projects[].id` / `mapped_properties[].id` are the **join ids** that
 `DELETE` takes. The nested `project` / `property` is the inventory row.
 Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
@@ -530,7 +541,7 @@ Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
 | | |
 | --- | --- |
 | `GET /leads/:id` | Detail, with timeline, mappings and status history |
-| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup |
+| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone |
 | `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
 | `GET /leads/:id/followups` | Newest first. `{ followups: [{ id, comment, next_action_at, user, created_at }], meta }`. Default 25 |
 | `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
@@ -650,7 +661,8 @@ sent with a past date for you to check.
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Substring of name or address. **Ignored when any drawer param is present.** `status` does not drop `q`. For a search box, [`/projects/search`](#get-projectssearch) is the typeahead |
+| `q` | Substring of **project name, builder name, city, locality, or RERA number**. Not the street address. **Ignored when any drawer param is present.** `status` does not drop `q`. For a search box, [`/projects/search`](#get-projectssearch) is the typeahead |
+| `name` | Drawer. Substring of the **project name only**. Applied together with the other drawer filters — this is the advanced-search name, not `q` |
 | `status` | `active` (default) · `archived` · `all` (no status filter). Omitting the param is `active`, not every project. Heading pill — does not drop `q` |
 | `builder_id`, `city_id`, `locality_id` | Drawer |
 | `budget_min`, `budget_max` | Drawer. Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike a lead's stored amount — and a project with no configurations never matches |
@@ -663,7 +675,7 @@ sent with a past date for you to check.
 **The list is My Projects only** (`source: own`). Catalog rows are omitted.
 Marketplace is an empty client pill — do not list catalog here.
 
-Drawer params: `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
+Drawer params: `name`, `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
 `city_id`, `locality_id`, `brokerage_min`, `brokerage_max`.
 
 **The list is paginated and sorted A–Z by default, so a project you just created
@@ -679,20 +691,25 @@ three letters or numbers**, debounced (~250 ms).
 | Param | |
 | --- | --- |
 | `q` | **Required: 3+ letters or numbers.** Fewer returns `422 query_too_short`. Punctuation alone (`___`, `!!!`) does not count. Up to 160 characters — the longest a project name can be |
+| `status` | `active` (default) · `archived` · `all`. An unrecognised value is treated as `active` |
 
-**Literal matches first.** If the name or RERA number contains what was typed,
-those are the results, ranked **exact → starts with → contains**.
+**Literal matches first.** If the project name, builder, city, locality, or RERA
+number contains what was typed, those are the results, ranked **exact → starts
+with → contains** on the project name and RERA number. The street address is
+not searched.
 
 **Close spellings only when nothing matches as typed**, and only for 4+
 characters — `aurm` finds *Aurum Vista*, `lodah` finds *Lodha Amara*. `meta.fuzzy`
 is `true` when that happened, so label them "did you mean". Typing `lod` returns
 Lodha — not every project that starts with "Lo".
 
-The RERA number is never fuzzy-matched: a near-miss registration is a different
-project. Spaces pasted in with text — including non-breaking ones from web pages —
-are cleaned up first.
+The builder, the location and the RERA number are never fuzzy-matched: a
+near-miss registration is a different project, and a near-miss builder is a
+different builder. Spaces pasted in with text — including non-breaking ones
+from web pages — are cleaned up first.
 
-**At most 10 results.** Only `active` projects, and only your firm's.
+**At most 10 results.** Your firm's projects only. `active` unless `status`
+says otherwise.
 
 ```json
 {
@@ -748,12 +765,15 @@ Omitting the param is `available`, not every listing. **Mark sold** is
 `PATCH { "status": "sold_out" }` from any status; any status may be patched to
 any other.
 
-Also: `q` (ignored when a **drawer** param is set; `status` does not drop `q`),
-`listing_for`, `city_id`, `locality_id`, `typology_id`, `building_id`,
-`price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL carpet drops
-out of a range), `floor_band`. Drawer params: `city_id`, `locality_id`,
-`typology_id`, `price_min`, `price_max`, `carpet_min`, `carpet_max`,
-`building_id`, `listing_for`.
+Also: `q` (the card title `{typology} in {locality}`, either half of that
+title, the building name, or the description — **not the city**. Ignored when a
+**drawer** param is set; `status` does not drop `q`. Omitting `status` is
+`available`, so a search does not return booked or sold-out listings unless
+`status` asks for them), `listing_for`, `city_id`, `locality_id`, `typology_id`,
+`building_id`, `price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL
+carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
+`locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
+`carpet_max`, `building_id`, `listing_for`.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a

@@ -50,7 +50,8 @@ module Api
             mapped_projects: lead.lead_projects.map { |mapping| mapped_project(lead, mapping) },
             mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
-            status_history: status_history.map { |change| history_entry(change) }
+            status_history: status_history.map { |change| history_entry(change) },
+            emi: emi(lead)
           )
         end
 
@@ -66,6 +67,19 @@ module Api
         end
 
         private
+
+        # annual_rate is a decimal. BigDecimal#as_json uses engineering notation
+        # ("0.85e1"), which the slider cannot read. "F" is a plain decimal string.
+        def emi(lead)
+          return nil if lead.emi_saved_at.nil?
+
+          {
+            loan_amount: lead.emi_loan_amount,
+            annual_rate: lead.emi_annual_rate.to_s("F"),
+            tenure_years: lead.emi_tenure_years,
+            saved_at: lead.emi_saved_at
+          }
+        end
 
         def status(record)
           return nil if record.nil?
