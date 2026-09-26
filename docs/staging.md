@@ -11,9 +11,15 @@ environment can be exercised without reaching a real broker or a real rupee:
 | Email | `delivery_method = :test` — nothing leaves | Real SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
+| Logs | **`log/staging.log` and stdout** | stdout only |
 
 Everything else — eager loading, caching, SSL, Solid Queue/Cache/Cable, the four
 databases — matches production.
+
+The log file rotates at 100 MB, ten files kept. `tail -f log/staging.log` shows
+lines only after the Puma that is listening has been restarted onto this code.
+A `rails runner` picks the new logger up immediately; the long-running server
+does not.
 
 ## Why it is a separate RAILS_ENV
 

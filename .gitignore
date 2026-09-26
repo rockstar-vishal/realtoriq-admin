@@ -6,7 +6,7 @@
 
 # Ignore bundler config.
 /.bundle
-
+credentials.yml.enc
 # Ignore all environment files.
 /.env*
 # Ignore all logfiles and tempfiles.

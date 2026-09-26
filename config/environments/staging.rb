@@ -31,8 +31,23 @@ Rails.application.configure do
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") == "true"
   config.force_ssl = ENV.fetch("FORCE_SSL", "true") == "true"
 
+  # Operators on this VM tail log/staging.log. Production logs only to stdout,
+  # because a container collector reads that and the container disk is thrown
+  # away. Here the file is the place people look, and stdout stays so the
+  # process supervisor still has a copy.
+  #
+  # One shared formatter, wrapped once. Two tagged loggers inside a
+  # BroadcastLogger would each answer `push_tags`, and the request logger
+  # would pop the wrong number of tags.
   config.log_tags = [ :request_id ]
-  config.logger = ActiveSupport::TaggedLogging.logger($stdout)
+  file_logger = ActiveSupport::Logger.new(Rails.root.join("log/staging.log").to_s, 10, 100 * 1024 * 1024)
+  stdout_logger = ActiveSupport::Logger.new($stdout)
+  formatter = ActiveSupport::Logger::SimpleFormatter.new
+  file_logger.formatter = formatter
+  stdout_logger.formatter = formatter
+  config.logger = ActiveSupport::TaggedLogging.new(
+    ActiveSupport::BroadcastLogger.new(stdout_logger, file_logger)
+  )
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
   config.active_support.report_deprecations = false
