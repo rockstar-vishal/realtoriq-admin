@@ -79,6 +79,16 @@ RSpec.describe "Environment guarantees" do
       expect(primary[:username]).to be_nil
     end
 
+    it "writes log/staging.log as well as stdout" do
+      # Staging is a VM whose operators tail the file. Logging only to stdout
+      # left log/staging.log empty, including the dashboard exception.
+      source = Rails.root.join("config/environments/staging.rb").read
+
+      expect(source).to include('Rails.root.join("log/staging.log")')
+      expect(source).to include("ActiveSupport::BroadcastLogger.new(stdout_logger, file_logger)")
+      expect(source).not_to include("TaggedLogging.logger($stdout)")
+    end
+
     it "stores files on disk, and cannot be pointed at a bucket" do
       # One stray environment variable would otherwise put staging in the
       # production bucket, writing test uploads among real documents — and
