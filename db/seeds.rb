@@ -16,15 +16,44 @@ puts "Seeding masters…"
 # MMR plus Pune and Nashik — the market the product was designed around. Ops can
 # add more from Masters → Cities without a deploy.
 #
+# KEEP IN SYNC with turbo (turbo-rails8/migration/consolidate_locations.rb): turbo pushes
+# project city/locality NAMES here, so both products must use the same list. Thane,
+# Palghar and Navi Mumbai areas are localities of Mumbai (a region layer comes later).
+#
 # A local rather than a constant: seeds.rb is loaded, not required, so a constant
 # here would both pollute Object and warn on every reload.
 cities_by_state = {
   "Maharashtra" => [
-    [ "Mumbai", %w[Andheri Bandra Borivali Powai Malad] ],
-    [ "Navi Mumbai", [ "Kharghar", "Airoli", "Vashi", "Panvel", "Ulwe", "Nerul" ] ],
-    [ "Thane", [ "Thane West", "Ghodbunder Road", "Kolshet", "Majiwada" ] ],
-    [ "Pune", %w[Hinjewadi Kharadi Wakad Baner Hadapsar] ],
-    [ "Nashik", [ "Gangapur Road", "Indira Nagar", "Panchavati" ] ]
+    [ "Mumbai", [
+      "Colaba", "Cuffe Parade", "Nariman Point", "Churchgate", "Fort", "Marine Lines",
+      "Girgaon", "Grant Road", "Malabar Hill", "Napean Sea Road", "Peddar Road", "Breach Candy",
+      "Tardeo", "Mumbai Central", "Mahalaxmi", "Byculla", "Mazgaon", "Worli",
+      "Lower Parel", "Parel", "Sewri", "Wadala", "Prabhadevi", "Dadar East",
+      "Dadar West", "Mahim", "Matunga", "Sion", "Bandra East", "Bandra West",
+      "BKC", "Khar West", "Santacruz East", "Santacruz West", "Vile Parle East", "Vile Parle West",
+      "Juhu", "Andheri East", "Andheri West", "Jogeshwari East", "Jogeshwari West", "Goregaon East",
+      "Goregaon West", "Malad East", "Malad West", "Kandivali East", "Kandivali West", "Borivali East",
+      "Borivali West", "Dahisar East", "Dahisar West", "Kurla East", "Kurla West", "Chembur",
+      "Govandi", "Mankhurd", "Ghatkopar East", "Ghatkopar West", "Vidyavihar", "Powai",
+      "Chandivali", "Vikhroli East", "Vikhroli West", "Kanjurmarg East", "Kanjurmarg West", "Bhandup East",
+      "Bhandup West", "Mulund East", "Mulund West", "Thane", "Kalyan", "Dombivli",
+      "Mira Road", "Bhayandar", "Bhiwandi", "Ulhasnagar", "Ambernath", "Badlapur",
+      "Palghar", "Vasai", "Nalasopara", "Virar", "Boisar", "Airoli",
+      "Ghansoli", "Kopar Khairane", "Vashi", "Sanpada", "Nerul", "Seawoods",
+      "CBD Belapur", "Kharghar", "Kamothe", "Kalamboli", "Panvel", "New Panvel",
+      "Ulwe", "Taloja", "Dronagiri"
+    ] ],
+    [ "Pune", [
+      "Wakad", "Baner", "Balewadi", "Hinjewadi", "Tathawade", "Punawale",
+      "Pashan", "Sus", "Bavdhan", "Pimple Saudagar", "Pimple Gurav", "Aundh",
+      "Kharadi", "Wagholi", "Dhanori", "Mahalunge", "Warje", "Bibwewadi",
+      "Chinchwad", "Rahatani", "Marunji", "Bhugaon", "Hadapsar", "Mundhwa",
+      "Bund Garden", "Wakdewadi", "Kiwale", "NIBM", "Vishal Nagar", "Moshi",
+      "Charholi", "Manchar", "Alephata", "Kothrud"
+    ] ],
+    [ "Nashik", [
+      "Gangapur Road", "Indira Nagar", "Panchavati"
+    ] ]
   ]
 }
 
@@ -57,7 +86,8 @@ end
   [ "Referral", "referral" ],
   [ "Walk-in", "walk_in" ],
   [ "Social / Meta", "social" ],
-  [ "Cold call", "outbound" ]
+  [ "Cold call", "outbound" ],
+  [ "Builder Microsite", "other" ]
 ].each_with_index do |(name, category), index|
   LeadSource.find_or_create_by!(name:) { |s| s.category = category }.update!(sort_order: index)
 end

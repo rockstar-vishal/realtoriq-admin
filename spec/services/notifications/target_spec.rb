@@ -28,6 +28,13 @@ RSpec.describe Notifications::Target do
     expect(url("page" => "home")).to eq("/")
   end
 
+  it "opens a training the announcement points at" do
+    training_id = "01a0e72f-fb21-7000-90d7-3dfcc195b773"
+
+    expect(url("page" => "skills-training", "item" => training_id))
+      .to eq("/skills-training/#{training_id}")
+  end
+
   it "refuses an item or a param that could leave the app" do
     expect(url("page" => "leads", "item" => "../settings")).to be_nil
     expect(url("page" => "leads", "item" => "a/b")).to be_nil

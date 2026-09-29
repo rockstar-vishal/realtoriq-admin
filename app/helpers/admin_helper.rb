@@ -28,6 +28,17 @@ module AdminHelper
     tag.span(label, class: "tag #{klass}", title: "#{channel.kind.humanize}: #{channel.verification_state}")
   end
 
+  TRAINING_STATUS_TAGS = {
+    "draft" => "tag-neutral",
+    "active" => "tag-accent",
+    "archived" => "tag-solid"
+  }.freeze
+
+  def training_status_tag(training)
+    label = training.active? && training.expired? ? "Expired" : training.status.humanize
+    tag.span(label, class: "tag #{TRAINING_STATUS_TAGS.fetch(training.status, 'tag-neutral')}")
+  end
+
   def blank_dash(value)
     value.presence || tag.span("—", class: "text-[var(--color-neutral-500)]")
   end

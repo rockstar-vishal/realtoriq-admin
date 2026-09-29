@@ -2,6 +2,11 @@ Rails.application.routes.draw do
   # Reveal health status on /up
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # turbo-rails8 pushes marketplace projects and enquiries here. Authenticated
+  # by HMAC, not by a broker JWT. The URL is whatever is stored as
+  # realtoriq.webhook_url on the turbo side.
+  post "turbo/events", to: "turbo/events#create"
+
   # Active Storage mounts its own direct-upload endpoint. It sits outside our
   # JWT auth and enforces none of the per-purpose size or type rules, so anyone
   # able to fetch a CSRF token could mint upload tickets against our storage.
@@ -48,6 +53,15 @@ Rails.application.routes.draw do
     end
 
     resources :plans, except: %i[show]
+
+    # Skills & Trainings. No show: the edit screen is the detail screen, and
+    # what a broker sees comes from the API.
+    resources :trainings, except: %i[show] do
+      member do
+        patch :activate
+        patch :archive
+      end
+    end
 
     namespace :masters do
       resources :cities, param: :slug, except: %i[show]
@@ -101,8 +115,6 @@ Rails.application.routes.draw do
       resources :leads, only: %i[index create show update] do
         member do
           post :status
-          # Side-effecting on purpose: the live version will persist catalog
-          # copies. The stub returns { matches: [] } until LaunchIQ is wired.
           post :matches
         end
 
@@ -113,6 +125,15 @@ Rails.application.routes.draw do
         resources :visits, only: %i[index create update], controller: "lead_visits"
         resources :projects, only: %i[create destroy], controller: "lead_projects"
         resources :properties, only: %i[create destroy], controller: "lead_properties"
+        resources :visit_passes, only: %i[create], controller: "lead_visit_passes" do
+          member { post :refresh }
+        end
+      end
+
+      # Skills & Trainings. Read-only for brokers; ops publish from /admin.
+      # The note is singular: one per broker per training, saved in place.
+      resources :trainings, only: %i[index show] do
+        resource :note, only: %i[update], controller: "training_notes"
       end
 
       resources :uploads, only: %i[create]
@@ -129,6 +150,10 @@ Rails.application.routes.draw do
 
         member do
           get :visitors
+          get :marketplace_leads
+          get :mapped_customers
+          post :share_link
+          post :lead_matches
           # Photos live on the detail screen, not the create form.
           post   "photos", to: "projects#add_photos"
           delete "photos/:photo_id", to: "projects#remove_photo", as: :photo
@@ -138,6 +163,8 @@ Rails.application.routes.draw do
       resources :properties, only: %i[index create show update] do
         member do
           get :visitors
+          get :mapped_customers
+          post :lead_matches
           post   "photos", to: "properties#add_photos"
           delete "photos/:photo_id", to: "properties#remove_photo", as: :photo
         end

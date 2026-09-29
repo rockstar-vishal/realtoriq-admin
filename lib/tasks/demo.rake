@@ -13,7 +13,7 @@ namespace :demo do
     ActiveRecord::Base.transaction do
       Current.firm_scope_bypassed = true
 
-      city = City.find_by!(name: "Navi Mumbai")
+      city = City.find_by!(name: "Mumbai")
       locality = Locality.find_by!(city:, name: "Kharghar")
       plan = Plan.active.find_by(name: "Growth") || Plan.active.ordered.first
 
@@ -108,6 +108,7 @@ namespace :demo do
   # shape of data it was drawn against — including an overdue followup, so the
   # "Missed f/u" tab isn't empty.
   def seed_leads(firm)
+    tag_demo_localities(firm)
     return if firm.leads.any?
 
     agent = firm.users.find_by(role: :agent)
@@ -117,37 +118,40 @@ namespace :demo do
     status = ->(name) { LeadStatus.find_by(name:) }
     source = ->(name) { LeadSource.find_by(name:) }
     typology = ->(name) { Typology.find_by(name:) }
+    locality = ->(name) { Locality.find_by(name:) }
 
     [
       { name: "Rhea Kapoor", mobile: "+919820144210", email: "rhea.k@example.com",
         transaction_type: "sale", property_type: sale, budget_min: 12_000_000,
         budget_max: 16_000_000, status: "Hot", source: "Portal — Housing",
-        typologies: [ "3 BHK" ], next_action_at: 4.hours.from_now, assigned: agent,
+        typologies: [ "3 BHK" ], localities: [ "Thane" ], next_action_at: 4.hours.from_now, assigned: agent,
         next_action_note: "Site visit confirmed, 4:30 PM" },
 
       { name: "Sneha Desai", mobile: "+919930371501", email: "sneha.desai@example.com",
         transaction_type: "sale", property_type: sale, budget_min: 8_500_000,
         budget_max: 11_000_000, status: "Followup", source: "Portal — 99acres",
-        typologies: [ "2 BHK" ], next_action_at: 2.days.ago, assigned: agent,
+        typologies: [ "2 BHK" ], localities: [ "Panvel" ], next_action_at: 2.days.ago, assigned: agent,
         next_action_note: "Chase for documents" },
 
       { name: "Aditya Menon", mobile: "+919867109502", email: "a.menon@example.com",
         transaction_type: "rent", property_type: nil, budget_min: 55_000,
         budget_max: 70_000, status: "Followup", source: "Referral",
-        typologies: [ "2 BHK" ], next_action_at: 1.day.from_now, assigned: manager,
+        typologies: [ "2 BHK" ], localities: [ "Airoli" ], next_action_at: 1.day.from_now, assigned: manager,
         next_action_note: "Share three options" },
 
       { name: "Vikram Rao", mobile: "+919820144503", transaction_type: "sale",
         property_type: ready, budget_min: 11_000_000, budget_max: 13_000_000,
         status: "Negotiation", source: "Walk-in", typologies: [ "2 BHK" ],
+        localities: [ "Airoli", "Kharghar" ],
         assigned: manager },
 
       { name: "Farhan Qureshi", mobile: "+919004822504", transaction_type: "sale",
         property_type: sale, budget_min: 6_000_000, budget_max: 9_500_000,
-        status: "Dead", source: "Cold call", typologies: [ "1 BHK" ],
+        status: "Dead", source: "Cold call", typologies: [ "1 BHK" ], localities: [ "Ulwe" ],
         dead_reason: "Bought through another channel partner", assigned: agent }
     ].each do |attrs|
       typology_names = attrs.delete(:typologies)
+      locality_names = attrs.delete(:localities) || []
       status_name = attrs.delete(:status)
       source_name = attrs.delete(:source)
       assignee = attrs.delete(:assigned)
@@ -171,11 +175,37 @@ namespace :demo do
         lead.lead_typologies.create!(typology: found) if found
       end
 
+      locality_names.each do |name|
+        found = locality.call(name)
+        lead.lead_localities.create!(locality: found) if found
+      end
+
       # Opening history row, the same one Leads::Create writes, so the reports
       # see these leads entering the pipeline.
       lead.lead_status_changes.create!(
         firm:, to_status: lead.lead_status, changed_at: lead.created_at
       )
+    end
+  end
+
+  # Leads created before preferred localities existed still need a tag, and
+  # seed_leads does not recreate a firm that already has leads.
+  def tag_demo_localities(firm)
+    {
+      "+919820144210" => [ "Thane" ],
+      "+919930371501" => [ "Panvel" ],
+      "+919867109502" => [ "Airoli" ],
+      "+919820144503" => [ "Airoli", "Kharghar" ],
+      "+919004822504" => [ "Ulwe" ]
+    }.each do |mobile, names|
+      firm.leads.where(mobile:).find_each do |lead|
+        next if lead.localities.any?
+
+        names.each do |name|
+          locality = Locality.find_by(name:)
+          lead.lead_localities.create!(locality:) if locality
+        end
+      end
     end
   end
 
@@ -191,25 +221,25 @@ namespace :demo do
     typology = ->(name) { Typology.find_by(name:) }
 
     [
-      { name: "Aurum Vista", builder: "Aurum Developers", city: "Thane",
-        locality: "Thane West", budget: 14_200_000, possession: "2027-12-01",
+      { name: "Aurum Vista", builder: "Aurum Developers", city: "Mumbai",
+        locality: "Thane", budget: 14_200_000, possession: "2027-12-01",
         brokerage: 4.5, rera: "P51700054218",
         promo: [ "Extra 1% on 3 BHK bookings till 15 Sep", 28.days.from_now.to_date ],
         typologies: { "2 BHK" => [ 14_200_000, 720 ], "3 BHK" => [ 18_000_000, 1_340 ] } },
 
-      { name: "Nirvana Greens", builder: "Nirvana Realty", city: "Navi Mumbai",
+      { name: "Nirvana Greens", builder: "Nirvana Realty", city: "Mumbai",
         locality: "Kharghar", budget: 18_500_000, possession: "2028-06-01", brokerage: 4.0,
         typologies: { "2 BHK" => [ 18_500_000, 880 ], "3 BHK" => [ 24_000_000, 1_450 ] } },
 
-      { name: "Skyline Estella", builder: "Skyline Group", city: "Navi Mumbai",
+      { name: "Skyline Estella", builder: "Skyline Group", city: "Mumbai",
         locality: "Panvel", budget: 6_800_000, possession_label: "Ready", brokerage: 3.5,
         typologies: { "1 BHK" => [ 6_800_000, 405 ], "2 BHK" => [ 9_600_000, 730 ] } },
 
-      { name: "Trident Bay", builder: "Trident Estates", city: "Navi Mumbai",
+      { name: "Trident Bay", builder: "Trident Estates", city: "Mumbai",
         locality: "Airoli", budget: 11_200_000, possession: "2027-03-01", brokerage: 4.0,
         typologies: { "2 BHK" => [ 11_200_000, 655 ] } },
 
-      { name: "Vaayu One", builder: "Vaayu Infra", city: "Navi Mumbai",
+      { name: "Vaayu One", builder: "Vaayu Infra", city: "Mumbai",
         locality: "Ulwe", budget: 5_400_000, possession: "2027-09-01", brokerage: 5.0,
         typologies: { "1 BHK" => [ 5_400_000, 380 ], "2 BHK" => [ 7_900_000, 610 ] } }
     ].each do |row|

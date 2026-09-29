@@ -99,6 +99,18 @@ RSpec.describe "API v1 inventory" do
       expect(body["locality_id"]).to eq(locality.id)
     end
 
+    it "refuses an own project with no locality or no priced configuration" do
+      create_project(locality_id: nil)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Project.unscoped.where(name: "Aurum Vista")).to be_empty
+
+      create_project(name: "Unpriced Vista", typologies: [ { typology_id: typology.id } ])
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Project.unscoped.where(name: "Unpriced Vista")).to be_empty
+    end
+
     it "refuses an agent creating a project" do
       post "/api/v1/projects", params: {
         name: "Agent Vista", builder_id: builder.id, city_id: city.id,
@@ -175,7 +187,7 @@ RSpec.describe "API v1 inventory" do
     it "filters by budget on any typology" do
       create_project
       post "/api/v1/projects", params: {
-        name: "Budget Homes", builder_id: builder.id, city_id: city.id,
+        name: "Budget Homes", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
         starting_budget: 3_000_000, possession_label: "Ready",
         typologies: [ { typology_id: create(:typology).id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
@@ -201,8 +213,9 @@ RSpec.describe "API v1 inventory" do
     it "filters by brokerage percent and drops projects with none" do
       create_project
       post "/api/v1/projects", params: {
-        name: "Quiet Park", builder_id: builder.id, city_id: city.id,
-        starting_budget: 14_200_000, possession_label: "Ready"
+        name: "Quiet Park", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
+        starting_budget: 14_200_000, possession_label: "Ready",
+        typologies: [ { typology_id: typology.id, starting_price: 14_200_000 } ]
       }, headers: auth, as: :json
 
       get "/api/v1/projects", params: { brokerage_min: 4, brokerage_max: 5 }, headers: auth
@@ -213,9 +226,11 @@ RSpec.describe "API v1 inventory" do
     it "ignores q when a drawer filter is present" do
       create_project
       other_city = create(:city)
+      other_locality = create(:locality, city: other_city)
       post "/api/v1/projects", params: {
         name: "Budget Homes", builder_id: builder.id, city_id: other_city.id,
-        starting_budget: 3_000_000, possession_label: "Ready"
+        locality_id: other_locality.id, starting_budget: 3_000_000, possession_label: "Ready",
+        typologies: [ { typology_id: typology.id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
 
       get "/api/v1/projects", params: { q: "Aurum", city_id: other_city.id }, headers: auth
@@ -259,8 +274,9 @@ RSpec.describe "API v1 inventory" do
     it "still applies q when only the status pill is present" do
       create_project
       post "/api/v1/projects", params: {
-        name: "Budget Homes", builder_id: builder.id, city_id: city.id,
-        starting_budget: 3_000_000, possession_label: "Ready"
+        name: "Budget Homes", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
+        starting_budget: 3_000_000, possession_label: "Ready",
+        typologies: [ { typology_id: typology.id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
 
       get "/api/v1/projects", params: { q: "Aurum", status: "active" }, headers: auth

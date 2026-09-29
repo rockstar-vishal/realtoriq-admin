@@ -8,6 +8,23 @@ RSpec.describe "Inventory models" do
   before { Current.firm = firm }
 
   describe Project do
+    describe "firm" do
+      it "lets the database refuse an own project with no firm" do
+        project = create(:project, firm:)
+
+        expect { project.update_columns(firm_id: nil) }
+          .to raise_error(ActiveRecord::StatementInvalid, /projects_firm_required_unless_catalog/)
+      end
+
+      it "allows a marketplace catalog row with no firm" do
+        project = Current.set(firm: nil, firm_scope_bypassed: true) do
+          create(:project, :catalog, firm: nil, external_ref: "PR#{SecureRandom.hex(3).upcase}")
+        end
+
+        expect(Project.unscoped.find(project.id).firm_id).to be_nil
+      end
+    end
+
     describe "price and area bands" do
       it "derives them from the typologies rather than storing them" do
         # The design's index card reads "₹1.42–1.80 Cr" and "720–1,340 sqft".

@@ -219,6 +219,7 @@ RSpec.describe "API v1 lead visits" do
       rows = response.parsed_body.dig("lead", "mapped_projects")
       visited = rows.find { |row| row.dig("project", "id") == project.id }
       skipped = rows.find { |row| row.dig("project", "id") == other_project.id }
+      expect(visited.dig("project", "starting_budget")).to eq(project.starting_budget)
       expect(visited["visited"]).to be(true)
       expect(visited["visit_count"]).to eq(1)
       expect(visited["last_visited_on"]).to eq("2026-09-20")

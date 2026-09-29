@@ -30,7 +30,7 @@ module Api
         ).call
 
         unless result.ok?
-          details = result.errors&.to_hash
+          details = result.error_details.presence || result.errors&.to_hash
           return render_error(result.error_code, result.error_message,
                               status: :unprocessable_content, details:)
         end

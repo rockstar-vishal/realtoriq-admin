@@ -355,6 +355,47 @@ RSpec.describe "API v1 project search" do
     end
   end
 
+  describe "marketplace projects" do
+    def marketplace(name, **attrs)
+      create(:project, :catalog, firm: nil, name:, builder:, city:, locality:, external_ref: "PR#{SecureRandom.hex(3).upcase}", **attrs)
+    end
+
+    it "leaves marketplace projects out of the default typeahead" do
+      marketplace("Harbour Marketplace")
+
+      expect(hit_names("Harbour")).to eq([])
+    end
+
+    it "returns an active marketplace project when asked" do
+      row = marketplace("Harbour Marketplace")
+
+      get "/api/v1/projects/search", params: { q: "Harbour", include_marketplace: true }, headers: auth
+
+      hit = response.parsed_body.fetch("projects").find { |p| p["id"] == row.id }
+      expect(hit).to include("source" => "catalog", "name" => "Harbour Marketplace")
+    end
+
+    it "returns the marketplace row rather than the booking copy" do
+      row = marketplace("Harbour Marketplace")
+      own = project("Harbour Marketplace", external_ref: row.external_ref)
+
+      get "/api/v1/projects/search", params: { q: "Harbour", include_marketplace: true }, headers: auth
+
+      ids = response.parsed_body.fetch("projects").map { |p| p["id"] }
+      expect(ids).to include(row.id)
+      expect(ids).not_to include(own.id)
+    end
+
+    it "does not return another firm's project" do
+      other = create(:firm, status: :active)
+      create(:project, firm: other, name: "Harbour Elsewhere", builder:, city:, locality:)
+
+      get "/api/v1/projects/search", params: { q: "Elsewhere", include_marketplace: true }, headers: auth
+
+      expect(response.parsed_body.fetch("projects")).to eq([])
+    end
+  end
+
   describe "a full-length name" do
     # The query cap used to be 100 while names may be 160, so a pasted full name
     # was cut short and could never be an exact match.

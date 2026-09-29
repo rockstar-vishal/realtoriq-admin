@@ -396,15 +396,16 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 | `name` | string | optional | Nullable by design — brokers capture a number first |
 | `alt_mobile` | string | optional | |
 | `email` | string | optional | |
-| `budget` | integer | optional | Whole rupees. Stored as `budget_max`; `budget_min` is cleared. **Do not send `budget_min` / `budget_max` on write** — they are ignored |
+| `budget` | integer | **required** | Whole rupees. Stored as `budget_max`; `budget_min` is cleared. **Do not send `budget_min` / `budget_max` on write** — they are ignored. A create or PATCH that leaves this blank is `422 invalid` |
 | `possession_by` | date | optional | **Not** `possession_up_to` |
 | `lead_source_id` | string | optional | |
 | `source_detail` | string | optional | e.g. `"99acres enquiry #48213"` |
 | `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
 | `followup` | object | optional | Opening followup. `{ comment, next_action_at }`. `comment` is required if you send a datetime (otherwise `422 comment_required` and the lead is not created). Top-level `next_action_at` / `next_action_note` are **ignored** — NCD only moves via this nested object or `POST /leads/:id/followups` |
-| `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). Not a follow-up comment. No separate locality column — put location text here |
-| `typology_ids` | **array** of string | optional | |
-| `project_id` | string | optional | Create-from-project. Copies blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
+| `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). Not a follow-up comment. Preferred localities are `locality_ids`, not text in this field |
+| `typology_ids` | **array** of string | **required** | At least one. Sending the key replaces the whole set. Omit the key on a create-from-project (`project_id` set) to copy the project's configurations. An empty array does not copy |
+| `locality_ids` | **array** of string | **required** | At least one preferred locality. Sending the key replaces the whole set. Omit the key on a create-from-project to copy that project's locality. An empty array does not copy. A microsite enquiry copies the project's locality and still saves when the project has none |
+| `project_id` | string | optional | Create-from-project. Copies a blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
 
 > **`property_type_id` is a single string. `typology_ids` is an array.**
 > One property type, many configurations. Sending `property_type_id` as an array
@@ -412,7 +413,7 @@ booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 > sale lead` with nothing pointing at the real cause. See
 > [Traps](#traps-worth-knowing).
 
-One lead per `(firm, mobile, transaction_type)`. Same number may exist once as `sale` and once as `rent`. A second create of the same type is **`422 duplicate_lead`** with `details.lead_id` and `details.transaction_type` so you can open the existing card. PATCH `transaction_type` to the other type is the same `422` if that type already exists on the number.
+One **live** lead per `(firm, mobile, transaction_type)`. A dead lead does not hold that slot, so the same number can be created again. Same number may exist once as `sale` and once as `rent`. A second create of the same type is **`422 duplicate_lead`** with `details.lead_id` and `details.transaction_type` so you can open the existing card. PATCH `transaction_type` to the other type is the same `422` if that type already exists on the number. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another live lead holds the mobile is the same `422 duplicate_lead`, with the message "A live sale lead already exists for this number." Two revives at once return that error rather than a 500.
 
 Returns `201` with the lead plus `possible_duplicates` — the **other** transaction type on the same number, if any, and only leads the caller can see. Same type is never in this array; it was refused.
 
@@ -484,6 +485,7 @@ to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on
               "is_dead": false, "is_booked": false, "is_terminal": false },
   "property_type": { "id": "…", "name": "Under construction" },
   "typologies": [ { "id": "…", "name": "2 BHK" } ],
+  "localities": [ { "id": "…", "name": "Kolshet", "city_id": "…", "city": "Thane" } ],
   "assigned_user": { "id": "…", "name": "Rohit Shah" },
   "source": { "id": "…", "name": "99acres" },
   "next_action_at": "2026-08-17T00:35:56.587+05:30",
@@ -509,6 +511,7 @@ List-card fields (also on detail, which extends this shape):
 | Under Construction | `property_type.name` — `null` on rent |
 | Visits: 1 | **`visit_count`** — number of `lead_visits` rows. `visited` is the same fact (`visit_count > 0`) |
 | Configuration | `typologies[].name` |
+| Preferred localities | `localities[].name` (with `city`) |
 | Budget | `budget` (integer rupees) |
 | Source | `source.name` — `null` when unset. `source_detail` is detail-only |
 | Last Followup Comments | **`last_followup_comment`** — `comment` of the latest `lead_followups` row. `null` if none. Truncate + "show more" on the client. **Not** an activity body, and there is no `next_action_note` |
@@ -535,13 +538,17 @@ Detail includes `emi` or `null`. The list card does not. `emi` is the last Quick
 `DELETE` takes. The nested `project` / `property` is the inventory row.
 Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
 (`YYYY-MM-DD` in IST, or `null`). A siteless visit does not flip these.
+`mapped_projects[].project.starting_budget` is whole rupees.
+`mapped_properties[].property` includes `price`, `listing_for`, and
+`building.name` when the listing has a building. A visit row carries the same
+price fields on `projects[]` and `properties[]`.
 
 ### Other lead endpoints
 
 | | |
 | --- | --- |
 | `GET /leads/:id` | Detail, with timeline, mappings and status history |
-| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` replaces the whole set**; omitting the key leaves it alone. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone |
+| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` or `locality_ids` replaces that whole set**; omitting a key leaves it alone. The saved lead must still have a budget, at least one configuration and at least one locality — a PATCH that only reassigns an incomplete lead is `422 invalid` and changes nothing. Follow-ups and status changes use their own endpoints and are not blocked by this. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone |
 | `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
 | `GET /leads/:id/followups` | Newest first. `{ followups: [{ id, comment, next_action_at, user, created_at }], meta }`. Default 25 |
 | `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
@@ -550,11 +557,60 @@ Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
 | `POST /leads/:id/visits` | `{ visited_on, notes, project_ids, property_ids }` — see below. `201` `{ visit }` only. Refetch the lead for `visited` and mapped flags |
 | `PATCH /leads/:id/visits/:id` | `{ visited_on, notes, project_ids, property_ids }`. Omit a key to leave it; `""` clears notes; `[]` clears that site list. New site ids must be mapped (`422 not_mapped`). Ids already on this visit may stay after the lead unmaps them. Does not change `user_id`. No delete |
 | `POST /leads/:id/activities` | `{ kind, body, occurred_at, outcome }` — `call` / `whatsapp` / `note`. `kind=visit` is rejected |
-| `POST /leads/:id/projects` | `{ project_id }` — map a My Projects or catalog row. Anyone who can see the lead. `201` returns the refreshed lead |
+| `POST /leads/:id/projects` | `{ project_id }` — map a My Projects row, a catalog row this firm already owns, or a global marketplace row. A global marketplace row is linked as itself. It is not copied. Anyone who can see the lead. `201` returns the refreshed lead |
 | `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
 | `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
-| `POST /leads/:id/matches` | Show New Matches. **Stub:** `{ "matches": [] }` until LaunchIQ. Do not fake this from `GET /projects` |
+| `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. A dead lead, or a lead with no locality, returns `[]`. Does not copy anything into My Projects |
+
+**`POST /leads/:id/matches`** lists at most 50 rows, highest score first. A row is
+listed only when at least one of the lead's preferred localities is the
+project's locality, or the property's building locality. Same city is not
+enough. Sale leads match active own projects, active marketplace projects, and
+available sale properties. Rent leads match available rental properties only.
+Archived projects and booked or sold-out properties are left out. A catalog
+project and the firm's booking copy are both listed when both are active; the
+catalog row has `source: "catalog"`.
+
+The score is 100 points and is not stored:
+
+| Points | When |
+| --- | --- |
+| 30 | A preferred locality overlaps. Every listed row has this |
+| 50 | The chosen price is at or under the budget plus 2% |
+| 30 | That band was missed, and the price is at or under the budget plus 15% |
+| 20 | Both of those were missed, and the price is at or under the budget plus 25% |
+| 0 | The price is above the budget plus 25% |
+| 20 | A configuration smart-matches, otherwise 0 |
+
+Price tiers do not stack. The budget is one amount: `budget_max`, or leftover
+`budget_min` when max is null. Comparisons use decimal arithmetic, inclusive
+at each cutoff. When a configuration smart-matches, its price is the one
+scored, and the matching configuration with the best tier wins. When none
+match, the priced configuration closest in rupees is scored and configuration
+points stay 0. A project with no configuration price uses `starting_budget`.
+
+"2 BHK", "2BHK Ultima" and "2 BHK Compact" all match. "2.5 BHK" does not match
+"2 BHK". "1 RK" does not match "1 BHK". Villa and Penthouse match those words
+in the name.
+
+```json
+{ "matches": [
+  { "kind": "project", "id": "…", "name": "Aurum Vista", "source": "catalog",
+    "city": "Thane", "locality": "Kolshet", "starting_budget": 14200000,
+    "score": 100,
+    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "matched_price": 14200000, "matched_configuration": "2 BHK",
+    "mapped": false, "matched_on": ["locality", "price", "configuration"] }
+] }
+```
+
+`kind` is `project` or `property`. A property row uses `name` (the listing
+title), `price`, and `listing_for` instead of `source` and `starting_budget`.
+`matched_on` lists the dimensions that scored: `locality` always, then `price`
+and `configuration` when those points are above 0. `mapped` is true when this
+lead is already linked to that project or property. A catalog mapping does not
+mark the booking copy, and the reverse is also separate.
 
 **`POST /leads/:id/followups`** is the only write path for a follow-up comment
 and for moving NCD. One transaction: insert the row, copy `next_action_at` onto
@@ -616,11 +672,14 @@ A **project** is a builder's development, sold from a brochure. A **property** i
 one resale or rental listing inside a **building**. Amenities live on the
 building, because every flat in it shares the same pool.
 
-**My Projects vs catalog.** `GET /projects` and `GET /projects/search` return
-only `source: own` (My Projects). Catalog rows (`source: catalog`) are LaunchIQ
-copies stored per firm; they are not a Marketplace tab. You see them on a lead
-via mappings / `GET /projects/:id` / the matches stub. Brokers cannot edit them
-(`422 catalog_readonly`).
+**My Projects vs marketplace.** `GET /projects` without `source`, and
+`GET /projects/search` without `include_marketplace`, return only `source: own`
+(My Projects). Marketplace
+rows are `source: catalog` with no firm. They arrive from turbo-rails8, one row
+per project code in `external_ref`. List them with `GET /projects?source=catalog`.
+`GET /projects/:id` returns a marketplace row to any signed-in firm. Brokers
+cannot edit catalog rows (`422 catalog_readonly`). A lead links the marketplace
+row. A booking copies it into My Projects and stores that copy.
 
 **Writes to My Projects and `POST /builders` are superadmin only**
 (`403 forbidden_role`, gated in the app by `permissions.manage_projects`).
@@ -636,7 +695,7 @@ the same way, in their own list. The same name may exist once in each.
 | `name` | string | **required** | ≤ 160 chars. Unique case-insensitively among this firm's **own** projects |
 | `builder_id` | string | **required** | Global, or one this firm added |
 | `city_id` | string | **required** | |
-| `locality_id` | string | optional | Must belong to `city_id` |
+| `locality_id` | string | **required** | Must belong to `city_id`. A broker create or update of an own project without one is `422 invalid`. A booking copy of a catalog project may be stored without one; the broker cannot save an edit until it is set |
 | `starting_budget` | integer | **required** | > 0 |
 | `possession_on` **or** `possession_label` | date / string | **one required** | `"Dec 2027"` when the date is vague |
 | `brokerage_percent` | number | optional | 0–100 |
@@ -645,7 +704,7 @@ the same way, in their own list. The same name may exist once in each.
 | `promo_text`, `promo_ends_on` | string / date | optional | |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
-| `typologies` | array of object | optional | `{ typology_id, starting_price, starting_carpet_sqft }` |
+| `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft }`. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row |
 
 **Derived, never sent and never stored**: `price_band`, `area_band` (min/max
 across the typologies), per-config `rate_per_sqft`, and list/detail **`avg_psf`**
@@ -669,11 +728,12 @@ sent with a past date for you to check.
 | `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range |
 | `possession_before` | date. Not a drawer field; still applies alongside `q` |
 | `typology_ids[]` | Drawer. Repeat the key |
+| `source` | `catalog` lists the marketplace (active shared projects only). Omit it for My Projects |
 | `sort` | **`name`** (default, A–Z) · `recent` (newest first) |
 | `page`, `per_page` | 25 per page by default |
 
-**The list is My Projects only** (`source: own`). Catalog rows are omitted.
-Marketplace is an empty client pill — do not list catalog here.
+**Without `source=catalog` the list is My Projects only** (`source: own`).
+`status=marketplace` is not a status and matches nothing. Use `source=catalog`.
 
 Drawer params: `name`, `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
 `city_id`, `locality_id`, `brokerage_min`, `brokerage_max`.
@@ -692,6 +752,7 @@ three letters or numbers**, debounced (~250 ms).
 | --- | --- |
 | `q` | **Required: 3+ letters or numbers.** Fewer returns `422 query_too_short`. Punctuation alone (`___`, `!!!`) does not count. Up to 160 characters — the longest a project name can be |
 | `status` | `active` (default) · `archived` · `all`. An unrecognised value is treated as `active` |
+| `include_marketplace` | `true` also returns active marketplace rows (`source: catalog`). Omitted, the typeahead is My Projects only. A firm's booking copy of that project is left out, so the hit is the marketplace row a lead mapping stores. `status=archived` does not add marketplace rows |
 
 **Literal matches first.** If the project name, builder, city, locality, or RERA
 number contains what was typed, those are the results, ranked **exact → starts
@@ -708,8 +769,9 @@ near-miss registration is a different project, and a near-miss builder is a
 different builder. Spaces pasted in with text — including non-breaking ones
 from web pages — are cleaned up first.
 
-**At most 10 results.** Your firm's projects only. `active` unless `status`
-says otherwise.
+**At most 10 results.** Your firm's projects, plus marketplace rows when
+`include_marketplace=true`. `active` unless `status` says otherwise. Mapping a
+`source: catalog` id links that row. It does not create a My Projects copy.
 
 ```json
 {
@@ -733,8 +795,8 @@ says otherwise.
 A result carries only what a row shows. Tap through to `GET /projects/:id` for the
 full project.
 
-`source` is `own` on this endpoint. Catalog projects are not searchable here —
-they arrive through `POST /leads/:id/matches`.
+`source` is `own`, or `catalog` when `include_marketplace=true` returned a
+marketplace row. Lead matching still goes through `POST /leads/:id/matches`.
 
 List and detail also carry `city_id` and `locality_id` (the names stay as
 `city` / `locality`). Use the ids when editing; rematching by name can attach
@@ -781,6 +843,151 @@ carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 
 **On a rental, `price` is monthly rent** — so `rate_per_sqft` is rent per sqft
 per month there and price per sqft on a sale.
+
+### `POST /projects/:id/share_link`
+
+Marketplace projects, and a firm's own copy of one (an `external_ref` matching
+`PR` plus hex), return `{ share_link: { url, token } }`. The link is always for
+the marketplace row, so a share from the copy still reaches the microsite.
+Anything else is `422 not_marketplace`. `url` is the turbo microsite
+`{turbo_public_origin}/m/{project code}?share_token=`. The token is reused for
+the same broker and project. A double tap returns the same token.
+`503 turbo_origin_missing` when `realtoriq.turbo_public_origin` is not set. An
+enquiry on that link creates a sale lead for the broker, with lead source
+`Builder Microsite`. A live lead for the same mobile is not duplicated; its
+source is left as it was. The owner is emailed from
+`RealtorIQ by KGen <realtoriq-noreply@kgen.tech>` when they have an email, a
+follow-up is recorded, and the owner gets a `marketplace_enquiry` notification.
+A dead lead does not block a new one. The same `enquiry_id` again is `200` and
+does nothing else. `pushed_at` more than 10 minutes from now is `422` with
+`This enquiry has expired.` A sharer who is disabled is not used: the firm's
+super admin receives the lead. A firm that is not `active` is refused. A lapsed
+subscription is not.
+
+Detail adds `rm_name` and `rm_contact` for marketplace rows. They are not in
+`shareable`. Download the brochure from `brochure_url` on that detail. It is
+the file stored when the project was pushed, not a live call to turbo.
+
+### `POST /projects/:id/lead_matches`
+
+Live sale leads this caller can see that prefer this project's locality. An
+agent sees only leads assigned to them. Dead leads, rent leads, and a project
+that is archived or has no locality return `[]`. At most 50, highest score
+first. The score is the same 100-point scale as `POST /leads/:id/matches`.
+
+```json
+{ "matches": [
+  { "kind": "lead", "id": "…", "code": "L-0001", "name": "Meera Shah",
+    "budget": 16000000, "typologies": ["2 BHK"], "localities": ["Kolshet"],
+    "score": 100,
+    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "matched_price": 14200000, "matched_configuration": "2 BHK",
+    "mapped": false, "matched_on": ["locality", "price", "configuration"] }
+] }
+```
+
+`mapped` is true when this lead is already linked to this project id.
+
+### `POST /properties/:id/lead_matches`
+
+Same payload as the project endpoint. The lead's transaction type must be the
+listing's `listing_for`, and the lead must prefer the building's locality.
+Booked and sold-out listings return `[]`. Rent listings match rent leads, and
+the price bands apply to the monthly rent.
+
+### `GET /projects/:id/mapped_customers`
+
+Leads already mapped to this project, newest mapping first, 25 per page.
+`?page=` defaults to 1. An agent sees only leads assigned to them. A withdrawn
+mapping is left out. A marketplace row and the firm's booking copy list the
+same customers. An unrelated project returns `customers: []`.
+
+```json
+{ "customers": [
+  { "id": "…", "code": "L-0001", "name": "Meera Shah", "mapped_at": "2026-09-29T12:00:00Z" }
+], "meta": { "page": 1, "per_page": 25, "total_count": 1, "total_pages": 1 } }
+```
+
+### `GET /properties/:id/mapped_customers`
+
+Same payload for leads mapped to this property.
+
+### `GET /projects/:id/marketplace_leads`
+
+Leads mapped to the marketplace project. Works from the catalog row or from
+the firm's booking copy. An own project with no `PR` code is
+`422 not_marketplace`. An agent sees only leads assigned to them.
+
+```json
+{ "leads": [
+  { "id": "…", "code": "L-0001", "name": "Meera Shah", "withdrawn": false,
+    "pass_generated": true, "shared_with_builder": false,
+    "status": "Pass generated", "pass_code": "CPVP…", "turbo_status": "unused" }
+],
+  "meta": { "page": 1, "per_page": 25, "total_count": 1, "total_pages": 1 } }
+```
+
+`page` defaults to 1. Each page is the 25 newest mappings. `meta.total_pages` tells the screen when to offer the next page.
+
+`status` is `No pass`, `Pass pending`, `Pass generated`, `Shared with builder`
+(the pass was scanned), or `Already registered with the builder`. A pass is
+still created on the lead, one per marketplace project mapped to that lead.
+
+### Visit passes
+
+A pass is created only for a lead that is already mapped to a marketplace
+project (`external_ref` is the turbo `PR` code). The mapping points at the
+marketplace row.
+
+`POST /leads/:id/visit_passes` with `{ project_id, tentative_visit_planned }`.
+`201` `{ visit_pass }` on a new pass. `200` returns the existing unused pass
+for that lead and project. A visit time more than a day in the past is `422
+invalid`. `422 already_tagged` when a pass for that lead and project was
+already scanned. `422 already_registered` when LaunchIQ has marked it
+`duplicate`. `422 project_withdrawn` when the developer withdrew the listing.
+`422 rera_required` when neither the broker nor the firm has a RERA number.
+`422 not_mapped` / `not_marketplace` otherwise. LaunchIQ errors are `422
+launchiq_rejected` with the message turbo returned. A timeout leaves the pass
+`pending`; the next create sends the same idempotency key.
+
+`POST /leads/:id/visit_passes/:id/refresh` pulls status. Allowed once every 6
+hours from `last_fetched_at`. Earlier is `429 refresh_too_soon` with
+`details.next_refresh_at`. A change on a scanned pass writes a follow-up
+comment and does not change the lead's pipeline status or its next call date.
+`turbo_status` `duplicate` stores `status_message` and writes that sentence as
+a follow-up. The lead detail includes `visit_passes[]` (`pass_code`,
+`pass_url`, `address`, `rm_name`, `rm_contact`, `status_message`,
+`turbo_status` of `pending`, `unused`, `used` or `duplicate`, `turbo_lead_code`,
+`turbo_status_name`, `status_detail`, `last_followup_at`,
+`last_followup_comment`, `next_followup_at`, `last_fetched_at`,
+`next_refresh_at`).
+
+`mapped_projects[].withdrawn` is true after the developer withdraws that
+project. Bookings on the copy are left as they are.
+
+`mapped_projects[].project.external_ref` is the turbo project code on a
+marketplace project. A booking, not the mapping, creates the firm's copy.
+
+RealtorIQ calls turbo with `realtoriq.inbound_token` (bearer) at
+`realtoriq.turbo_api_origin`, or `realtoriq.turbo_public_origin` when the API
+origin is not set. Both must be https.
+
+### turbo-rails8 `POST /turbo/events`
+
+Not a broker call. HMAC-SHA256 of the raw body in `X-RealtorIQ-Signature: sha256=<hex>`,
+secret `realtoriq.webhook_secret`. `401` is `{ "error": "Unauthorized" }` (a
+string, not the broker error envelope). Other failures are
+`{ "error": "<sentence>" }` so the public enquiry form can show them. `200` is
+`{ "ok": true }`. An upsert is `202` once the listing is saved; brochure and
+photos are copied afterwards. `pushed_at` is required. An older `pushed_at` is
+ignored. `event` is `upsert`, `hide`, `withdraw`, or `enquiry`. Hide archives
+the catalog row only. Withdraw archives the catalog row and every firm copy of
+that project code, and sets `mapped_projects[].withdrawn`. A later upsert makes
+them active again. Neither deletes leads. An upsert requires `developer_name`,
+`rera_number` and `possession_on` (`YYYY-MM-DD`). Images are
+`images: [{ url, checksum, filename }]` and the brochure is
+`{ url, filename, checksum }`. The builder is `developer_name`, not
+`company_code`.
 
 ### `shareable`
 
@@ -863,10 +1070,22 @@ There is no endpoint to find a lead by phone before booking; it is just
 
 **Catalog bookings.** If `project_id` is a catalog row, the server copies
 required fields into a My Projects (`source: own`) row and stores *that* id on
-the booking. The catalog row stays for other mapped leads. A cancelled booking
+the booking. Leads stay mapped to the catalog row. A cancelled booking
 **keeps** the copy.
 
-If My Projects already has that name: **`422 project_name_clash`** with
+A **global marketplace** project (`source: catalog`, no firm) is copied by its
+project code, never by name. A same-named project the firm added itself is left
+alone, and the copy is named `"<name> (<developer>)"` when the plain name is
+taken. `use_existing` and `new_name` do not apply to that row. This is the
+only time a firm copy is created.
+
+`PATCH /bookings/:id` copies a catalog or marketplace `project_id` the same
+way before it saves. The booking never stores the shared listing's id. Omit
+`project_id` to leave the booking's project alone. `use_existing` and
+`new_name` apply to a firm-owned catalog row on PATCH as well.
+
+A catalog row this firm already owns still uses the name check. If My Projects
+already has that name: **`422 project_name_clash`** with
 `details.existing_project_id` and `details.name`. Retry the same body with
 `use_existing: true` (point the booking at the existing own row) or `new_name`
 (copy under the new name). Do not send both; `use_existing` wins.
@@ -1067,14 +1286,88 @@ A notification looks like:
 }
 ```
 
-`kind` is `followup_due` or `test`.
+`kind` is `followup_due`, `test`, `training_published` or `marketplace_enquiry`.
+A marketplace enquiry points at the lead (`data.page` `leads`, `data.item` the
+lead id). The title is `New marketplace enquiry` for a new lead and
+`Marketplace enquiry on <lead code>` when the mobile already had a live lead.
 
 `data.page` is the screen (`leads`, `projects`, `properties`, `bookings`,
-`settings`, `team`, `reports`, `subscription`, or `home`). With `data.item` the
+`settings`, `team`, `reports`, `subscription`, `skills-training`, or `home`). With `data.item` the
 row opens that record's show page (`/leads/<item>`). With `data.params` and no
 `item`, it opens the list plus that query (`filter=missed_followup`). No
 `page`, or a page the app does not have, means the row is not clickable. An
 `item` and `params` together: the show page wins and the filter is ignored.
+
+---
+
+## Trainings
+
+Skills & Trainings is platform content: KGen ops publish a training from the
+admin panel and every firm sees the same list. There is no `firm_id` on a
+training. All three roles read them — there is no money in a training and
+nothing tenant-specific to hide.
+
+A training is visible when it is **active** and its `valid_upto` has not passed.
+The last day counts (a training valid upto 31 March is readable all day on the
+31st, in IST), and anything else — a draft, an archived one, an expired one —
+answers **404**, the same way an invisible lead does.
+
+| | |
+| --- | --- |
+| `GET /trainings` | `{ trainings, meta }`, newest first, 25 a page |
+| `GET /trainings/:id` | `{ training }` with the intro, the file URLs and the caller's own note |
+| `PUT /trainings/:id/note` | `{ body }` → `{ note }`. An empty body clears it and returns `{ "note": null }` |
+
+The list card:
+
+```json
+{
+  "id": "…",
+  "title": "Real Estate Basics & Closing Techniques",
+  "description": "RERA rules, poori cost, SPIN discovery aur closing.",
+  "language": "hinglish",
+  "language_label": "Hinglish",
+  "banner_url": "https://…",
+  "valid_upto": "2027-03-31",
+  "podcast_duration_seconds": 1200,
+  "published_at": "2026-10-05T12:00:00.000+05:30"
+}
+```
+
+`valid_upto` is `null` when a training never expires; the screen writes
+"Expiring: Never". The detail adds:
+
+```json
+{
+  "intro_text": "Site visit perfect gaya. …",
+  "instructions_text": null,
+  "document_url": "https://…",
+  "podcast_url": "https://…",
+  "created_by_name": "Priya Ops",
+  "note": { "body": "Saturday: pre-approval slot", "updated_at": "2026-10-06T11:02:00.000+05:30" }
+}
+```
+
+- `instructions_text` is `null` when ops left it blank — the client then shows
+  its own default steps rather than an empty section.
+- `note` is `null` until this broker writes one. It is theirs alone: notes are
+  firm-scoped and keyed by user.
+- **The file URLs are permanent**, like photos and unlike booking documents. A
+  training is teaching material, not evidence, and a 20-minute audio element
+  whose URL expires mid-listen is worse than the risk a forwarded link carries.
+  An uploaded podcast wins over a pasted link.
+- `language` is `hinglish`, `en` or `mr`. One training per language: the English
+  edition of a course is a separate row.
+
+Writing a note is a `PUT` because the client holds one text area and sends
+whatever is in it. A body over 20,000 characters is refused rather than
+truncated, and a body that is not text is a `400` — ignoring it, which is what
+the API does with misshapen params elsewhere, would read as "clear my note".
+
+When a training is activated for the first time, every active broker in every
+active firm gets one `training_published` notification (`data.page` is
+`skills-training`). Archiving and activating it again says nothing: it is a
+correction, not news.
 
 ---
 
@@ -1108,7 +1401,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
-| `duplicate_lead` | 422 | That mobile already has this transaction type. `details.lead_id`, `details.transaction_type` |
+| `duplicate_lead` | 422 | That mobile already has a live lead of this transaction type. Also when reviving a dead lead, or changing status through a follow-up. `details.lead_id`, `details.transaction_type` |
 | `comment_required` | 422 | A followup (nested on create, or `POST /leads/:id/followups`) needs “what was discussed” |
 | `unknown_status` | 422 | `status` is not a seeded lead-status code |
 | `application_date_required` | 422 | Marking a lead booked via a followup needs `booked_on` |
@@ -1136,6 +1429,12 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `upload_incomplete` | 422 | Ticket issued, file never arrived. Photos, brochure, documents, collection proof |
 | `too_many_photos` | 422 | 20 per listing |
 | `slot_taken` | 422 | A named document slot already has a file |
+
+### Trainings
+
+| Code | Status | |
+| --- | --- | --- |
+| `note_too_long` | 422 | A training note is capped at 20,000 characters |
 
 ### Notifications
 

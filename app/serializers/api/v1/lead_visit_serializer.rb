@@ -10,8 +10,18 @@ module Api
           visited_at: visit.visited_at,
           notes: visit.notes,
           user: visit.user && { id: visit.user_id, name: visit.user.name },
-          projects: visit.projects.map { |project| { id: project.id, name: project.name } },
-          properties: visit.properties.map { |property| { id: property.id, title: property.title } },
+          projects: visit.projects.map { |project|
+            { id: project.id, name: project.name, starting_budget: project.starting_budget }
+          },
+          properties: visit.properties.map { |property|
+            {
+              id: property.id,
+              title: property.title,
+              price: property.price,
+              listing_for: property.listing_for,
+              building: property.building && { name: property.building.name }
+            }
+          },
           created_at: visit.created_at
         }
       end

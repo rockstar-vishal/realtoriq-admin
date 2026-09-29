@@ -25,6 +25,7 @@ module Api
             status: status(lead.lead_status),
             property_type: named(lead.property_type),
             typologies: lead.typologies.map { |t| named(t) },
+            localities: lead.localities.map { |locality| locality_payload(locality) },
             assigned_user: named(lead.assigned_user),
             source: named(lead.lead_source),
             next_action_at: lead.next_action_at,
@@ -51,11 +52,16 @@ module Api
             mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
             status_history: status_history.map { |change| history_entry(change) },
+            visit_passes: lead.lead_visit_passes.sort_by { |pass| pass.created_at || Time.current }.reverse.map { |pass|
+              LeadVisitPassSerializer.call(pass)
+            },
             emi: emi(lead)
           )
         end
 
         def full_detail(lead)
+          lead.localities.includes(:city).load
+          lead.lead_visit_passes.includes(:project).load
           lead.lead_projects.includes(project: %i[builder city locality]).load
           lead.lead_properties.includes(property: [ :typology, { building: %i[city locality] } ]).load
 
@@ -70,6 +76,15 @@ module Api
 
         # annual_rate is a decimal. BigDecimal#as_json uses engineering notation
         # ("0.85e1"), which the slider cannot read. "F" is a plain decimal string.
+        def locality_payload(locality)
+          {
+            id: locality.id,
+            name: locality.name,
+            city_id: locality.city_id,
+            city: locality.city&.name
+          }
+        end
+
         def emi(lead)
           return nil if lead.emi_saved_at.nil?
 
@@ -106,6 +121,7 @@ module Api
           stats = lead.project_visit_stats[project.id.to_s] || EMPTY_SITE_STATS
           {
             id: mapping.id,
+            withdrawn: mapping.withdrawn_at.present?,
             visited: stats[:visit_count].positive?,
             visit_count: stats[:visit_count],
             last_visited_on: ist_date(stats[:last_visited_at]),
@@ -117,7 +133,9 @@ module Api
               city: project.city&.name,
               city_id: project.city_id,
               locality: project.locality&.name,
-              locality_id: project.locality_id
+              locality_id: project.locality_id,
+              starting_budget: project.starting_budget,
+              external_ref: project.external_ref
             }
           }
         end
@@ -135,7 +153,8 @@ module Api
               title: property.title,
               listing_for: property.listing_for,
               status: property.status,
-              price: property.price
+              price: property.price,
+              building: property.building && { id: property.building_id, name: property.building.name }
             }
           }
         end

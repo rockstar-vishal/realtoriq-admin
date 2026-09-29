@@ -1,0 +1,42 @@
+<% content_for :title, "#{@training.title} · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-2">
+  <h1 class="text-[32px]"><%= @training.title %></h1>
+  <%= training_status_tag(@training) %>
+  <%= link_to "All trainings", admin_trainings_path, class: "btn btn-ghost ml-auto" %>
+</div>
+
+<p class="text-[13px] text-[var(--color-neutral-600)] mb-6">
+  <%= @training.language_label %>
+  · created by <%= blank_dash(@training.created_by_name) %>
+  <% if @training.published_at %>· first published <%= l(@training.published_at.to_date, format: :long) %><% end %>
+</p>
+
+<hr class="rule">
+
+<% blockers = @training.activation_blockers %>
+
+<section class="py-5 flex flex-wrap items-center gap-3">
+  <% if blockers.any? %>
+    <p class="text-[13px] text-[var(--color-neutral-700)]">
+      Still needs <strong><%= blockers.to_sentence %></strong> before it can go live.
+    </p>
+  <% elsif !@training.active? %>
+    <%= button_to "Activate", activate_admin_training_path(@training), method: :patch,
+          class: "btn btn-primary", form_class: "inline" %>
+    <span class="text-[13px] text-[var(--color-neutral-700)]">Every broker sees it the moment you do.</span>
+  <% else %>
+    <%= button_to "Archive", archive_admin_training_path(@training), method: :patch,
+          class: "btn btn-secondary", form_class: "inline",
+          form: { data: { turbo_confirm: "Archive #{@training.title}? Brokers stop seeing it immediately." } } %>
+    <span class="text-[13px] text-[var(--color-neutral-700)]">Live. Edits reach brokers as soon as you save.</span>
+  <% end %>
+
+  <% if @training.deletable? %>
+    <%= button_to "Delete draft", admin_training_path(@training), method: :delete,
+          class: "btn btn-ghost ml-auto", form_class: "inline",
+          form: { data: { turbo_confirm: "Delete this draft for good?" } } %>
+  <% end %>
+</section>
+
+<%= render "form", training: @training, url: admin_training_path(@training), method: :patch, submit_label: "Save changes" %>

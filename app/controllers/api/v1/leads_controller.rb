@@ -43,6 +43,8 @@ module Api
           firm: current_firm, actor: current_user,
           attributes: lead_params, typology_ids: params[:typology_ids],
           copy_project_typologies: !params.key?(:typology_ids),
+          locality_ids: params[:locality_ids],
+          copy_project_localities: !params.key?(:locality_ids),
           project_id: params[:project_id],
           followup: followup_params
         ).call
@@ -87,7 +89,9 @@ module Api
           raise ActiveRecord::Rollback if @emi_rejected
 
           replace_typologies if params.key?(:typology_ids)
-          saved = @lead.save
+          replace_localities if params.key?(:locality_ids)
+          ensure_match_fields
+          saved = @lead.errors.empty? && @lead.save
           raise ActiveRecord::Rollback unless saved
 
           record_reassignment_audit if @assignment_changed
@@ -100,10 +104,8 @@ module Api
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
       end
 
-      # LaunchIQ is not wired yet. Same shape the live feed will use, so the
-      # app can ship the empty state against a real endpoint.
       def matches
-        render json: { matches: [] }, status: :ok
+        render json: { matches: Inventory::MatchInventory.new(lead: @lead).call }, status: :ok
       end
 
       def status
@@ -116,7 +118,8 @@ module Api
         ).call
 
         unless result.ok?
-          return render_error(result.error_code, result.error_message, status: :unprocessable_content)
+          return render_error(result.error_code, result.error_message,
+                              status: :unprocessable_content, details: result.error_details)
         end
 
         render json: { lead: detail_payload(@lead.reload) }, status: :ok
@@ -194,7 +197,7 @@ module Api
 
       def filtered_scope
         scope = visible_leads
-          .includes(:lead_status, :property_type, :lead_source, :assigned_user, :typologies)
+          .includes(:lead_status, :property_type, :lead_source, :assigned_user, :typologies, localities: :city)
           .search(drawer_filters_present? ? nil : params[:q])
           .named_like(params[:name])
           .mobile_like(params[:mobile])
@@ -306,6 +309,22 @@ module Api
         Array(params[:typology_ids]).compact_blank.each do |id|
           @lead.lead_typologies.build(typology_id: id)
         end
+      end
+
+      def replace_localities
+        @lead.lead_localities.destroy_all
+        # Stale ids from a cached reference list are dropped rather than failing the save.
+        Locality.where(id: Array(params[:locality_ids]).compact_blank.uniq).pluck(:id).each do |id|
+          @lead.lead_localities.build(locality_id: id)
+        end
+      end
+
+      # Every broker save must leave a budget, a configuration and a locality.
+      # Follow-ups and status changes use other endpoints and do not come here.
+      def ensure_match_fields
+        @lead.errors.add(:budget, "is required") if @lead.budget_amount.blank?
+        @lead.errors.add(:typology_ids, "must include a configuration") if @lead.lead_typologies.empty?
+        @lead.errors.add(:locality_ids, "must include a locality") if @lead.lead_localities.empty?
       end
 
       def render_validation_errors(errors)

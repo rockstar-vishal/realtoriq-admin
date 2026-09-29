@@ -84,7 +84,7 @@ RSpec.describe "API v1 lead mappings" do
   end
 
   describe "POST /leads/:id/matches" do
-    it "returns an empty list until LaunchIQ is wired" do
+    it "returns nothing when the lead shares no configuration" do
       post "/api/v1/leads/#{lead.id}/matches", headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:ok)

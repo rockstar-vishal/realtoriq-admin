@@ -7,7 +7,7 @@ class LeadVisitProject < ApplicationRecord
 
   belongs_to :lead_visit, -> { unscope(where: :firm_id) }
   belongs_to :project, -> { unscope(where: :firm_id) }
-  belongs_to_same_firm :lead_visit, :project
+  belongs_to_same_firm :lead_visit, :project, allow_marketplace: true
 
   validates :project_id, uniqueness: { scope: :lead_visit_id }
 end

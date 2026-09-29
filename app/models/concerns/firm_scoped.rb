@@ -44,11 +44,17 @@ module FirmScoped
     #
     # A validation rather than a controller check, so it holds for every write
     # path — console sessions and future code included.
-    def belongs_to_same_firm(*names)
+    #
+    # A marketplace project has no firm. Pass allow_marketplace: true only on
+    # a lead mapping, a visit, or a visit pass. Those link the shared row.
+    # A booking does not: it stores the firm's copy. Another firm's own
+    # project is still refused.
+    def belongs_to_same_firm(*names, allow_marketplace: false)
       names.each do |name|
         validate do
           related = public_send(name)
           next if related.nil? || related.firm_id == firm_id
+          next if allow_marketplace && related.is_a?(Project) && related.marketplace?
 
           errors.add(:"#{name}_id", "isn't one of this firm's records")
         end

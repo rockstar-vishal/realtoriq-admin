@@ -5,6 +5,25 @@
 class Project < ApplicationRecord
   include FirmScoped
 
+  # Catalog rows synced from turbo-rails8 have no firm. FirmScoped's default
+  # clause is `firm_id IS NULL` when no tenant is set, which would reveal those
+  # rows. `none` keeps that case empty. A signed-in firm still sees only its
+  # own rows; marketplace reads go through `.marketplace`.
+  default_scope do
+    Current.firm.nil? && !Current.firm_scope_bypassed ? none : all
+  end
+
+  belongs_to :firm, optional: true
+
+  # FirmScoped's belongs_to is required. That validator is built before this
+  # redeclaration and still rejects a marketplace row. The marketplace? check
+  # below is the one that stays.
+  required_firm = _validators[:firm]&.select { |validator| validator.options[:message] == :required } || []
+  required_firm.each { |validator| _validators[:firm].delete(validator) }
+  _validate_callbacks.select { |callback| required_firm.include?(callback.filter) }.each do |callback|
+    _validate_callbacks.delete(callback)
+  end
+
   STATUSES = %w[active archived].freeze
   SOURCES = %w[own catalog].freeze
   # Shared with Inventory::ProjectSearch, so a pasted full name is never cut
@@ -29,6 +48,7 @@ class Project < ApplicationRecord
   has_one_attached :brochure
 
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
+  validates :firm, presence: true, unless: :marketplace?
   validates :starting_budget, numericality: { greater_than: 0, only_integer: true }
   validates :brokerage_percent,
     numericality: { greater_than: 0, less_than_or_equal_to: 100 }, allow_nil: true
@@ -101,6 +121,23 @@ class Project < ApplicationRecord
   }
 
   scope :alphabetical, -> { order(:name) }
+
+  # Shared marketplace stock. One row per turbo project code, visible to every
+  # firm, never mixed into My Projects.
+  def self.marketplace
+    unscoped.where(firm_id: nil, source: "catalog", status: "active")
+  end
+
+  # FirmScoped#across_firms only drops the firm_id clause. The guard scope
+  # above is `none` when no tenant is set, and that would make every
+  # cross-firm read empty. Unscope both.
+  def self.across_firms
+    unscoped
+  end
+
+  def marketplace?
+    firm_id.nil? && from_catalog?
+  end
 
   # Derived, never stored: a stored band can end up disagreeing with the rows
   # it came from.
