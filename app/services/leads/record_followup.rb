@@ -5,7 +5,7 @@ module Leads
   # Status change is optional and goes through TransitionStatus in the same
   # transaction so a failed dead-reason cannot leave a dangling followup.
   class RecordFollowup
-    Result = Struct.new(:ok?, :followup, :lead, :error_code, :error_message, :errors,
+    Result = Struct.new(:ok?, :followup, :lead, :error_code, :error_message, :error_details, :errors,
                         keyword_init: true)
 
     class StatusFailed < StandardError
@@ -66,7 +66,7 @@ module Leads
                  error_message: e.record.errors.full_messages.to_sentence)
     rescue StatusFailed => e
       Result.new(ok?: false, lead:, error_code: e.result.error_code,
-                 error_message: e.result.error_message)
+                 error_message: e.result.error_message, error_details: e.result.error_details)
     end
 
     private

@@ -22,7 +22,7 @@ module Api
 
       include AttachesPhotos
 
-      before_action :set_property, only: %i[show update add_photos remove_photo visitors]
+      before_action :set_property, only: %i[show update add_photos remove_photo visitors lead_matches mapped_customers]
 
       def index
         @pagy, records = pagy(filtered_scope, limit: per_page)
@@ -40,6 +40,17 @@ module Api
 
       def visitors
         render json: Inventory::VisitorList.new(site: @property, user: current_user, page: params[:page]).as_json,
+               status: :ok
+      end
+
+      def lead_matches
+        render json: {
+          matches: Inventory::MatchLeads.new(property: @property, user: current_user).call
+        }, status: :ok
+      end
+
+      def mapped_customers
+        render json: Inventory::MappedCustomers.new(site: @property, user: current_user, page: params[:page]).as_json,
                status: :ok
       end
 

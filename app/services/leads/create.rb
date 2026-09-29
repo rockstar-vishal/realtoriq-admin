@@ -18,15 +18,20 @@ module Leads
                         keyword_init: true)
 
     MAX_CODE_ATTEMPTS = 5
-    DUPLICATE_INDEX = "index_leads_on_firm_mobile_transaction_type"
+    DUPLICATE_INDEX = "index_leads_on_firm_type_and_open_identity"
 
     def initialize(firm:, actor:, attributes:, typology_ids: [],
-                   copy_project_typologies: false, project_id: nil, followup: nil)
+                   copy_project_typologies: false, locality_ids: [],
+                   copy_project_localities: false, require_locality: true,
+                   project_id: nil, followup: nil)
       @firm = firm
       @actor = actor
       @attributes = attributes
       @typology_ids = Array(typology_ids).compact_blank
       @copy_project_typologies = copy_project_typologies
+      @locality_ids = Array(locality_ids).compact_blank
+      @copy_project_localities = copy_project_localities
+      @require_locality = require_locality
       @project_id = project_id.presence
       @followup_attrs = followup
     end
@@ -42,9 +47,14 @@ module Leads
       attempts = 0
 
       begin
-        Lead.transaction do
+        # A savepoint, not a joined transaction. An enquiry already holds one,
+        # and a unique-index collision would otherwise abort that outer
+        # transaction instead of retrying here.
+        Lead.transaction(requires_new: true) do
           lead.save!
           assign_typologies(lead)
+          assign_localities(lead)
+          ensure_match_fields!(lead)
           map_source_project(lead)
           open_status_history(lead)
           record_opening_followup(lead)
@@ -75,8 +85,8 @@ module Leads
 
     private
 
-    attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies, :project_id,
-      :followup_attrs
+    attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies,
+      :locality_ids, :copy_project_localities, :require_locality, :project_id, :followup_attrs
 
     # `budget` is not a column — it is written to budget_max with min cleared.
     # budget_min on the payload is ignored so a leftover range cannot be stored.
@@ -127,7 +137,11 @@ module Leads
     def source_project
       return @source_project if defined?(@source_project)
 
-      @source_project = project_id.present? ? Project.find_by(id: project_id) : nil
+      @source_project = if project_id.blank?
+        nil
+      else
+        Project.find_by(id: project_id) || Project.marketplace.find_by(id: project_id)
+      end
     end
 
     # Copy only fields the project actually has, and only into blanks — the
@@ -164,6 +178,28 @@ module Leads
       ids = typology_ids
       ids = source_project.typology_ids if ids.empty? && copy_project_typologies && source_project
       ids.each { |id| lead.lead_typologies.create!(typology_id: id) }
+    end
+
+    def assign_localities(lead)
+      ids = locality_ids
+      if ids.empty? && copy_project_localities && source_project&.locality_id
+        ids = [ source_project.locality_id ]
+      end
+      # Ids that no longer exist (an app holding a cached list from before localities
+      # were merged) are dropped; the require-locality check below still applies.
+      Locality.where(id: ids.uniq).pluck(:id).each { |id| lead.lead_localities.create!(locality_id: id) }
+    end
+
+    # A broker create must have a budget, a configuration and a locality.
+    # A microsite enquiry may omit locality when the project has none. Budget
+    # and configuration still have to be there — the project copy supplies them.
+    def ensure_match_fields!(lead)
+      lead.errors.add(:budget, "is required") if lead.budget_amount.blank?
+      lead.errors.add(:typology_ids, "must include a configuration") if lead.lead_typologies.empty?
+      if require_locality && lead.lead_localities.empty?
+        lead.errors.add(:locality_ids, "must include a locality")
+      end
+      raise ActiveRecord::RecordInvalid, lead if lead.errors.any?
     end
 
     def map_source_project(lead)

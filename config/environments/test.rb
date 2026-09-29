@@ -50,4 +50,8 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Jobs are enqueued, never run, so a spec can assert what was scheduled and
+  # nothing executes on a background thread outside the example's transaction.
+  config.active_job.queue_adapter = :test
 end

@@ -1,0 +1,87 @@
+<% content_for :title, "Trainings · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Trainings</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]">
+    <%= pluralize(@counts.values.sum, "training") %>, <%= @counts.fetch("active", 0) %> live
+  </span>
+  <%= link_to "New training", new_admin_training_path, class: "btn btn-primary ml-auto" %>
+</div>
+
+<div class="flex items-center gap-5 mb-4 text-[13px]">
+  <% [["current", "Current"], ["draft", "Drafts"], ["active", "Live"], ["archived", "Archived"], ["all", "All"]].each do |value, label| %>
+    <% count = value == "current" ? @counts.except("archived").values.sum : (value == "all" ? @counts.values.sum : @counts.fetch(value, 0)) %>
+    <%= link_to admin_trainings_path(status: value),
+          class: "no-underline #{@filter == value ? 'text-[var(--color-accent)] font-semibold' : 'text-[var(--color-neutral-700)] hover:text-[var(--color-ink)]'}" do %>
+      <%= label %> <span class="text-[var(--color-neutral-500)]">(<%= count %>)</span>
+    <% end %>
+  <% end %>
+</div>
+
+<hr class="rule">
+
+<% if @trainings.any? %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Training</th>
+        <th>Language</th>
+        <th>Status</th>
+        <th>Expiring</th>
+        <th>Podcast</th>
+        <th>Created by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @trainings.each do |training| %>
+        <tr>
+          <td>
+            <div class="font-heading font-extrabold text-[14px]"><%= training.title %></div>
+            <div class="text-[12px] text-[var(--color-neutral-600)]"><%= truncate(training.description, length: 80) %></div>
+          </td>
+          <td class="text-[13px]"><%= training.language_label %></td>
+          <td><%= training_status_tag(training) %></td>
+          <td class="text-[13px]">
+            <% if training.valid_upto.nil? %>
+              <span class="text-[var(--color-neutral-600)]">Never</span>
+            <% else %>
+              <%= l(training.valid_upto, format: :long) %>
+              <% if training.expired? %><span class="text-[var(--color-accent)]">· expired</span><% end %>
+            <% end %>
+          </td>
+          <td class="text-[13px]">
+            <% if training.podcast.attached? %>File
+            <% elsif training.podcast_url.present? %>Link
+            <% else %><%= blank_dash(nil) %><% end %>
+          </td>
+          <td class="text-[13px]"><%= blank_dash(training.created_by_name) %></td>
+          <td class="text-right whitespace-nowrap">
+            <%= link_to "Edit", edit_admin_training_path(training), class: "btn btn-ghost" %>
+
+            <% unless training.active? %>
+              <%= button_to "Activate", activate_admin_training_path(training), method: :patch,
+                    class: "btn btn-ghost", form_class: "inline" %>
+            <% end %>
+
+            <% if training.active? %>
+              <%= button_to "Archive", archive_admin_training_path(training), method: :patch,
+                    class: "btn btn-ghost", form_class: "inline",
+                    form: { data: { turbo_confirm: "Archive #{training.title}? Brokers stop seeing it immediately." } } %>
+            <% end %>
+
+            <% if training.deletable? %>
+              <%= button_to "Delete", admin_training_path(training), method: :delete,
+                    class: "btn btn-ghost", form_class: "inline",
+                    form: { data: { turbo_confirm: "Delete this draft for good?" } } %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p class="py-8 text-[14px] text-[var(--color-neutral-700)]">
+    Nothing here yet. <%= link_to "Create the first training", new_admin_training_path, class: "btn btn-ghost" %>
+  </p>
+<% end %>

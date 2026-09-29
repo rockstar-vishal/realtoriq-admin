@@ -66,10 +66,35 @@ module Api
         # ₹4,50,000 of a ₹1 Cr booking, then drop agreement_value to ₹1,00,000
         # and the booking sits invoiced a hundred times past what it earned,
         # with no route that can take an invoice back.
-        @booking.assign_attributes(booking_params)
-        if (failure = would_strand_invoices?) then return failure end
+        saved = false
+        copy = nil
+        stranded = nil
+        Booking.transaction do
+          # Same copy as create. A marketplace id must not be stored: the
+          # live-unit index is per project, and two firms would then block
+          # each other.
+          copy = ::Bookings::Create.copy_catalog(
+            project_id: params[:project_id],
+            use_existing: params[:use_existing],
+            new_name: params[:new_name]
+          )
+          raise ActiveRecord::Rollback if copy && !copy.ok?
 
-        return render_booking_save_failure(@booking) unless @booking.save
+          @booking.assign_attributes(booking_params)
+          @booking.project = copy.project if copy
+          stranded = stranded_invoice_details
+          raise ActiveRecord::Rollback if stranded
+
+          saved = @booking.save
+          raise ActiveRecord::Rollback unless saved
+        end
+
+        if copy && !copy.ok?
+          return render_error(copy.error_code, copy.error_message,
+                              status: :unprocessable_content, details: copy.details)
+        end
+        return render_stranded_invoices(stranded) if stranded
+        return render_booking_save_failure(@booking) unless saved
 
         render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :ok
       end
@@ -133,7 +158,7 @@ module Api
 
       # Runs against the *pending* figures: assign_attributes has been called but
       # nothing is saved, so recomputing here is what the save would store.
-      def would_strand_invoices?
+      def stranded_invoice_details
         pending = Booking.calculate_net_income(
           agreement_value: @booking.agreement_value,
           commission_percent: @booking.commission_percent,
@@ -147,15 +172,19 @@ module Api
         return nil if already_invoiced.zero?
         return nil if pending >= already_invoiced
 
+        {
+          net_income: pending, already_invoiced:,
+          shortfall: already_invoiced - pending,
+          current_net_income: @booking.net_income_was
+        }
+      end
+
+      def render_stranded_invoices(details)
         render_error(
           "over_invoiced",
           "That would leave this booking invoiced past what it earns.",
           status: :unprocessable_content,
-          details: {
-            net_income: pending, already_invoiced:,
-            shortfall: already_invoiced - pending,
-            current_net_income: @booking.net_income_was
-          }
+          details:
         )
       end
 

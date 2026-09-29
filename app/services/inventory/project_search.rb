@@ -29,8 +29,10 @@ module Inventory
   # never are. People misspell names. A near-miss registration number is a
   # *different* project, and a near-miss builder is a different builder.
   #
-  # Tenancy comes from Project's FirmScoped default scope, like every other
-  # project read. Only active projects are searched, matching GET /projects.
+  # Tenancy comes from the caller's firm. The default typeahead is My Projects
+  # only. include_marketplace also returns active global catalog rows, except
+  # one this firm has already copied (same external_ref): that copy is the row
+  # to map. Only active projects are searched, matching GET /projects.
   class ProjectSearch
     # Counted in letters and numbers, not raw characters: "___" or "!!!" is
     # three characters but nothing a trigram index can use, so it would read
@@ -69,9 +71,10 @@ module Inventory
     Result = Struct.new(:ok?, :projects, :query, :more, :fuzzy, :error_code, :error_message, :details,
                         keyword_init: true)
 
-    def initialize(query:, status: nil)
+    def initialize(query:, status: nil, include_marketplace: false)
       @query = normalise(query)
       @status = resolved_status(status)
+      @include_marketplace = ActiveModel::Type::Boolean.new.cast(include_marketplace)
     end
 
     def call
@@ -91,7 +94,7 @@ module Inventory
 
     private
 
-    attr_reader :query, :status
+    attr_reader :query, :status, :include_marketplace
 
     # A query sent as an array or object is not a query: treating it as blank
     # gives the same clear query_too_short as an empty box, instead of searching
@@ -111,9 +114,23 @@ module Inventory
     # `status` nil means every status (`status=all`). Anything else is a real
     # project status; an unrecognised value was already folded back to active.
     def base
-      scope = Project.includes(:builder, :city, :locality).from_own
-      scope = scope.where(status: status) if status
-      scope
+      own = Project.unscoped.where(firm_id: Current.firm_id, source: "own")
+      own = own.where(status: status) if status
+      # Both sides are `id IN (...)`, so #or stays structurally compatible.
+      scope = if include_marketplace && status != "archived"
+        # The booking copy shares the marketplace code. Offer the listing,
+        # which is what a lead mapping stores.
+        booking_copies = own.where(external_ref: marketplace_rows.select(:external_ref))
+        own = own.where.not(id: booking_copies.select(:id))
+        Project.unscoped.where(id: own.select(:id)).or(Project.unscoped.where(id: marketplace_rows.select(:id)))
+      else
+        own
+      end
+      scope.includes(:builder, :city, :locality)
+    end
+
+    def marketplace_rows
+      Project.unscoped.where(firm_id: nil, source: "catalog", status: "active")
     end
 
     def literal_matches

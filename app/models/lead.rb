@@ -29,6 +29,8 @@ class Lead < ApplicationRecord
 
   has_many :lead_typologies, dependent: :destroy
   has_many :typologies, through: :lead_typologies
+  has_many :lead_localities, dependent: :destroy
+  has_many :localities, through: :lead_localities
   has_many :lead_projects, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
   # A booking requires a lead (NOT NULL), so the lead cannot outlive it. Declared
@@ -37,6 +39,7 @@ class Lead < ApplicationRecord
   has_many :bookings, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_activities, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_followups, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visit_passes, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_visits, -> { unscope(where: :firm_id) }, dependent: :destroy
   # delete_all, not destroy: LeadStatusChange is readonly at the application
   # layer, and readonly blocks destroy as well as update — so instantiating
@@ -68,6 +71,7 @@ class Lead < ApplicationRecord
   validate :mobile_unique_per_transaction_type
 
   before_validation :normalise_contact_details
+  before_validation :sync_open_identity
   before_validation :assign_code, on: :create
 
   # — visibility —
@@ -298,11 +302,12 @@ class Lead < ApplicationRecord
     self.class.where(mobile:).where.not(id:).order(created_at: :desc)
   end
 
-  # The other lead that occupies (firm, mobile, transaction_type), if any.
+  # The other live lead that occupies (firm, mobile, transaction_type). A dead
+  # lead does not count: the same number can enter the pipeline again.
   def duplicate_on_mobile_and_type
     return if mobile.blank? || transaction_type.blank? || firm_id.blank?
 
-    self.class.unscoped.where(firm_id:, mobile:, transaction_type:).where.not(id:).first
+    self.class.unscoped.where(firm_id:, transaction_type:, open_identity: mobile).where.not(id:).first
   end
 
   private
@@ -311,6 +316,13 @@ class Lead < ApplicationRecord
     self.mobile = Phone.normalise(mobile)
     self.alt_mobile = Phone.normalise(alt_mobile) if alt_mobile.present?
     self.email = email.to_s.downcase.strip.presence
+  end
+
+  # One live sale (or rent) lead per mobile per firm. Dead leads leave the
+  # slot so a later enquiry can create a fresh lead. The partial unique index
+  # is the real guarantee; this column is what it indexes.
+  def sync_open_identity
+    self.open_identity = lead_status&.is_dead? ? nil : mobile
   end
 
   # Sequential per firm. Two concurrent creates can pick the same number, so the

@@ -254,6 +254,29 @@ RSpec.describe "Tenancy isolation" do
       expect(build(:booking, firm: mine, lead: create(:lead, firm: mine), project: nil)).to be_valid
     end
 
+    it "refuses a marketplace project on a booking" do
+      catalog = Current.set(firm: nil, firm_scope_bypassed: true) do
+        create(:project, :catalog, firm: nil, external_ref: "PRBOOK01")
+      end
+
+      booking = build(:booking, firm: mine, lead: create(:lead, firm: mine), project: catalog)
+
+      expect(booking).not_to be_valid
+      expect(booking.errors[:project_id]).to include("isn't one of this firm's records")
+      expect(catalog.firm_id).to be_nil
+    end
+
+    it "accepts a marketplace project on a lead mapping" do
+      catalog = Current.set(firm: nil, firm_scope_bypassed: true) do
+        create(:project, :catalog, firm: nil, external_ref: "PRABC123")
+      end
+
+      mapping = build(:lead_project, firm: mine, lead: create(:lead, firm: mine), project: catalog)
+
+      expect(mapping).to be_valid
+      expect(catalog.firm_id).to be_nil
+    end
+
     it "refuses another firm's project on a lead mapping" do
       their_project = nil
       Current.firm = theirs

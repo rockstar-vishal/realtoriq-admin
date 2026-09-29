@@ -66,6 +66,17 @@ FactoryBot.define do
       budget_max { 70_000 }
     end
 
+    trait :matchable do
+      after(:create) do |lead|
+        if lead.typologies.none?
+          lead.typologies << create(:typology, name: "Match #{SecureRandom.hex(4)}")
+        end
+        next if lead.localities.any?
+
+        lead.localities << create(:locality, city: create(:city))
+      end
+    end
+
     trait :overdue do
       next_action_at { 2.days.ago }
     end

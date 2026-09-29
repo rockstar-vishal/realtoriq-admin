@@ -156,9 +156,12 @@ RSpec.describe "API v1 malformed input" do
       create(:lead_status, :new_lead) # a lead needs a status to start in
       property_type = create(:property_type)
 
+      typology = create(:typology)
+      locality = create(:locality, city: create(:city))
       post "/api/v1/leads", params: {
         mobile: "9820155501", transaction_type: "sale", property_type_id: property_type.id,
-        name: "Yash#{nul}Raheja", notes: "call#{nul} after 6"
+        name: "Yash#{nul}Raheja", notes: "call#{nul} after 6", budget: 12_000_000,
+        typology_ids: [ typology.id ], locality_ids: [ locality.id ]
       }, headers: auth, as: :json
 
       expect(response).to have_http_status(:created)

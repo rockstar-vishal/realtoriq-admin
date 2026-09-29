@@ -32,7 +32,9 @@ module Api
 
       include AttachesPhotos
 
-      before_action :set_project, only: %i[show update add_photos remove_photo visitors]
+      before_action :set_project, only: %i[
+        show update add_photos remove_photo visitors share_link lead_matches marketplace_leads mapped_customers
+      ]
       before_action :require_super_admin, only: %i[create update add_photos remove_photo]
       before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo]
 
@@ -47,7 +49,9 @@ module Api
       end
 
       def search
-        result = Inventory::ProjectSearch.new(query: params[:q], status: params[:status]).call
+        result = Inventory::ProjectSearch.new(
+          query: params[:q], status: params[:status], include_marketplace: params[:include_marketplace]
+        ).call
 
         unless result.ok?
           return render_error(result.error_code, result.error_message,
@@ -78,6 +82,56 @@ module Api
                status: :ok
       end
 
+      def lead_matches
+        render json: {
+          matches: Inventory::MatchLeads.new(project: @project, user: current_user).call
+        }, status: :ok
+      end
+
+      def mapped_customers
+        render json: Inventory::MappedCustomers.new(site: @project, user: current_user, page: params[:page]).as_json,
+               status: :ok
+      end
+
+      def marketplace_leads
+        unless @project.marketplace? || @project.external_ref.to_s.match?(/\APR[0-9A-F]+\z/i)
+          return render_error("not_marketplace", "Only a marketplace project has leads from the microsite.",
+                              status: :unprocessable_content)
+        end
+
+        result = Realtoriq::ProjectLeads.new(project: @project, user: current_user).call(page: params[:page])
+        render json: {
+          leads: result.leads,
+          meta: {
+            page: result.page,
+            per_page: result.per_page,
+            total_count: result.total_count,
+            total_pages: result.total_pages
+          }
+        }, status: :ok
+      end
+
+      def share_link
+        target = marketplace_share_target
+        if target.nil?
+          return render_error("not_marketplace", "Only a marketplace project can be shared as a microsite.",
+                              status: :unprocessable_content)
+        end
+
+        origin = Realtoriq::Credentials.turbo_public_origin
+        if origin.blank?
+          return render_error("turbo_origin_missing",
+                              "Set realtoriq.turbo_public_origin before sharing a microsite.",
+                              status: :service_unavailable)
+        end
+
+        link = ProjectShareLink.create_or_find_by!(project: target, user: current_user) do |row|
+          row.firm = current_user.firm
+        end
+        url = "#{origin}/m/#{target.external_ref}?share_token=#{link.token}"
+        render json: { share_link: { url: url, token: link.token } }, status: :ok
+      end
+
       def create
         result = Inventory::CreateProject.new(
           firm: current_firm,
@@ -98,12 +152,8 @@ module Api
       end
 
       def update
-        @project.assign_attributes(project_params)
-        replace_typologies if params.key?(:typologies)
-
-        # Accept (or decide to purge) *before* save, and only after the record
-        # is valid. Attaching first used to purge the brochure on a rejected
-        # PATCH — a failed validation destroyed the file.
+        # Accept the brochure *before* the save transaction. Attaching first
+        # used to purge the brochure on a rejected PATCH.
         brochure_blob = nil
         if params.key?(:brochure_signed_id) && params[:brochure_signed_id].present?
           accepted = Uploads::AcceptSignedId.new(
@@ -116,12 +166,18 @@ module Api
           brochure_blob = accepted.blob
         end
 
-        return render_validation_errors(@project.errors) unless @project.valid?
-
+        saved = false
         Project.transaction do
-          @project.save!
+          @project.assign_attributes(project_params)
+          replace_typologies if params.key?(:typologies)
+          Inventory::ProjectMatchFields.apply(@project)
+          saved = @project.errors.empty? && @project.save
+          raise ActiveRecord::Rollback unless saved
+
           apply_brochure(brochure_blob) if params.key?(:brochure_signed_id)
         end
+
+        return render_validation_errors(@project.errors) unless saved
 
         render json: { project: ProjectSerializer.detail(@project.reload) }, status: :ok
       end
@@ -144,6 +200,10 @@ module Api
 
       def set_project
         @project = base_scope.find_by(id: params[:id])
+        @project ||= Project.marketplace
+          .includes(:builder, :city, :locality, project_typologies: :typology)
+          .with_attached_photos
+          .find_by(id: params[:id])
         return if @project
 
         render_error("not_found", "Project not found", status: :not_found)
@@ -151,11 +211,17 @@ module Api
 
       # Inventory is firm-wide: unlike leads, everyone in the firm sees it all.
       def base_scope
-        Project.includes(:builder, :city, :locality, project_typologies: :typology)
+        Project.includes(:builder, :city, :locality, project_typologies: :typology).with_attached_photos
       end
 
       def filtered_scope
-        scope = base_scope.from_own
+        scope = if params[:source].to_s == "catalog"
+          Project.marketplace.includes(:builder, :city, :locality, project_typologies: :typology).with_attached_photos
+        else
+          base_scope.from_own
+        end
+
+        scope = scope
           .search(drawer_filters_present? ? nil : params[:q])
           .named_like(params[:name])
           .possession_before(params[:possession_before])
@@ -166,7 +232,9 @@ module Api
         scope = scope.where(builder_id: params[:builder_id]) if params[:builder_id].present?
         scope = scope.where(city_id: params[:city_id]) if params[:city_id].present?
         scope = scope.where(locality_id: params[:locality_id]) if params[:locality_id].present?
-        scope = scope.where(status: params[:status].presence || "active") unless params[:status].to_s == "all"
+        unless params[:source].to_s == "catalog" || params[:status].to_s == "all"
+          scope = scope.where(status: params[:status].presence || "active")
+        end
 
         apply_sort(scope)
       end
@@ -177,6 +245,15 @@ module Api
 
       def apply_sort(scope)
         scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
+      end
+
+      # The microsite belongs to the global catalog row. A broker opening the
+      # firm's copy still shares that microsite, looked up by the project code.
+      def marketplace_share_target
+        return @project if @project.marketplace?
+        return unless @project.external_ref.to_s.match?(/\APR[0-9A-F]+\z/i)
+
+        Project.marketplace.find_by(external_ref: @project.external_ref)
       end
 
       def reject_catalog_mutation

@@ -14,6 +14,9 @@ RSpec.describe "API v1 leads" do
   let!(:new_status) { create(:lead_status, :new_lead) }
   let!(:dead_status) { create(:lead_status, :dead) }
   let!(:property_type) { create(:property_type) }
+  let!(:match_typology) { create(:typology) }
+  let!(:match_city) { create(:city) }
+  let!(:match_locality) { create(:locality, city: match_city, name: "Worli") }
 
   def auth(user)
     post "/api/v1/auth/otp", params: { mobile: user.mobile }, as: :json
@@ -25,7 +28,8 @@ RSpec.describe "API v1 leads" do
   def valid_attributes(overrides = {})
     {
       name: "Rhea Kapoor", mobile: "98201 44210", transaction_type: "sale",
-      property_type_id: property_type.id, budget: 16_000_000
+      property_type_id: property_type.id, budget: 16_000_000,
+      typology_ids: [ match_typology.id ], locality_ids: [ match_locality.id ]
     }.merge(overrides)
   end
 
@@ -88,16 +92,14 @@ RSpec.describe "API v1 leads" do
       expect(Lead.across_firms.count).to eq(0)
     end
 
-    it "ignores budget_min on write" do
+    it "refuses a lead with no budget, and ignores budget_min on write" do
       post "/api/v1/leads",
         params: valid_attributes.except(:budget).merge(budget_min: 12_000_000, budget_max: 18_000_000),
         headers: auth(manager), as: :json
 
-      body = response.parsed_body["lead"]
-      expect(response).to have_http_status(:created)
-      expect(body["budget"]).to be_nil
-      expect(body["budget_min"]).to be_nil
-      expect(body["budget_max"]).to be_nil
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid")
+      expect(Lead.across_firms.count).to eq(0)
     end
 
     it "normalises the mobile" do
@@ -108,7 +110,7 @@ RSpec.describe "API v1 leads" do
     end
 
     it "attaches the preferred configurations" do
-      typologies = create_list(:typology, 2)
+      typologies = [ create(:typology, name: "Penthouse A"), create(:typology, name: "Villa A") ]
 
       post "/api/v1/leads",
         params: valid_attributes(typology_ids: typologies.map(&:id)),
@@ -419,7 +421,7 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "visibility" do
-    let!(:agents_lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
+    let!(:agents_lead) { create(:lead, :matchable, firm:, lead_status: new_status, assigned_user: agent) }
     let!(:someone_elses) { create(:lead, firm:, lead_status: new_status, assigned_user: manager) }
 
     it "shows an agent only their own" do
@@ -452,7 +454,7 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "PATCH /leads/:id assignment" do
-    let!(:lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
+    let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status, assigned_user: agent) }
 
     before { create(:user_manager, user: agent, manager:, firm:) }
 
@@ -604,7 +606,7 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "POST /leads/:id/status" do
-    let!(:lead) { create(:lead, firm:, lead_status: new_status) }
+    let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status) }
 
     it "refuses to mark a lead dead without a reason" do
       post "/api/v1/leads/#{lead.id}/status", params: { status: dead_status.code },
@@ -631,6 +633,22 @@ RSpec.describe "API v1 leads" do
       expect(lead.lead_activities.status_change.count).to eq(1)
     end
 
+    it "refuses to revive a dead lead while a live lead holds the mobile" do
+      post "/api/v1/leads/#{lead.id}/status",
+        params: { status: dead_status.code, reason: "Gone quiet" },
+        headers: auth(manager), as: :json
+      live = create(:lead, firm:, mobile: lead.reload.mobile, lead_status: new_status, transaction_type: "sale")
+
+      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("duplicate_lead")
+      expect(response.parsed_body.dig("error", "message")).to eq("A live sale lead already exists for this number.")
+      expect(response.parsed_body.dig("error", "details", "lead_id")).to eq(live.id)
+      expect(lead.reload.lead_status).to eq(dead_status)
+    end
+
     it "clears the death details when the lead is revived" do
       post "/api/v1/leads/#{lead.id}/status",
         params: { status: dead_status.code, reason: "Gone quiet" },
@@ -653,7 +671,7 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "activities" do
-    let!(:lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
+    let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status, assigned_user: agent) }
 
     it "logs a call" do
       post "/api/v1/leads/#{lead.id}/activities",
@@ -722,9 +740,22 @@ RSpec.describe "API v1 leads" do
       expect(lead.reload.name).to eq("Original")
     end
 
+    it "refuses a save that would leave the lead with no locality" do
+      lead = create(:lead, firm:, name: "Original")
+      lead.typologies << create(:typology, name: "Studio Z")
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { name: "Changed" },
+        headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(lead.reload.name).to eq("Original")
+    end
+
     it "still replaces the set on a successful update" do
       typologies = create_list(:typology, 2)
       lead = create(:lead, firm:)
+      lead.localities << create(:locality, city: create(:city))
       typologies.each { |t| lead.lead_typologies.create!(typology: t) }
 
       patch "/api/v1/leads/#{lead.id}",
@@ -736,7 +767,7 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "PATCH /leads/:id emi" do
-    let!(:lead) { create(:lead, firm:, lead_status: new_status, assigned_user: agent) }
+    let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status, assigned_user: agent) }
 
     def emi_body(overrides = {})
       { emi: { loan_amount: 8_000_000, annual_rate: "8.50", tenure_years: 20 }.merge(overrides) }

@@ -68,11 +68,25 @@ module Bookings
 
     attr_reader :firm, :actor, :lead, :attributes, :use_existing, :new_name
 
-    def catalog_copy_result
-      project = Project.find_by(id: attributes[:project_id])
+    def self.copy_catalog(project_id:, use_existing: false, new_name: nil)
+      project_id = project_id.presence
+      return if project_id.blank?
+
+      project = Project.find_by(id: project_id)
+      project ||= Project.unscoped.find_by(id: project_id, firm_id: nil, source: "catalog")
       return if project.nil? || project.from_own?
 
-      Inventory::CopyCatalogProject.new(catalog: project, use_existing:, new_name:).call
+      Inventory::CopyCatalogProject.new(
+        catalog: project,
+        use_existing: ActiveModel::Type::Boolean.new.cast(use_existing),
+        new_name:
+      ).call
+    end
+
+    def catalog_copy_result
+      self.class.copy_catalog(
+        project_id: attributes[:project_id], use_existing:, new_name:
+      )
     end
 
     def build

@@ -128,6 +128,47 @@ RSpec.describe "API v1 bookings" do
       expect(response).to have_http_status(:created)
     end
 
+    it "copies a marketplace project into My Projects on booking" do
+      catalog = Current.set(firm: nil, firm_scope_bypassed: true) do
+        create(:project, :catalog, firm: nil, name: "Harbour One", external_ref: "PRBEEF01")
+      end
+      headers = auth
+      create_booking(headers, project_id: catalog.id, unit_no: "A-101")
+
+      expect(response).to have_http_status(:created)
+      booked_project_id = response.parsed_body.dig("booking", "project", "id")
+      expect(booked_project_id).not_to eq(catalog.id)
+      own = Project.across_firms.find(booked_project_id)
+      expect(own.source).to eq("own")
+      expect(own.firm_id).to eq(firm.id)
+      expect(own.external_ref).to eq("PRBEEF01")
+      expect(catalog.reload.firm_id).to be_nil
+    end
+
+    it "copies a marketplace project into My Projects when a booking is edited" do
+      catalog = Current.set(firm: nil, firm_scope_bypassed: true) do
+        create(:project, :catalog, firm: nil, name: "Harbour Two", external_ref: "PRBEEF02")
+      end
+      headers = auth
+      create_booking(headers, unit_no: nil)
+      expect(response).to have_http_status(:created)
+      booking_id = response.parsed_body.dig("booking", "id")
+
+      patch "/api/v1/bookings/#{booking_id}",
+        params: { project_id: catalog.id, unit_no: "A-202" },
+        headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      booked_project_id = response.parsed_body.dig("booking", "project", "id")
+      expect(booked_project_id).not_to eq(catalog.id)
+      own = Project.across_firms.find(booked_project_id)
+      expect(own.source).to eq("own")
+      expect(own.firm_id).to eq(firm.id)
+      expect(own.external_ref).to eq("PRBEEF02")
+      expect(Booking.across_firms.find(booking_id).project_id).to eq(own.id)
+      expect(catalog.reload.firm_id).to be_nil
+    end
+
     it "copies a catalog project into My Projects on booking" do
       catalog = create(:project, :catalog, firm:, name: "LaunchIQ Heights")
       headers = auth

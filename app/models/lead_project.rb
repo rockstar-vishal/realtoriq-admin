@@ -9,7 +9,7 @@ class LeadProject < ApplicationRecord
   belongs_to :lead, -> { unscope(where: :firm_id) }
   belongs_to :project, -> { unscope(where: :firm_id) }
 
-  belongs_to_same_firm :lead, :project
+  belongs_to_same_firm :lead, :project, allow_marketplace: true
 
   validates :project_id, uniqueness: { scope: :lead_id }
 end

@@ -35,6 +35,9 @@ module Inventory
       Project.transaction do
         project.save!
         add_typologies(project)
+        ProjectMatchFields.apply(project)
+        raise ActiveRecord::RecordInvalid, project if project.errors.any?
+
         project.brochure.attach(accepted.blob) if accepted
       end
 

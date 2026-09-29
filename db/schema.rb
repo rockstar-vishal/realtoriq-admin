@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_29_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -337,12 +337,23 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.index ["user_id"], name: "index_lead_followups_on_user_id"
   end
 
+  create_table "lead_localities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "lead_id", null: false
+    t.uuid "locality_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lead_id", "locality_id"], name: "index_lead_localities_on_lead_id_and_locality_id", unique: true
+    t.index ["lead_id"], name: "index_lead_localities_on_lead_id"
+    t.index ["locality_id"], name: "index_lead_localities_on_locality_id"
+  end
+
   create_table "lead_projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.uuid "lead_id", null: false
     t.uuid "project_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "withdrawn_at"
     t.index ["firm_id"], name: "index_lead_projects_on_firm_id"
     t.index ["lead_id", "project_id"], name: "index_lead_projects_on_lead_id_and_project_id", unique: true
     t.index ["lead_id"], name: "index_lead_projects_on_lead_id"
@@ -413,6 +424,38 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.index ["typology_id"], name: "index_lead_typologies_on_typology_id"
   end
 
+  create_table "lead_visit_passes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "project_id", null: false
+    t.uuid "user_id", null: false
+    t.string "pass_code"
+    t.string "phone_suffix", null: false
+    t.datetime "tentative_visit_planned", null: false
+    t.string "turbo_status", default: "unused", null: false
+    t.string "turbo_lead_code"
+    t.string "turbo_status_name"
+    t.jsonb "status_detail", default: {}, null: false
+    t.datetime "last_followup_at"
+    t.text "last_followup_comment"
+    t.datetime "next_followup_at"
+    t.datetime "last_fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "pass_url"
+    t.string "address"
+    t.string "rm_name"
+    t.string "rm_contact"
+    t.text "status_message"
+    t.index ["firm_id"], name: "index_lead_visit_passes_on_firm_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_lead_id_and_project_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_open_lead_and_project", unique: true, where: "((turbo_status)::text = ANY ((ARRAY['pending'::character varying, 'unused'::character varying, 'used'::character varying])::text[]))"
+    t.index ["lead_id"], name: "index_lead_visit_passes_on_lead_id"
+    t.index ["pass_code"], name: "index_lead_visit_passes_on_pass_code", unique: true, where: "(pass_code IS NOT NULL)"
+    t.index ["project_id"], name: "index_lead_visit_passes_on_project_id"
+    t.index ["user_id"], name: "index_lead_visit_passes_on_user_id"
+  end
+
   create_table "lead_visit_projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.uuid "lead_visit_id", null: false
@@ -478,12 +521,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.decimal "emi_annual_rate", precision: 5, scale: 2
     t.integer "emi_tenure_years"
     t.datetime "emi_saved_at"
+    t.string "open_identity"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
     t.index ["firm_id", "lead_status_id"], name: "index_leads_on_firm_id_and_lead_status_id"
-    t.index ["firm_id", "mobile", "transaction_type"], name: "index_leads_on_firm_mobile_transaction_type", unique: true
     t.index ["firm_id", "next_action_at"], name: "index_leads_on_firm_id_and_next_action_at"
+    t.index ["firm_id", "transaction_type", "open_identity"], name: "index_leads_on_firm_type_and_open_identity", unique: true, where: "(open_identity IS NOT NULL)"
     t.index ["firm_id"], name: "index_leads_on_firm_id"
     t.index ["lead_source_id"], name: "index_leads_on_lead_source_id"
     t.index ["lead_status_id"], name: "index_leads_on_lead_status_id"
@@ -506,6 +550,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.datetime "updated_at", null: false
     t.index ["city_id", "name"], name: "index_localities_on_city_id_and_name", unique: true
     t.index ["city_id"], name: "index_localities_on_city_id"
+  end
+
+  create_table "marketplace_enquiries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "project_share_link_id", null: false
+    t.uuid "lead_id"
+    t.string "enquiry_id", null: false
+    t.string "outcome"
+    t.datetime "submitted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["enquiry_id"], name: "index_marketplace_enquiries_on_enquiry_id", unique: true
+    t.index ["firm_id"], name: "index_marketplace_enquiries_on_firm_id"
+    t.index ["lead_id"], name: "index_marketplace_enquiries_on_lead_id"
+    t.index ["project_share_link_id"], name: "index_marketplace_enquiries_on_project_share_link_id"
   end
 
   create_table "notification_dispatch_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -531,7 +590,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying]::text[])", name: "notifications_kind_check"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying]::text[])", name: "notifications_kind_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -571,6 +630,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.check_constraint "price >= 0", name: "plans_price_check"
   end
 
+  create_table "project_share_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "project_id", null: false
+    t.string "token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "user_id", "project_id"], name: "index_project_share_links_on_firm_user_and_project", unique: true
+    t.index ["firm_id"], name: "index_project_share_links_on_firm_id"
+    t.index ["project_id"], name: "index_project_share_links_on_project_id"
+    t.index ["token"], name: "index_project_share_links_on_token", unique: true
+    t.index ["user_id"], name: "index_project_share_links_on_user_id"
+  end
+
   create_table "project_typologies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "project_id", null: false
     t.uuid "typology_id", null: false
@@ -584,7 +657,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   end
 
   create_table "projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "firm_id", null: false
+    t.uuid "firm_id"
     t.string "name", null: false
     t.uuid "builder_id", null: false
     t.uuid "city_id", null: false
@@ -605,10 +678,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.string "external_ref"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "rm_name"
+    t.string "rm_contact"
+    t.string "company_code"
+    t.datetime "turbo_pushed_at"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index ["builder_id"], name: "index_projects_on_builder_id"
     t.index ["city_id"], name: "index_projects_on_city_id"
+    t.index ["external_ref"], name: "index_projects_on_global_catalog_external_ref", unique: true, where: "(((source)::text = 'catalog'::text) AND (firm_id IS NULL) AND (external_ref IS NOT NULL))"
     t.index ["firm_id", "builder_id"], name: "index_projects_on_firm_id_and_builder_id"
     t.index ["firm_id", "city_id"], name: "index_projects_on_firm_id_and_city_id"
     t.index ["firm_id", "source", "external_ref"], name: "index_projects_on_firm_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
@@ -617,6 +695,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.index ["locality_id"], name: "index_projects_on_locality_id"
     t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.check_constraint "firm_id IS NOT NULL OR source::text = 'catalog'::text", name: "projects_firm_required_unless_catalog"
     t.check_constraint "source::text = ANY (ARRAY['own'::character varying::text, 'catalog'::character varying::text])", name: "projects_source_check"
     t.check_constraint "starting_budget >= 0", name: "projects_starting_budget_check"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'archived'::character varying::text])", name: "projects_status_check"
@@ -701,6 +780,41 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
     t.check_constraint "status::text = ANY (ARRAY['trialing'::character varying::text, 'active'::character varying::text, 'past_due'::character varying::text, 'lapsed'::character varying::text, 'cancelled'::character varying::text])", name: "subscriptions_status_check"
   end
 
+  create_table "training_notes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "training_id", null: false
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_training_notes_on_firm_id"
+    t.index ["training_id"], name: "index_training_notes_on_training_id"
+    t.index ["user_id", "training_id"], name: "index_training_notes_on_user_id_and_training_id", unique: true
+    t.index ["user_id"], name: "index_training_notes_on_user_id"
+  end
+
+  create_table "trainings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "title", null: false
+    t.text "description", null: false
+    t.text "intro_text", null: false
+    t.text "instructions_text"
+    t.string "language", default: "hinglish", null: false
+    t.string "status", default: "draft", null: false
+    t.date "valid_upto"
+    t.string "podcast_url"
+    t.integer "podcast_duration_seconds"
+    t.uuid "created_by_admin_user_id"
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_admin_user_id"], name: "index_trainings_on_created_by_admin_user_id"
+    t.index ["language"], name: "index_trainings_on_language"
+    t.index ["status", "published_at"], name: "index_trainings_on_status_and_published_at", order: { published_at: :desc }
+    t.check_constraint "language::text = ANY (ARRAY['hinglish'::character varying, 'en'::character varying, 'mr'::character varying]::text[])", name: "trainings_language_check"
+    t.check_constraint "podcast_duration_seconds IS NULL OR podcast_duration_seconds > 0", name: "trainings_podcast_duration_check"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "trainings_status_check"
+  end
+
   create_table "typologies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.string "code", null: false
@@ -782,6 +896,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   add_foreign_key "lead_followups", "firms"
   add_foreign_key "lead_followups", "leads"
   add_foreign_key "lead_followups", "users", on_delete: :nullify
+  add_foreign_key "lead_localities", "leads"
+  add_foreign_key "lead_localities", "localities"
   add_foreign_key "lead_projects", "firms"
   add_foreign_key "lead_projects", "leads"
   add_foreign_key "lead_projects", "projects"
@@ -795,6 +911,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   add_foreign_key "lead_status_changes", "users", on_delete: :nullify
   add_foreign_key "lead_typologies", "leads"
   add_foreign_key "lead_typologies", "typologies"
+  add_foreign_key "lead_visit_passes", "firms"
+  add_foreign_key "lead_visit_passes", "leads"
+  add_foreign_key "lead_visit_passes", "projects"
+  add_foreign_key "lead_visit_passes", "users"
   add_foreign_key "lead_visit_projects", "firms"
   add_foreign_key "lead_visit_projects", "lead_visits", on_delete: :restrict
   add_foreign_key "lead_visit_projects", "projects", on_delete: :restrict
@@ -810,10 +930,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   add_foreign_key "leads", "property_types"
   add_foreign_key "leads", "users", column: "assigned_user_id", on_delete: :nullify
   add_foreign_key "localities", "cities"
+  add_foreign_key "marketplace_enquiries", "firms"
+  add_foreign_key "marketplace_enquiries", "leads"
+  add_foreign_key "marketplace_enquiries", "project_share_links"
   add_foreign_key "notifications", "firms"
   add_foreign_key "notifications", "users", on_delete: :cascade
   add_foreign_key "one_time_codes", "contact_channels"
   add_foreign_key "one_time_codes", "users"
+  add_foreign_key "project_share_links", "firms"
+  add_foreign_key "project_share_links", "projects"
+  add_foreign_key "project_share_links", "users"
   add_foreign_key "project_typologies", "projects"
   add_foreign_key "project_typologies", "typologies"
   add_foreign_key "projects", "builders"
@@ -830,6 +956,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_26_160000) do
   add_foreign_key "subscriptions", "admin_users", column: "created_by_admin_id"
   add_foreign_key "subscriptions", "firms"
   add_foreign_key "subscriptions", "plans"
+  add_foreign_key "training_notes", "firms"
+  add_foreign_key "training_notes", "trainings", on_delete: :cascade
+  add_foreign_key "training_notes", "users", on_delete: :cascade
+  add_foreign_key "trainings", "admin_users", column: "created_by_admin_user_id", on_delete: :nullify
   add_foreign_key "user_managers", "firms", on_delete: :cascade
   add_foreign_key "user_managers", "users", column: "manager_id", on_delete: :cascade
   add_foreign_key "user_managers", "users", on_delete: :cascade

@@ -26,9 +26,9 @@ module Api
             possession_display: project.possession_display,
             brokerage_percent: project.brokerage_percent&.to_f,
             promo: project.promo_live? ? { text: project.promo_text, ends_on: project.promo_ends_on } : nil,
-            configurations: project.typologies.map(&:name),
-            cover_photo_url: photo_urls(project).first,
-            photo_count: project.photos.attachments.size,
+            configurations: configuration_names(project),
+            cover_photo_url: cover_photo_url(project),
+            photo_count: photo_attachments(project).size,
             created_at: project.created_at
           }
         end
@@ -45,6 +45,8 @@ module Api
             photo_urls: photo_urls(project),
             brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil,
             external_ref: project.external_ref,
+            rm_name: project.rm_name,
+            rm_contact: project.rm_contact,
             shareable: shareable(project),
             updated_at: project.updated_at
           )
@@ -53,8 +55,9 @@ module Api
         # One row of typeahead results — what the row shows and nothing more.
         # The full project is one tap away at GET /projects/:id.
         #
-        # `source` is `own` on this endpoint: catalog rows are not searchable.
-        # Matches arrive through POST /leads/:id/matches.
+        # `source` is `own` unless the caller passed include_marketplace, in
+        # which case an active catalog row can appear as `catalog`. Mapping
+        # that id links the marketplace row. A booking is what copies it.
         def search_hit(project)
           {
             id: project.id,
@@ -83,7 +86,7 @@ module Api
             area_band: project.area_band,
             possession_display: project.possession_display,
             rera_number: project.rera_number,
-            configurations: project.typologies.map(&:name),
+            configurations: configuration_names(project),
             promo_text: project.promo_live? ? project.promo_text : nil,
             photo_urls: photo_urls(project),
             brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil
@@ -107,6 +110,15 @@ module Api
 
         # Attachment ids are UUIDv7, so ordering by id is creation order and the
         # first is the cover. The design shows no reordering, so none exists.
+        def configuration_names(project)
+          project.project_typologies.map { |row| row.typology&.name }.compact
+        end
+
+        def cover_photo_url(project)
+          first = photo_attachments(project).first
+          first && BlobUrl.call(first)
+        end
+
         def photo_attachments(project) = project.photos.attachments.sort_by(&:id)
 
         # Carries the attachment id, which `photo_urls` does not — and without

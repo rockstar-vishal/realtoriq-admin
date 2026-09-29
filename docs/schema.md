@@ -23,7 +23,9 @@ model includes `FirmScoped`. The default scope is fail-closed: with no
 `Current.firm` set it becomes `firm_id IS NULL`, which matches nothing. A
 request that forgets to establish a tenant sees an empty result, never another
 firm's rows. `spec/models/tenancy_isolation_spec.rb` fails the build if a model
-with a `firm_id` is missing the concern.
+with a `firm_id` is missing the concern. `projects` is the exception: `firm_id`
+may be null only when `source` is `catalog`, enforced by
+`projects_firm_required_unless_catalog`.
 
 > **Associations are not uniform about this, and getting it wrong produces
 > silent empty results rather than errors.** Three cases, all pinned by spec:
@@ -96,7 +98,7 @@ reports writable without hardcoding names in SQL), `property_types`.
 
 ### Leads — **built**
 
-`leads`, `lead_followups`, `lead_typologies`, `lead_activities`, `lead_status_changes`, as
+`leads`, `lead_followups`, `lead_typologies`, `lead_localities`, `lead_activities`, `lead_status_changes`, as
 designed. Columns are in the migrations; the rules that aren't obvious from them:
 
 - **`name` is nullable.** Brokers capture a number off a portal before anything
@@ -159,7 +161,9 @@ lead an agent creates is auto-assigned to them.
   already sits on the master list.
 - **My Projects names** are unique case-insensitively per firm among `source =
   own`. Catalog names are unique the same way among `source = catalog`. The same
-  name may exist once in each list. `GET /projects` lists own only.
+  name may exist once in each list. `GET /projects` lists own only. A marketplace
+  row is the one project with no firm (`source` catalog). An own project with no
+  firm is refused by `projects_firm_required_unless_catalog`.
 - **`properties.created_by_user_id`** is stamped on create (nullable on older
   rows) and nullified if that user is deleted.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
@@ -208,9 +212,11 @@ outing is edited. A lead is visited when it has at least one row.
 `leads.first_visit_at` is gone. Scheduling, status, and outcome are not in
 this table.
 
-**Matching** — the design's "Map Lead" and "Show New Matches". The data it needs
-(typology starting prices and areas, lead budgets and preferred configurations)
-is all in place; the scoring rules are their own design pass.
+**Matching** — scored on each `POST`, not stored. A lead lists inventory, and a
+project or property lists leads, only when a preferred locality overlaps.
+`lead_localities` holds those preferences (no `firm_id`; the lead is the
+tenant). Price is one of 50 / 30 / 20 / 0 against the lead's budget, and a
+smart configuration match is 20. See `docs/api.md`.
 
 ### Bookings and money — **built**
 
@@ -251,7 +257,9 @@ rather than only that it said no.
 - **`unit_no` is required when `project_id` is set**, and unique among live rows
   on `(project_id, unit_no)`. Cancel frees the unit.
 - Booking a **catalog** project copies required fields to an `own` row and stores
-  that id. A name clash with My Projects is `project_name_clash`.
+  that id. A lead mapping does not. A global marketplace row is copied by project
+  code, never linked to a same-named project the firm added itself. A firm-owned
+  catalog row still returns `project_name_clash` when the name is taken.
 - Never sum totals over a scope carrying `includes(:invoices, :collections)` — it becomes a LEFT
   JOIN and counts a booking once per associated row, inflating revenue.
   `BookingsController#totals_for` re-selects by id for exactly that reason.
@@ -263,13 +271,29 @@ control for it.
 
 ### Ancillary
 
-**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due` or `test`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published` or `marketplace_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+
+**`marketplace_enquiries`** — one row per microsite form submission (`enquiry_id` unique). A repeat of that id does not create another lead.
+
+**`lead_projects.withdrawn_at`** — set when LaunchIQ withdraws the marketplace project. The catalog row and the firm's copies are archived. A later upsert clears it.
 
 **`push_subscriptions`** — one browser per row: `user_id`, `auth_session_id`, encrypted `endpoint` / `p256dh` / `auth_key`. Deleted when the session is revoked.
 
 **`notification_dispatch_states`** — global watermark (`key`, `last_dispatched_at`). Not firm-scoped. The follow-up scanner's first run only plants the cursor.
 **`news_articles`** — global, platform-published: `category`, `title`, `body`,
 `read_minutes`, `published_at`, image.
+
+**`trainings`** — **built**, global (no `firm_id`, like `cities`): `title`,
+`description`, `intro_text` (plain text), `instructions_text` (blank = the app's
+default steps), `language` (`hinglish` / `en` / `mr`), `status` (`draft` /
+`active` / `archived`), `valid_upto` (null = never), `podcast_url`,
+`podcast_duration_seconds`, `created_by_admin_user_id`, `published_at`, plus
+`banner`, `document` and `podcast` attachments. Caps live on the model, not in
+`UploadPurpose`: ops upload straight from the admin form. `generating` joins the
+status list when podcast generation is wired.
+
+**`training_notes`** — **built**, firm-scoped: `user_id`, `training_id`, `body`,
+unique on `(user_id, training_id)`. One running note per broker per training.
 
 ### Reports
 
@@ -289,8 +313,8 @@ them.
 
 ## Out of scope in this build
 
-- **Top opportunities** on the dashboard — comes from the turbo-rails8 API.
-  `projects.source` + `external_ref` are the only seam left for it.
+- **A featured block on the dashboard.** Marketplace projects are ingested from
+  LaunchIQ (`turbo-rails8`); the home screen has no separate featured list.
 - **Payment gateway** — subscriptions are ops-managed by hand.
 - **Broker user CRUD in the admin panel** — the super admin is created with the
   firm; the detail page lists users read-only.

@@ -1,0 +1,103 @@
+# frozen_string_literal: true
+
+module Inventory
+  # Live leads in this firm that share a locality with this project or property.
+  # An agent sees only leads assigned to them.
+  class MatchLeads
+    LIMIT = 50
+
+    def initialize(user:, project: nil, property: nil)
+      @user = user
+      @project = project
+      @property = property
+    end
+
+    def call
+      return [] if locality_id.blank?
+      return [] if project && !project.active?
+      return [] if property && !property.available?
+
+      scored.sort_by { |row| [ -row[:score], row[:name].to_s.downcase ] }.first(LIMIT)
+    end
+
+    private
+
+    attr_reader :user, :project, :property
+
+    def locality_id
+      project ? project.locality_id : property.building&.locality_id
+    end
+
+    def transaction_type
+      property ? property.listing_for : "sale"
+    end
+
+    def leads
+      Lead.visible_to(user)
+        .where(transaction_type:)
+        .joins(:lead_status)
+        .where(lead_statuses: { is_dead: false })
+        .joins(:lead_localities)
+        .where(lead_localities: { locality_id: })
+        .includes(:typologies, :localities, :lead_projects, :lead_properties)
+        .distinct
+        .to_a
+    end
+
+    def scored
+      leads.map { |lead| serialize(lead) }
+    end
+
+    def serialize(lead)
+      breakdown = MatchScore.for_offers(
+        budget: lead.budget_amount,
+        offers:,
+        lead_keys: lead.typologies.map { |typology| ConfigurationKey.call(typology.name) },
+        fallback_price: project&.starting_budget
+      )
+      {
+        kind: "lead",
+        id: lead.id,
+        code: lead.code,
+        name: lead.display_name,
+        budget: lead.budget_amount,
+        typologies: lead.typologies.map(&:name),
+        localities: lead.localities.map(&:name),
+        score: breakdown[:score],
+        score_breakdown: breakdown.slice(:location, :price, :configuration),
+        matched_price: breakdown[:matched_price],
+        matched_configuration: breakdown[:matched_configuration],
+        mapped: mapped?(lead),
+        matched_on: MatchScore.matched_on(breakdown)
+      }
+    end
+
+    def offers
+      @offers ||= if project
+        project.project_typologies.includes(:typology).map do |row|
+          MatchScore::Offer.new(
+            price: row.starting_price,
+            name: row.typology&.name,
+            key: ConfigurationKey.call(row.typology&.name)
+          )
+        end
+      else
+        [
+          MatchScore::Offer.new(
+            price: property.price,
+            name: property.typology&.name,
+            key: ConfigurationKey.call(property.typology&.name)
+          )
+        ]
+      end
+    end
+
+    def mapped?(lead)
+      if project
+        lead.lead_projects.any? { |row| row.project_id == project.id && row.withdrawn_at.nil? }
+      else
+        lead.lead_properties.any? { |row| row.property_id == property.id }
+      end
+    end
+  end
+end
