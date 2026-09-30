@@ -216,7 +216,8 @@ this table.
 project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
 project or another firm's shared property. `properties.listed_on_marketplace`
-(default true) is that share switch. `lead_localities` holds the lead's
+(default true) is that share switch. `GET /properties/marketplace` lists
+every other active firm's shared available properties as that safe card. `lead_localities` holds the lead's
 preferred localities (no `firm_id`; the lead is the tenant). Price is one of
 50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
 20. See `docs/api.md`.

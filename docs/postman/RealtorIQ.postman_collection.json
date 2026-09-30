@@ -3256,7 +3256,21 @@
                 "lead_matches"
               ]
             },
-            "description": "Own-firm leads that match this listing, above a score of 30, plus marketplace_firms: other firms to call, with no client details. A firm appears when a lead would score above 50 or when that firm has mapped the property. Empty when the listing is not shared."
+            "description": "Own-firm leads that match this listing, above a score of 30. marketplace_matches lists other firms' leads that score above 50 as firm name, locality, and configuration only — no client name. marketplace_firms is the firms to call. Empty when the listing is not shared."
+          }
+        },
+        {
+          "name": "Marketplace properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/marketplace?q=2bhk",
+              "host": ["{{api_base}}"],
+              "path": ["properties", "marketplace"],
+              "query": [{ "key": "q", "value": "2bhk" }]
+            },
+            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card: no carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
           }
         },
         {

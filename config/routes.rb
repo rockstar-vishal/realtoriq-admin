@@ -161,6 +161,12 @@ Rails.application.routes.draw do
       end
 
       resources :properties, only: %i[index create show update] do
+        # Directory of other firms' shared listings. A collection route, so
+        # "marketplace" is never looked up as a property id.
+        collection do
+          get :marketplace, action: :marketplace_index, as: :marketplace_index
+        end
+
         member do
           get :visitors
           get :mapped_customers

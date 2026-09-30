@@ -44,7 +44,7 @@ CANONICAL = {
     "Tardeo", "Mumbai Central", "Mahalaxmi", "Byculla", "Mazgaon", "Worli",
     "Lower Parel", "Parel", "Sewri", "Wadala", "Prabhadevi", "Dadar East",
     "Dadar West", "Mahim", "Matunga", "Sion", "Bandra East", "Bandra West",
-    "BKC", "Khar West", "Santacruz East", "Santacruz West", "Vile Parle East", "Vile Parle West",
+    "BKC", "Khar East", "Khar West", "Santacruz East", "Santacruz West", "Vile Parle East", "Vile Parle West",
     "Juhu", "Andheri East", "Andheri West", "Jogeshwari East", "Jogeshwari West", "Goregaon East",
     "Goregaon West", "Malad East", "Malad West", "Kandivali East", "Kandivali West", "Borivali East",
     "Borivali West", "Dahisar East", "Dahisar West", "Kurla East", "Kurla West", "Chembur",

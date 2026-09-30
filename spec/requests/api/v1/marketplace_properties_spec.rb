@@ -96,9 +96,27 @@ RSpec.describe "Shared property marketplace" do
     expect(firms.map { |row| row["name"] }).to eq([ "Shah Realty" ])
     expect(firms.first.keys).to contain_exactly("id", "name", "mobile", "whatsapp")
     expect(response.body).not_to include("Secret Client")
+    expect(response.parsed_body["marketplace_matches"]).to eq([])
 
     get "/api/v1/properties/#{listing.id}/visitors", headers: auth(owner), as: :json
     expect(response.parsed_body["visitors"]).to eq([])
+    expect(response.body).not_to include("Secret Client")
+  end
+
+  it "shows another firm's matching lead as the firm, with locality and configuration" do
+    lead_for(ready_type, name: "Secret Client")
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(owner), as: :json
+
+    expect(response).to have_http_status(:ok)
+    row = response.parsed_body["marketplace_matches"].first
+    expect(row).to eq(
+      "firm_name" => "Shah Realty",
+      "localities" => [ "Worli" ],
+      "configurations" => [ "2 BHK" ],
+      "marketplace" => true
+    )
+    expect(response.parsed_body["matches"].map { |match| match["name"] }).not_to include("Secret Client")
     expect(response.body).not_to include("Secret Client")
   end
 
@@ -108,5 +126,64 @@ RSpec.describe "Shared property marketplace" do
     get "/api/v1/properties/#{listing.id}/marketplace", headers: auth(broker), as: :json
 
     expect(response).to have_http_status(:not_found)
+  end
+
+  describe "GET /properties/marketplace" do
+    def browse(user = broker, **params)
+      get "/api/v1/properties/marketplace", params:, headers: auth(user), as: :json
+      response.parsed_body
+    end
+
+    it "lists another firm's shared available property without the private fields" do
+      row = browse["properties"].find { |item| item["id"] == listing.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(row["title"]).to eq("2 BHK in Worli")
+      expect(row["listing_for"]).to eq("sale")
+      expect(row["locality"]).to eq("Worli")
+      expect(row["city"]).to eq("Mumbai")
+      expect(row.dig("firm", "name")).to eq("Mehta Estates")
+      expect(row.dig("firm", "mobile")).to eq(mobile.value)
+      expect(row.dig("firm", "whatsapp")).to eq(whatsapp.value)
+      expect(row.keys).to contain_exactly(
+        "id", "title", "listing_for", "price", "typology", "locality", "city", "firm"
+      )
+      expect(response.body).not_to include("Sea Face Tower", "12 Sea Face", "Owner is travelling", "Sea-facing")
+    end
+
+    it "leaves out own stock, unshared or unavailable listings, and suspended firms" do
+      own = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality:))
+      hidden = create(:property, firm: other_firm, typology:, listed_on_marketplace: false,
+        building: listing.building)
+      booked = create(:property, firm: other_firm, typology:, status: "booked", building: listing.building)
+      quiet = create(:firm, :suspended, name: "Quiet Realty")
+      quiet_listing = create(:property, firm: quiet, typology:,
+        building: create(:building, firm: quiet, city:, locality:, name: "Quiet House"))
+
+      ids = browse["properties"].map { |row| row["id"] }
+
+      expect(ids).to include(listing.id)
+      expect(ids).not_to include(own.id, hidden.id, booked.id, quiet_listing.id)
+    end
+
+    it "searches the firm, locality, city, and configuration, not the building or description" do
+      half = create(:typology, name: "2.5 BHK")
+      half_listing = create(:property, firm: other_firm, typology: half, building: listing.building)
+      rental = create(:property, firm: other_firm, typology:, listing_for: "rent", price: 50_000,
+        building: listing.building)
+
+      expect(browse(q: "2bhk")["properties"].map { |row| row["id"] }).to include(listing.id, rental.id)
+      expect(browse(q: "2bhk")["properties"].map { |row| row["id"] }).not_to include(half_listing.id)
+      expect(browse(q: "worli")["properties"].map { |row| row["id"] }).to include(listing.id)
+      expect(browse(q: "mumbai")["properties"].map { |row| row["id"] }).to include(listing.id)
+      expect(browse(q: "mehta")["properties"].map { |row| row["id"] }).to include(listing.id)
+      expect(browse(q: "seaface")["properties"]).to eq([])
+      expect(browse(q: "seafacing")["properties"]).to eq([])
+      expect(browse(q: "!!!")["properties"]).to eq([])
+    end
+
+    it "does not list a firm's own properties to that firm" do
+      expect(browse(owner)["properties"].map { |row| row["id"] }).not_to include(listing.id)
+    end
   end
 end

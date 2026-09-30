@@ -34,25 +34,25 @@ module Api
           }
         end
 
-        # Another firm. No note, address, pin, photos, floor, or description.
-        def marketplace(property)
+        # One row of the marketplace directory. No carpet, photo, or building.
+        def marketplace_list(property, channels)
           card = Inventory::PropertyCard.for(property)
-          channels = ContactChannel.unscoped.where(firm_id: property.firm_id).to_a
           {
             id: property.id,
             title: card[:title],
             listing_for: property.listing_for,
             price: property.price,
-            carpet_area_sqft: property.carpet_area_sqft,
-            typology: property.typology && { id: property.typology_id, name: property.typology.name },
+            typology: typology_ref(property),
             locality: card[:locality],
             city: card[:city],
-            firm: {
-              name: card[:firm_name],
-              mobile: channels.find { |channel| channel.kind == "mobile" }&.value,
-              whatsapp: channels.find { |channel| channel.kind == "whatsapp" }&.value
-            }
+            firm: firm_lines(card[:firm_name], channels)
           }
+        end
+
+        # Another firm. No note, address, pin, photos, floor, or description.
+        def marketplace(property)
+          channels = ContactChannel.unscoped.where(firm_id: property.firm_id).to_a
+          marketplace_list(property, channels).merge(carpet_area_sqft: property.carpet_area_sqft)
         end
 
         def detail(property)
@@ -91,6 +91,18 @@ module Api
         end
 
         private
+
+        def typology_ref(property)
+          property.typology && { id: property.typology_id, name: property.typology.name }
+        end
+
+        def firm_lines(name, channels)
+          {
+            name: name,
+            mobile: channels.find { |channel| channel.kind == "mobile" }&.value,
+            whatsapp: channels.find { |channel| channel.kind == "whatsapp" }&.value
+          }
+        end
 
         def building_summary(building)
           return nil if building.nil?
