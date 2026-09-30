@@ -105,7 +105,7 @@ module Api
       end
 
       def matches
-        render json: { matches: Inventory::MatchInventory.new(lead: @lead).call }, status: :ok
+        render json: Inventory::MatchInventory.new(lead: @lead).result(query: params[:q]), status: :ok
       end
 
       def status

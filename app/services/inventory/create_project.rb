@@ -7,11 +7,12 @@ module Inventory
   class CreateProject
     Result = Struct.new(:ok?, :project, :errors, :error_code, :error_message, keyword_init: true)
 
-    def initialize(firm:, attributes:, typologies: [], brochure_signed_id: nil)
+    def initialize(firm:, attributes:, typologies: [], brochure_signed_id: nil, brokerage_ladder_signed_id: nil)
       @firm = firm
       @attributes = attributes
       @typologies = Array(typologies)
       @brochure_signed_id = brochure_signed_id
+      @brokerage_ladder_signed_id = brokerage_ladder_signed_id
     end
 
     def call
@@ -21,16 +22,11 @@ module Inventory
       # arrive from the turbo-rails8 feed carrying an external_ref.
       project.source = :own
 
-      accepted = nil
-      if brochure_signed_id.present?
-        accepted = Uploads::AcceptSignedId.new(
-          signed_id: brochure_signed_id, firm:, purpose: "project_brochure"
-        ).call
-        unless accepted.ok?
-          return Result.new(ok?: false, error_code: accepted.error_code,
-                            error_message: accepted.error_message)
-        end
-      end
+      brochure = take_upload(brochure_signed_id, "project_brochure")
+      return brochure if brochure.is_a?(Result)
+
+      ladder = take_upload(brokerage_ladder_signed_id, "project_brokerage_ladder")
+      return ladder if ladder.is_a?(Result)
 
       Project.transaction do
         project.save!
@@ -38,7 +34,8 @@ module Inventory
         ProjectMatchFields.apply(project)
         raise ActiveRecord::RecordInvalid, project if project.errors.any?
 
-        project.brochure.attach(accepted.blob) if accepted
+        project.brochure.attach(brochure) if brochure
+        project.brokerage_ladder.attach(ladder) if ladder
       end
 
       Result.new(ok?: true, project: project.reload)
@@ -48,7 +45,17 @@ module Inventory
 
     private
 
-    attr_reader :firm, :attributes, :typologies, :brochure_signed_id
+    attr_reader :firm, :attributes, :typologies, :brochure_signed_id, :brokerage_ladder_signed_id
+
+    # nil when there is no file. A Result when the ticket is refused.
+    def take_upload(signed_id, purpose)
+      return if signed_id.blank?
+
+      accepted = Uploads::AcceptSignedId.new(signed_id:, firm:, purpose:).call
+      return accepted.blob if accepted.ok?
+
+      Result.new(ok?: false, error_code: accepted.error_code, error_message: accepted.error_message)
+    end
 
     def add_typologies(project)
       typologies.each do |row|

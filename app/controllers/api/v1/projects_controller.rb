@@ -137,7 +137,8 @@ module Api
           firm: current_firm,
           attributes: project_params,
           typologies: params[:typologies],
-          brochure_signed_id: params[:brochure_signed_id]
+          brochure_signed_id: params[:brochure_signed_id],
+          brokerage_ladder_signed_id: params[:brokerage_ladder_signed_id]
         ).call
 
         unless result.ok?
@@ -166,6 +167,19 @@ module Api
           brochure_blob = accepted.blob
         end
 
+        ladder_blob = nil
+        if params.key?(:brokerage_ladder_signed_id) && params[:brokerage_ladder_signed_id].present?
+          accepted = Uploads::AcceptSignedId.new(
+            signed_id: params[:brokerage_ladder_signed_id], firm: current_firm,
+            purpose: "project_brokerage_ladder"
+          ).call
+          unless accepted.ok?
+            return render_error(accepted.error_code, accepted.error_message, status: :unprocessable_content)
+          end
+
+          ladder_blob = accepted.blob
+        end
+
         saved = false
         Project.transaction do
           @project.assign_attributes(project_params)
@@ -175,6 +189,7 @@ module Api
           raise ActiveRecord::Rollback unless saved
 
           apply_brochure(brochure_blob) if params.key?(:brochure_signed_id)
+          apply_brokerage_ladder(ladder_blob) if params.key?(:brokerage_ladder_signed_id)
         end
 
         return render_validation_errors(@project.errors) unless saved
@@ -273,6 +288,10 @@ module Api
 
       def apply_brochure(blob)
         blob.present? ? @project.brochure.attach(blob) : @project.brochure.purge_later
+      end
+
+      def apply_brokerage_ladder(blob)
+        blob.present? ? @project.brokerage_ladder.attach(blob) : @project.brokerage_ladder.purge_later
       end
 
       def render_validation_errors(errors)

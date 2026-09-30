@@ -16,6 +16,10 @@ class UploadPurpose
       max_bytes: 5.megabytes,
       content_types: %w[application/pdf]
     },
+    "project_brokerage_ladder" => {
+      max_bytes: 5.megabytes,
+      content_types: %w[image/jpeg image/png image/webp]
+    },
     "project_photo" => {
       max_bytes: 5.megabytes,
       content_types: %w[image/jpeg image/png image/webp]

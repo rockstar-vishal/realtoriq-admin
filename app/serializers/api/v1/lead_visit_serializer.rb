@@ -14,12 +14,14 @@ module Api
             { id: project.id, name: project.name, starting_budget: project.starting_budget }
           },
           properties: visit.properties.map { |property|
+            shared = property.firm_id != visit.firm_id
+            card = shared ? Inventory::PropertyCard.for(property) : nil
             {
               id: property.id,
-              title: property.title,
+              title: shared ? card[:title] : property.title,
               price: property.price,
               listing_for: property.listing_for,
-              building: property.building && { name: property.building.name }
+              building: shared ? nil : property.building && { name: property.building.name }
             }
           },
           created_at: visit.created_at

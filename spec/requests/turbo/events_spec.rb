@@ -274,6 +274,24 @@ RSpec.describe "Turbo marketplace events" do
     end
   end
 
+  it "stores promo text, starting brokerage, and queues the brokerage ladder" do
+    payload = upsert_payload(
+      promo_text: "Launch offer",
+      brokerage_percent: "2.5",
+      brokerage_ladder: { url: "https://launch.example/ladder.jpg", checksum: "abc", filename: "ladder.jpg" }
+    )
+
+    expect { post_event(payload) }.to have_enqueued_job(Realtoriq::SyncProjectAssetsJob)
+
+    project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
+    expect(project.promo_text).to eq("Launch offer")
+    expect(project.promo_ends_on).to be_nil
+    expect(project).to be_promo_live
+    expect(project.brokerage_percent).to eq(BigDecimal("2.5"))
+    job = ActiveJob::Base.queue_adapter.enqueued_jobs.find { |entry| entry[:job] == Realtoriq::SyncProjectAssetsJob }
+    expect(job[:args].last).to include("url" => "https://launch.example/ladder.jpg")
+  end
+
   it "refuses an upsert without a developer name, RERA number, or possession date" do
     post_event(upsert_payload(developer_name: " "))
 

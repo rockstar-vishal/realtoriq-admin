@@ -5,6 +5,8 @@ module Inventory
   # An agent sees only leads assigned to them.
   class MatchLeads
     LIMIT = 50
+    OWN_FLOOR = MatchInventory::OWN_FLOOR
+    MARKETPLACE_FLOOR = MatchInventory::MARKETPLACE_FLOOR
 
     def initialize(user:, project: nil, property: nil)
       @user = user
@@ -17,7 +19,10 @@ module Inventory
       return [] if project && !project.active?
       return [] if property && !property.available?
 
-      scored.sort_by { |row| [ -row[:score], row[:name].to_s.downcase ] }.first(LIMIT)
+      scored
+        .select { |row| row[:score] > floor }
+        .sort_by { |row| [ -row[:score], row[:name].to_s.downcase ] }
+        .first(LIMIT)
     end
 
     private
@@ -32,16 +37,31 @@ module Inventory
       property ? property.listing_for : "sale"
     end
 
+    def floor
+      project&.marketplace? ? MARKETPLACE_FLOOR : OWN_FLOOR
+    end
+
     def leads
-      Lead.visible_to(user)
+      scope = Lead.visible_to(user)
         .where(transaction_type:)
         .joins(:lead_status)
         .where(lead_statuses: { is_dead: false })
         .joins(:lead_localities)
         .where(lead_localities: { locality_id: })
-        .includes(:typologies, :localities, :lead_projects, :lead_properties)
+        .includes(:typologies, :localities, :lead_projects, :lead_properties, :property_type)
         .distinct
-        .to_a
+      property_type_scope(scope).to_a
+    end
+
+    def property_type_scope(scope)
+      ready_ids = PropertyType.where(code: "ready_possession").select(:id)
+      if property&.for_sale?
+        scope.where(property_type_id: ready_ids)
+      elsif project && !PossessionMatch.ready?(project)
+        scope.where.not(property_type_id: ready_ids)
+      else
+        scope
+      end
     end
 
     def scored

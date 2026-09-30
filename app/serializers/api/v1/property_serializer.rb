@@ -27,8 +27,31 @@ module Api
             cover_photo_url: photo_urls(property).first,
             photo_count: property.photos.attachments.size,
             created_by: named_user(property.created_by_user),
-            created_at: property.created_at
+            created_at: property.created_at,
+            listed_on_marketplace: property.listed_on_marketplace,
+            match_label: property.for_rent? ? "Rent" : "Sale · Ready possession"
             # confidential_note is deliberately absent.
+          }
+        end
+
+        # Another firm. No note, address, pin, photos, floor, or description.
+        def marketplace(property)
+          card = Inventory::PropertyCard.for(property)
+          channels = ContactChannel.unscoped.where(firm_id: property.firm_id).to_a
+          {
+            id: property.id,
+            title: card[:title],
+            listing_for: property.listing_for,
+            price: property.price,
+            carpet_area_sqft: property.carpet_area_sqft,
+            typology: property.typology && { id: property.typology_id, name: property.typology.name },
+            locality: card[:locality],
+            city: card[:city],
+            firm: {
+              name: card[:firm_name],
+              mobile: channels.find { |channel| channel.kind == "mobile" }&.value,
+              whatsapp: channels.find { |channel| channel.kind == "whatsapp" }&.value
+            }
           }
         end
 

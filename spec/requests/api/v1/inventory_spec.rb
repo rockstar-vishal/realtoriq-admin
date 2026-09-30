@@ -163,6 +163,28 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body.dig("error", "code")).to eq("upload_incomplete")
     end
 
+    it "stores a brokerage ladder image and keeps it off the shareable payload" do
+      create_project(brokerage_ladder_signed_id: ladder_signed_id)
+
+      expect(response).to have_http_status(:created)
+      body = response.parsed_body["project"]
+      expect(body["brokerage_ladder_url"]).to be_present
+      expect(body["shareable"]).not_to have_key("brokerage_ladder_url")
+      expect(body["shareable"]).not_to have_key("brokerage_percent")
+      expect(Project.across_firms.find(body["id"]).brokerage_ladder).to be_attached
+    end
+
+    def ladder_signed_id
+      post "/api/v1/uploads", params: {
+        purpose: "project_brokerage_ladder", filename: "ladder.jpg",
+        byte_size: 11, checksum: "XrY7u+Ae7tCTyyK7j1rNww==", content_type: "image/jpeg"
+      }, headers: auth, as: :json
+      signed_id = response.parsed_body["signed_id"]
+      blob = ActiveStorage::Blob.find_signed!(signed_id)
+      ActiveStorage::Blob.service.upload(blob.key, StringIO.new("hello world"))
+      signed_id
+    end
+
     it "does not replace the brochure when the update is rejected" do
       create_project(brochure_signed_id: brochure_signed_id)
       id = response.parsed_body.dig("project", "id")

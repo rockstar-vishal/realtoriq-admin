@@ -280,6 +280,12 @@ class Lead < ApplicationRecord
   # still have a min and a null max.
   def budget_amount = budget_max.presence || budget_min
 
+  # The two seeded codes are the product. Anything else on a sale lead is
+  # treated as under construction by the matchers.
+  def ready_possession?
+    sale? && property_type&.code == "ready_possession"
+  end
+
   def site_visit_stats(join_model, site_key)
     join_model
       .joins(:lead_visit)

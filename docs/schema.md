@@ -198,8 +198,8 @@ different record. `shareable` keeps the bare urls only.
 **Share payloads.** The client composes share text, so every project and
 property detail carries a **`shareable`** object holding exactly the fields that
 may go to a client. Building a message from `shareable` cannot reach the
-confidential note, and `shareable` on a project omits `brokerage_percent` —
-what the broker earns is not the client's business.
+confidential note, and `shareable` on a project omits `brokerage_percent` and
+`brokerage_ladder_url` — what the broker earns is not the client's business.
 
 ### Still to build
 
@@ -213,10 +213,13 @@ outing is edited. A lead is visited when it has at least one row.
 this table.
 
 **Matching** — scored on each `POST`, not stored. A lead lists inventory, and a
-project or property lists leads, only when a preferred locality overlaps.
-`lead_localities` holds those preferences (no `firm_id`; the lead is the
-tenant). Price is one of 50 / 30 / 20 / 0 against the lead's budget, and a
-smart configuration match is 20. See `docs/api.md`.
+project or property lists leads, only when a preferred locality overlaps and
+the score is above 30 for the firm's own stock, or above 50 for a catalog
+project or another firm's shared property. `properties.listed_on_marketplace`
+(default true) is that share switch. `lead_localities` holds the lead's
+preferred localities (no `firm_id`; the lead is the tenant). Price is one of
+50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
+20. See `docs/api.md`.
 
 ### Bookings and money — **built**
 
@@ -313,8 +316,6 @@ them.
 
 ## Out of scope in this build
 
-- **A featured block on the dashboard.** Marketplace projects are ingested from
-  LaunchIQ (`turbo-rails8`); the home screen has no separate featured list.
 - **Payment gateway** — subscriptions are ops-managed by hand.
 - **Broker user CRUD in the admin panel** — the super admin is created with the
   firm; the detail page lists users read-only.
