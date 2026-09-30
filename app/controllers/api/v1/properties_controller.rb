@@ -46,7 +46,25 @@ module Api
       def lead_matches
         render json: {
           matches: Inventory::MatchLeads.new(property: @property, user: current_user).call,
+          marketplace_matches: Inventory::MarketplaceLeadMatches.new(property: @property).call,
           marketplace_firms: Inventory::MarketplaceFirms.new(property: @property).call
+        }, status: :ok
+      end
+
+      # Every other active firm's shared, available listing. Safe cards only.
+      def marketplace_index
+        scope = Inventory::MarketplaceListings.new(query: params[:q]).scope
+        @pagy, records = pagy(scope, limit: per_page)
+        preload_shared_buildings(records)
+        channels = ContactChannel.unscoped
+          .where(firm_id: records.map(&:firm_id), kind: %w[mobile whatsapp])
+          .group_by(&:firm_id)
+
+        render json: {
+          properties: records.map { |property|
+            PropertySerializer.marketplace_list(property, channels[property.firm_id] || [])
+          },
+          meta: pagination_meta(@pagy)
         }, status: :ok
       end
 
@@ -94,6 +112,16 @@ module Api
       end
 
       private
+
+      def preload_shared_buildings(records)
+        return if records.empty?
+
+        ActiveRecord::Associations::Preloader.new(
+          records: records,
+          associations: { building: %i[locality city] },
+          scope: Building.unscoped
+        ).call
+      end
 
       def set_property
         @property = base_scope.find_by(id: params[:id])

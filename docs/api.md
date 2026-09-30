@@ -920,11 +920,35 @@ above-30 floor. A sale listing matches ready-possession leads. A rental matches
 rent leads. The lead must prefer the building's locality. Booked and sold-out
 listings return `[]`.
 
+`marketplace_matches` is the other firms' leads that score above 50. Each
+row is `{ firm_name, localities, configurations, marketplace: true }`.
+`localities` is the shared locality. `configurations` is that lead's
+typology names. There is no lead id, name, code, phone, budget, or score.
+An under-construction lead is not included on a sale listing. The list is
+empty when `listed_on_marketplace` is false.
+
 `marketplace_firms` is the other firms to contact. Each row is
 `{ id, name, mobile, whatsapp }`. A firm is included when one of its leads
 would score above 50 on this property, or when that firm has mapped the
 property. No lead id, name, phone, budget, or score is included. The list is
 empty when `listed_on_marketplace` is false.
+
+### `GET /properties/marketplace`
+
+The properties marketplace tab. Every **other active firm's** shared,
+available listing, sale and rent together, newest first. This firm's own
+stock is not included. A listing that is booked, sold out, or no longer
+shared is left out. 25 per page (`per_page` up to 50).
+
+`q` matches the firm name, locality, city, or configuration. Spaces and
+case are ignored, so `2bhk` finds `2 BHK`. The building name and the
+description are not searched. A query that is only punctuation returns
+no rows.
+
+Each row is the safe card: `id`, `title`, `listing_for`, `price`,
+`typology`, `locality`, `city`, and `firm: { name, mobile, whatsapp }`.
+There is no carpet, photo, building, address, floor, description, or
+confidential note. Open one row with `GET /properties/:id/marketplace`.
 
 ### `GET /properties/:id/marketplace`
 

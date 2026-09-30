@@ -15,11 +15,11 @@ module Inventory
     end
 
     def self.building_for(property)
-      if property.firm_id.present? && property.firm_id != Current.firm_id
-        Building.unscoped.includes(:locality, :city).find_by(id: property.building_id)
-      else
-        property.building
-      end
+      loaded = property.association(:building)
+      return property.building if loaded.loaded? && property.building.present?
+      return property.building if property.firm_id.blank? || property.firm_id == Current.firm_id
+
+      Building.unscoped.includes(:locality, :city).find_by(id: property.building_id)
     end
 
     def self.title_for(property, building = building_for(property))
