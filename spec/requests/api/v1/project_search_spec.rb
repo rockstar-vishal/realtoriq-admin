@@ -210,12 +210,13 @@ RSpec.describe "API v1 project search" do
 
       hit = search("aurum")["projects"].first
 
-      expect(hit.keys).to match_array(%w[id name rera_number source builder locality locality_id city city_id])
+      expect(hit.keys).to match_array(%w[id name rera_number source builder locality locality_id city city_id match_label])
       expect(hit).to include(
         "name" => "Aurum Vista", "rera_number" => "P51700054321", "source" => "own",
         "builder" => { "id" => builder.id, "name" => "Lodha Group" },
         "locality" => "Kolshet", "city" => "Thane",
-        "locality_id" => locality.id, "city_id" => city.id
+        "locality_id" => locality.id, "city_id" => city.id,
+        "match_label" => "Sale · Under construction"
       )
     end
 

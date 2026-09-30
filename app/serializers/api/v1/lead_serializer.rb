@@ -143,19 +143,36 @@ module Api
         def mapped_property(lead, mapping)
           property = mapping.property
           stats = lead.property_visit_stats[property.id.to_s] || EMPTY_SITE_STATS
+          shared = property.firm_id != lead.firm_id
+          card = shared ? Inventory::PropertyCard.for(property) : nil
           {
             id: mapping.id,
             visited: stats[:visit_count].positive?,
             visit_count: stats[:visit_count],
             last_visited_on: ist_date(stats[:last_visited_at]),
-            property: {
-              id: property.id,
-              title: property.title,
-              listing_for: property.listing_for,
-              status: property.status,
-              price: property.price,
-              building: property.building && { id: property.building_id, name: property.building.name }
-            }
+            property: if shared
+                        {
+                          id: property.id,
+                          title: card[:title],
+                          listing_for: property.listing_for,
+                          status: property.status,
+                          price: property.price,
+                          carpet_area_sqft: property.carpet_area_sqft,
+                          locality: card[:locality],
+                          city: card[:city],
+                          marketplace: true,
+                          listed_by: card[:firm_name]
+                        }
+                      else
+                        {
+                          id: property.id,
+                          title: property.title,
+                          listing_for: property.listing_for,
+                          status: property.status,
+                          price: property.price,
+                          building: property.building && { id: property.building_id, name: property.building.name }
+                        }
+                      end
           }
         end
 

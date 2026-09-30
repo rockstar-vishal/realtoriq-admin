@@ -10,6 +10,15 @@ class LeadProject < ApplicationRecord
   belongs_to :project, -> { unscope(where: :firm_id) }
 
   belongs_to_same_firm :lead, :project, allow_marketplace: true
+  validate :sale_lead_only
 
   validates :project_id, uniqueness: { scope: :lead_id }
+
+  private
+
+  def sale_lead_only
+    return if lead.blank? || lead.sale?
+
+    errors.add(:base, "A rental lead cannot be mapped to a project")
+  end
 end

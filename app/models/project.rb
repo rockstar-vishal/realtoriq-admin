@@ -46,6 +46,7 @@ class Project < ApplicationRecord
   # explicit about that, so they arrive through their own endpoint.
   has_many_attached :photos
   has_one_attached :brochure
+  has_one_attached :brokerage_ladder
 
   validates :name, presence: true, length: { maximum: NAME_MAX_LENGTH }
   validates :firm, presence: true, unless: :marketplace?

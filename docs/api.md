@@ -306,9 +306,10 @@ be assigned a lead until they are active again.
 
 ### `GET /dashboard`
 
-> **There is no featured / live projects block, and there will not be one here yet.**
-> Featured projects will come from the LaunchIQ integration. Until then, render that
-> section from placeholder data on the client. `inventory.projects` is a count, not a list.
+> **This response has no featured-projects list.** The home screen loads that
+> strip itself: the 3 most recent marketplace projects
+> (`GET /projects?source=catalog&sort=recent`). Those are LaunchIQ listings.
+> The firm's own projects are not included. `inventory.projects` is a count, not a list.
 
 The whole home screen in one request — pipeline counters, money tiles, the
 inventory strip, and the top three of each list.
@@ -563,14 +564,25 @@ price fields on `projects[]` and `properties[]`.
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
 | `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. A dead lead, or a lead with no locality, returns `[]`. Does not copy anything into My Projects |
 
-**`POST /leads/:id/matches`** lists at most 50 rows, highest score first. A row is
-listed only when at least one of the lead's preferred localities is the
-project's locality, or the property's building locality. Same city is not
-enough. Sale leads match active own projects, active marketplace projects, and
-available sale properties. Rent leads match available rental properties only.
-Archived projects and booked or sold-out properties are left out. A catalog
-project and the firm's booking copy are both listed when both are active; the
-catalog row has `source: "catalog"`.
+**`POST /leads/:id/matches`** lists unmapped rows, highest score first. Optional
+`q` searches the full set (name, builder or firm, locality, city, configuration;
+spaces and case ignored, so `2bhk` finds `2 BHK`) and returns every hit.
+Without `q`, the body is the top 50 and `truncated` is true when more unmapped
+matches exist. A row is listed only when at least one preferred locality
+overlaps and the score clears its floor. Own projects and own properties need
+a score above 30. Catalog projects and another firm's shared properties need a
+score above 50. Locality alone is 30 and is left out.
+
+A rent lead sees available rental properties only. A ready-possession sale lead
+sees available sale properties plus active projects whose possession month is
+the current month in Asia/Kolkata or one of the next two. An under-construction
+sale lead sees active projects only. A past possession month stays an
+under-construction match. A possession label that is only the word Ready, with
+no date, counts as ready. Archived projects and booked or sold-out properties
+are left out. A catalog project and the firm's booking copy are both listed
+when both are active; the catalog row has `source: "catalog"` and
+`marketplace: true`, with `listed_by` set to the builder. Another firm's shared
+property has `marketplace: true` and `listed_by` set to that firm's name.
 
 The score is 100 points and is not stored:
 
@@ -597,20 +609,21 @@ in the name.
 ```json
 { "matches": [
   { "kind": "project", "id": "…", "name": "Aurum Vista", "source": "catalog",
+    "marketplace": true, "listed_by": "Aurum Developers",
     "city": "Thane", "locality": "Kolshet", "starting_budget": 14200000,
     "score": 100,
     "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"] }
-] }
+], "truncated": false }
 ```
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
 title), `price`, and `listing_for` instead of `source` and `starting_budget`.
 `matched_on` lists the dimensions that scored: `locality` always, then `price`
-and `configuration` when those points are above 0. `mapped` is true when this
-lead is already linked to that project or property. A catalog mapping does not
-mark the booking copy, and the reverse is also separate.
+and `configuration` when those points are above 0. Rows already mapped to the
+lead are omitted. A catalog mapping does not mark the booking copy, and the
+reverse is also separate.
 
 **`POST /leads/:id/followups`** is the only write path for a follow-up comment
 and for moving NCD. One transaction: insert the row, copy `next_action_at` onto
@@ -698,10 +711,11 @@ the same way, in their own list. The same name may exist once in each.
 | `locality_id` | string | **required** | Must belong to `city_id`. A broker create or update of an own project without one is `422 invalid`. A booking copy of a catalog project may be stored without one; the broker cannot save an edit until it is set |
 | `starting_budget` | integer | **required** | > 0 |
 | `possession_on` **or** `possession_label` | date / string | **one required** | `"Dec 2027"` when the date is vague |
-| `brokerage_percent` | number | optional | 0–100 |
+| `brokerage_percent` | number | optional | Starting brokerage, 0–100 |
+| `brokerage_ladder_signed_id` | string | optional | Image of the brokerage ladder. Detail returns `brokerage_ladder_url`. Omitted from `shareable` |
 | `rera_number`, `address`, `google_place_id` | string | optional | |
 | `lat` / `lng` | number | optional | −90..90 / −180..180 |
-| `promo_text`, `promo_ends_on` | string / date | optional | |
+| `promo_text`, `promo_ends_on` | string / date | optional | `promo_text` has no length limit |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
 | `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft }`. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row |
@@ -781,7 +795,8 @@ from web pages — are cleaned up first.
       "source": "own",
       "builder": { "id": "01a0…", "name": "Lodha Group" },
       "locality": "Kolshet", "locality_id": "01a0…",
-      "city": "Thane", "city_id": "01a0…"
+      "city": "Thane", "city_id": "01a0…",
+      "match_label": "Sale · Under construction"
     }
   ],
   "meta": { "query": "aurum", "limit": 10, "min_length": 3, "more": false, "fuzzy": false }
@@ -792,8 +807,9 @@ from web pages — are cleaned up first.
 - **`meta.fuzzy`** is `true` when these are close spellings rather than matches.
 - **`meta.query`** is what was actually searched, after trimming.
 
-A result carries only what a row shows. Tap through to `GET /projects/:id` for the
-full project.
+A result carries only what a row shows, including `match_label`
+(`Sale · Under construction` or `Sale · Ready possession`). Tap through to
+`GET /projects/:id` for the full project.
 
 `source` is `own`, or `catalog` when `include_marketplace=true` returned a
 marketplace row. Lead matching still goes through `POST /leads/:id/matches`.
@@ -811,7 +827,10 @@ dropdown.
 
 Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
-`available_from`, `description`, `confidential_note`, `status`
+`available_from`, `description`, `confidential_note`, `status`,
+`listed_on_marketplace` (boolean, default true). Turning it off hides the
+listing from other firms' matches and from `marketplace_firms`. A mapping
+already saved stays.
 (`available` · `booked` · `sold_out`). Any role may create. List and detail
 include `created_by: { id, name }` (or `null` on older rows) — show it when
 `permissions.manage_projects` is true.
@@ -836,6 +855,9 @@ title, the building name, or the description — **not the city**. Ignored when 
 carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 `locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
 `carpet_max`, `building_id`, `listing_for`.
+
+List and detail also include `listed_on_marketplace` and `match_label`
+(`Rent`, or `Sale · Ready possession` — a property has no possession month).
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a
@@ -870,10 +892,13 @@ the file stored when the project was pushed, not a live call to turbo.
 
 ### `POST /projects/:id/lead_matches`
 
-Live sale leads this caller can see that prefer this project's locality. An
-agent sees only leads assigned to them. Dead leads, rent leads, and a project
-that is archived or has no locality return `[]`. At most 50, highest score
-first. The score is the same 100-point scale as `POST /leads/:id/matches`.
+Live sale leads this caller can see that prefer this project's locality and
+clear the same score floor as `POST /leads/:id/matches` (above 30 for an own
+project, above 50 for a catalog project). An agent sees only leads assigned to
+them. A project outside the ready window matches under-construction leads. A
+project inside it matches both under-construction and ready-possession leads.
+Dead leads, rent leads, and a project that is archived or has no locality
+return `[]`. At most 50, highest score first.
 
 ```json
 { "matches": [
@@ -890,10 +915,31 @@ first. The score is the same 100-point scale as `POST /leads/:id/matches`.
 
 ### `POST /properties/:id/lead_matches`
 
-Same payload as the project endpoint. The lead's transaction type must be the
-listing's `listing_for`, and the lead must prefer the building's locality.
-Booked and sold-out listings return `[]`. Rent listings match rent leads, and
-the price bands apply to the monthly rent.
+Own-firm leads use the same lead payload as the project endpoint, at the
+above-30 floor. A sale listing matches ready-possession leads. A rental matches
+rent leads. The lead must prefer the building's locality. Booked and sold-out
+listings return `[]`.
+
+`marketplace_firms` is the other firms to contact. Each row is
+`{ id, name, mobile, whatsapp }`. A firm is included when one of its leads
+would score above 50 on this property, or when that firm has mapped the
+property. No lead id, name, phone, budget, or score is included. The list is
+empty when `listed_on_marketplace` is false.
+
+### `GET /properties/:id/marketplace`
+
+Another firm's view of a shared, available listing. The owning firm receives
+404 and uses `GET /properties/:id`. The body is the title, configuration,
+locality, city, price, carpet, and the firm's name, mobile, and WhatsApp.
+There is no building name, address, pin, floor, description, photos, or
+confidential note. A listing that is not shared returns 404.
+
+Mapping that property (`POST /leads/:id/properties`) is allowed for any lead
+this caller can see whose sale/rent matches the listing, including an
+under-construction client. A rent lead cannot be mapped to a sale listing or
+to a project. A sale lead cannot be mapped to a rental. A mapped shared
+property can be logged on a site visit; that visit stays on the mapping firm's
+lead and does not appear in the listing firm's visitors.
 
 ### `GET /projects/:id/mapped_customers`
 
@@ -986,8 +1032,13 @@ that project code, and sets `mapped_projects[].withdrawn`. A later upsert makes
 them active again. Neither deletes leads. An upsert requires `developer_name`,
 `rera_number` and `possession_on` (`YYYY-MM-DD`). Images are
 `images: [{ url, checksum, filename }]` and the brochure is
-`{ url, filename, checksum }`. The builder is `developer_name`, not
-`company_code`.
+`{ url, filename, checksum }`. Optional on an upsert: `promo_text` (no length
+limit; a blank value clears it), `brokerage_percent` (starting brokerage,
+greater than 0 and at most 100; omitted leaves the stored percent alone, blank
+clears it), and `brokerage_ladder: { url, checksum, filename }` (copied with
+the brochure; omitted leaves the image alone). Detail shows all three on a
+marketplace project. `shareable` still omits the percent and the ladder. The
+builder is `developer_name`, not `company_code`.
 
 ### `shareable`
 
@@ -1205,6 +1256,7 @@ it does not match — that is the integrity check, not a bug.
 | `property_photo` | 5 MB | jpeg, png, webp |
 | `project_photo` | 5 MB | jpeg, png, webp |
 | `project_brochure` | 5 MB | pdf |
+| `project_brokerage_ladder` | 5 MB | jpeg, png, webp |
 | `booking_document` | 2 MB | pdf, jpeg, png |
 | `collection_proof` | 2 MB | pdf, jpeg, png |
 | `firm_logo` | 1 MB | png, jpeg, svg, webp |

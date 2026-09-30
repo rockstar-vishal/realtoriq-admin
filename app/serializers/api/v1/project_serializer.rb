@@ -44,6 +44,7 @@ module Api
             photos: photos(project),
             photo_urls: photo_urls(project),
             brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil,
+            brokerage_ladder_url: project.brokerage_ladder.attached? ? BlobUrl.call(project.brokerage_ladder) : nil,
             external_ref: project.external_ref,
             rm_name: project.rm_name,
             rm_contact: project.rm_contact,
@@ -68,7 +69,8 @@ module Api
             locality: project.locality&.name,
             locality_id: project.locality_id,
             city: project.city&.name,
-            city_id: project.city_id
+            city_id: project.city_id,
+            match_label: Inventory::PossessionMatch.match_label(project)
           }
         end
 
@@ -90,8 +92,8 @@ module Api
             promo_text: project.promo_live? ? project.promo_text : nil,
             photo_urls: photo_urls(project),
             brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil
-            # brokerage_percent is deliberately absent: what the broker earns is
-            # not the client's business.
+            # brokerage_percent and brokerage_ladder_url are deliberately absent:
+            # what the broker earns is not the client's business.
           }
         end
 

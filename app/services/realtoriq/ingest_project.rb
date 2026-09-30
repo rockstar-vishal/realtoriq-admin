@@ -54,6 +54,9 @@ module Realtoriq
       budget = prices.filter_map { |row| row[:starting_price] }.min
       return failure("a configuration price is required") if budget.nil?
 
+      brokerage = starting_brokerage
+      return brokerage if brokerage.is_a?(Result)
+
       saved = false
       project = nil
       Current.set(firm_scope_bypassed: true) do
@@ -64,7 +67,7 @@ module Realtoriq
           previous_builder_id = project&.builder_id
           was_archived = project&.archived? || false
           project ||= Project.new(source: "catalog", firm_id: nil, external_ref: code)
-          project.assign_attributes(attributes(city, builder, budget))
+          project.assign_attributes(attributes(city, builder, budget, brokerage))
           project.save!
           replace_typologies(project, prices)
           repoint_copies(project, previous_builder_id)
@@ -74,7 +77,9 @@ module Realtoriq
       end
 
       if saved
-        SyncProjectAssetsJob.perform_later(project.id, image_rows, brochure_row, pushed_at.iso8601)
+        SyncProjectAssetsJob.perform_later(
+          project.id, image_rows, brochure_row, pushed_at.iso8601, brokerage_ladder_row
+        )
         Result.new(ok?: true, status: :accepted, project:)
       else
         ignored(project)
@@ -159,8 +164,8 @@ module Realtoriq
       @possession_on = nil
     end
 
-    def attributes(city, builder, budget)
-      {
+    def attributes(city, builder, budget, brokerage)
+      attrs = {
         name: payload["project_name"].to_s.strip,
         builder:,
         city:,
@@ -173,11 +178,32 @@ module Realtoriq
         rm_name: payload["rm_name"].to_s.strip,
         rm_contact: payload["rm_contact"].to_s.gsub(/\D/, ""),
         company_code: payload["company_code"].presence,
+        promo_text: payload["promo_text"].to_s.strip.presence,
+        promo_ends_on: nil,
         status: "active",
         source: "catalog",
         firm_id: nil,
         turbo_pushed_at: pushed_at
       }
+      # Absent on an older push. A blank value clears a percent that was stored.
+      attrs[:brokerage_percent] = brokerage unless brokerage == :omit
+      attrs
+    end
+
+    def starting_brokerage
+      return :omit unless payload.key?("brokerage_percent")
+
+      raw = payload["brokerage_percent"]
+      return if raw.blank?
+
+      number = BigDecimal(raw.to_s)
+      unless number.positive? && number <= 100
+        return failure("brokerage_percent must be greater than 0 and at most 100")
+      end
+
+      number
+    rescue ArgumentError
+      failure("brokerage_percent is invalid")
     end
 
     def resolve_city
@@ -326,6 +352,14 @@ module Realtoriq
 
     def brochure_row
       file_payload(payload["brochure"])
+    end
+
+    # nil leaves an existing ladder alone (older events). A present key with
+    # no file removes it. A file row is copied like the brochure.
+    def brokerage_ladder_row
+      return unless payload.key?("brokerage_ladder")
+
+      file_payload(payload["brokerage_ladder"]) || { "purge" => true }
     end
 
     def file_payload(row)

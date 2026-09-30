@@ -45,8 +45,19 @@ module Api
 
       def lead_matches
         render json: {
-          matches: Inventory::MatchLeads.new(property: @property, user: current_user).call
+          matches: Inventory::MatchLeads.new(property: @property, user: current_user).call,
+          marketplace_firms: Inventory::MarketplaceFirms.new(property: @property).call
         }, status: :ok
+      end
+
+      # Another firm's view of a shared listing. The owning firm uses #show.
+      def marketplace
+        property = Property.unscoped.includes(:typology, :firm).find_by(id: params[:id])
+        unless property&.listed_on_marketplace? && property.available? && property.firm_id != current_firm.id
+          return render_error("not_found", "Property not found", status: :not_found)
+        end
+
+        render json: { property: PropertySerializer.marketplace(property) }, status: :ok
       end
 
       def mapped_customers
@@ -137,7 +148,7 @@ module Api
       def property_params
         params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :available_from, :description,
-                      :confidential_note, :status)
+                      :confidential_note, :status, :listed_on_marketplace)
       end
     end
   end

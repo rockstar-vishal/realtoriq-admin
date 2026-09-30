@@ -1276,7 +1276,7 @@
                 "matches"
               ]
             },
-            "description": "Inventory that shares a preferred locality with this lead, scored 0-100. Sale leads match own projects, marketplace projects, and available sale properties. Rent leads match rental properties only. At most 50, highest score first. A dead lead or a lead with no locality returns matches: []. Does not copy anything into My Projects."
+            "description": "Unmapped inventory that shares a preferred locality and clears the score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. Optional JSON body { q } searches the full set and returns every hit. Without q, the top 50 are returned and truncated is true when more exist. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only."
           },
           "event": [
             {
@@ -2397,7 +2397,7 @@
                 "projects"
               ]
             },
-            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
+            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`. `brokerage_percent` is the starting brokerage. Attach the ladder image with `brokerage_ladder_signed_id` from `/uploads` using purpose `project_brokerage_ladder`. `promo_text` has no length limit.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
@@ -2767,7 +2767,7 @@
                   "});",
                   "pm.test(\"a hit is slim — no price bands, photos or brokerage\", () => {",
                   "  pm.expect(Object.keys(body.projects[0]).sort())",
-                  "    .to.eql([\"builder\", \"city\", \"id\", \"locality\", \"name\", \"rera_number\", \"source\"]);",
+                  "    .to.eql([\"builder\", \"city\", \"city_id\", \"id\", \"locality\", \"locality_id\", \"match_label\", \"name\", \"rera_number\", \"source\"]);",
                   "});"
                 ]
               }
@@ -3256,7 +3256,20 @@
                 "lead_matches"
               ]
             },
-            "description": "Live leads this caller can see whose transaction type matches the listing and who prefer the building's locality. Rent listings match rent leads. Scored 0-100, at most 50. A booked or sold-out listing returns matches: []."
+            "description": "Own-firm leads that match this listing, above a score of 30, plus marketplace_firms: other firms to call, with no client details. A firm appears when a lead would score above 50 or when that firm has mapped the property. Empty when the listing is not shared."
+          }
+        },
+        {
+          "name": "Marketplace property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/marketplace",
+              "host": ["{{api_base}}"],
+              "path": ["properties", "{{property_id}}", "marketplace"]
+            },
+            "description": "Another firm's safe view of a shared available listing: title, configuration, locality, city, price, carpet, and the firm's phone lines. No address, building name, or confidential note. The owning firm receives 404."
           }
         },
         {

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_29_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_29_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -716,12 +716,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_29_160000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.uuid "created_by_user_id"
+    t.boolean "listed_on_marketplace", default: true, null: false
     t.index ["building_id"], name: "index_properties_on_building_id"
     t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
     t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
     t.index ["firm_id", "status"], name: "index_properties_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_properties_on_firm_id"
+    t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
     t.index ["typology_id"], name: "index_properties_on_typology_id"
     t.check_constraint "floor_band IS NULL OR (floor_band::text = ANY (ARRAY['lower'::character varying::text, 'middle'::character varying::text, 'higher'::character varying::text]))", name: "properties_floor_band_check"
     t.check_constraint "listing_for::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "properties_listing_for_check"

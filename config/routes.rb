@@ -164,6 +164,7 @@ Rails.application.routes.draw do
         member do
           get :visitors
           get :mapped_customers
+          get :marketplace
           post :lead_matches
           post   "photos", to: "properties#add_photos"
           delete "photos/:photo_id", to: "properties#remove_photo", as: :photo
