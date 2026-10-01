@@ -16,11 +16,14 @@ class LeadProperty < ApplicationRecord
   private
 
   # Same-firm listings map as before. Another firm's listing maps only while
-  # it is shared and available, and only when sale/rent agrees with the lead.
+  # that firm is active and the listing is shared and available, and only when
+  # sale/rent agrees with the lead.
   def property_is_mappable
     return if property.blank? || lead.blank?
 
-    if property.firm_id != firm_id && !(property.listed_on_marketplace? && property.available?)
+    # Same gate as the marketplace directory: another firm's listing maps only
+    # while that firm is active and the listing is shared and available.
+    if property.firm_id != firm_id && !shared_from_active_firm?
       errors.add(:property_id, "isn't one of this firm's records")
       return
     end
@@ -28,5 +31,9 @@ class LeadProperty < ApplicationRecord
     return if lead.transaction_type == property.listing_for
 
     errors.add(:base, "A #{lead.transaction_type} lead cannot be mapped to a #{property.listing_for} listing")
+  end
+
+  def shared_from_active_firm?
+    property.listed_on_marketplace? && property.available? && property.firm&.active?
   end
 end

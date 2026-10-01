@@ -1080,6 +1080,43 @@
           ]
         },
         {
+          "name": "Download lead import sample",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/import_template",
+              "host": [ "{{api_base}}" ],
+              "path": [ "leads", "import_template" ]
+            },
+            "description": "CSV the broker fills in. The example row (Example lead / 9000000000) is skipped if left unchanged. Save the upload as CSV UTF-8, not an Excel workbook."
+          }
+        },
+        {
+          "name": "Import leads",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "The filled sample. At most 1 MB and 200 data rows."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{api_base}}/leads/import",
+              "host": [ "{{api_base}}" ],
+              "path": [ "leads", "import" ]
+            },
+            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. Property type is still required for sale (Under construction or Ready possession). Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. Leads are assigned to the signed-in user and start as New."
+          }
+        },
+        {
           "name": "Create a lead",
           "request": {
             "method": "POST",

@@ -47,7 +47,7 @@ RSpec.describe Training do
       training = create(:training)
 
       expect(training.activation_blockers)
-        .to contain_exactly("a banner image", "the PDF guide", "a podcast file or link")
+        .to contain_exactly("a banner image", "the PDF guide")
     end
 
     it "refuses while anything is missing, and says so" do
@@ -58,11 +58,12 @@ RSpec.describe Training do
       expect(training.errors.full_messages.first).to include("Still needs")
     end
 
-    it "counts a pasted link as a podcast" do
-      training = create(:training, :with_assets, podcast_url: "https://cdn.example.com/a.mp3")
+    it "goes live without any podcast, because the guide is the training" do
+      training = create(:training, :with_assets)
       training.podcast.purge
 
       expect(training.activation_blockers).to be_empty
+      expect(training.activate!(actor: create(:admin_user))).to be(true)
     end
 
     it "refuses when the valid-upto date has already passed" do

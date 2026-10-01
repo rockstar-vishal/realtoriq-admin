@@ -14,6 +14,7 @@ module Api
         def list(property)
           {
             id: property.id,
+            code: property.code,
             title: property.title,
             listing_for: property.listing_for,
             status: property.status,
@@ -39,6 +40,7 @@ module Api
           card = Inventory::PropertyCard.for(property)
           {
             id: property.id,
+            code: property.code,
             title: card[:title],
             listing_for: property.listing_for,
             price: property.price,

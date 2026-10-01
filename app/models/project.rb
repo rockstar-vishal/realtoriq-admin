@@ -4,6 +4,9 @@
 # Distinct from Property, which is resale and rental stock.
 class Project < ApplicationRecord
   include FirmScoped
+  include InventoryCode
+  self.inventory_code_prefix = "P"
+  self.inventory_code_index = "index_projects_on_code"
 
   # Catalog rows synced from turbo-rails8 have no firm. FirmScoped's default
   # clause is `firm_id IS NULL` when no tenant is set, which would reveal those

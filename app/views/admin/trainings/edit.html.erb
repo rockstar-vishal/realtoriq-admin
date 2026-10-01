@@ -24,7 +24,10 @@
   <% elsif !@training.active? %>
     <%= button_to "Activate", activate_admin_training_path(@training), method: :patch,
           class: "btn btn-primary", form_class: "inline" %>
-    <span class="text-[13px] text-[var(--color-neutral-700)]">Every broker sees it the moment you do.</span>
+    <span class="text-[13px] text-[var(--color-neutral-700)]">
+      Every broker sees it the moment you do.<% unless @training.podcast_ready? %>
+        No podcast yet — brokers get the guide, and you can add the audio any time.<% end %>
+    </span>
   <% else %>
     <%= button_to "Archive", archive_admin_training_path(@training), method: :patch,
           class: "btn btn-secondary", form_class: "inline",

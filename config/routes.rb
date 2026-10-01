@@ -113,6 +113,11 @@ Rails.application.routes.draw do
       # No destroy: the design has no delete. `Dead` is the terminal state, and
       # it carries a reason so the dead-leads report can explain itself.
       resources :leads, only: %i[index create show update] do
+        collection do
+          get :import_template, to: "lead_imports#template"
+          post :import, to: "lead_imports#create"
+        end
+
         member do
           post :status
           post :matches
