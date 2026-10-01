@@ -7,6 +7,7 @@ module Api
         def list(project)
           {
             id: project.id,
+            code: project.code,
             name: project.name,
             status: project.status,
             source: project.source,
@@ -62,6 +63,7 @@ module Api
         def search_hit(project)
           {
             id: project.id,
+            code: project.code,
             name: project.name,
             rera_number: project.rera_number,
             source: project.source,

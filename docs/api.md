@@ -421,6 +421,53 @@ Returns `201` with the lead plus `possible_duplicates` — the **other** transac
 `code` is assigned server-side and sequential per firm (`L-0002`). Brokers read
 these to each other.
 
+### Importing leads from a CSV
+
+Desktop only. The broker downloads a sample, fills it in, and uploads it.
+One bad row does not undo the rows that were added. The response is the
+result; it is not stored. Download the failures before leaving the page.
+
+| | |
+| --- | --- |
+| `GET /leads/import_template` | Sample CSV. The example row (`Example lead` / `9000000000`) is skipped if it is left unchanged |
+| `POST /leads/import` | Multipart field `file`. At most 1 MB and 200 data rows |
+
+A workbook (`.xlsx`), a semicolon-separated file, a missing Mobile / Sale or
+rent / Budget header, or more than 200 data rows is `422 invalid` and creates
+nothing.
+
+`POST /leads/import` returns `200`:
+
+```json
+{
+  "created_count": 1,
+  "failed_count": 1,
+  "results": [
+    { "row": 3, "status": "created", "name": "Rhea", "mobile": "9820155001", "lead_id": "…", "lead_code": "L-0004", "error": null },
+    { "row": 4, "status": "failed", "name": "Asha", "mobile": "9820155002", "error": "Unknown project code P-ZZZZZZ.", "cells": { "Name": "Asha", "Mobile": "9820155002" } }
+  ]
+}
+```
+
+`cells` is present on failures only, in the sample's column order, so the
+file can be fixed and uploaded again. An `Error` column on that file is ignored.
+
+Each created row goes through the normal lead create. It is assigned to the
+signed-in user and starts as New. There is no status or next-action column.
+
+Sheet rules:
+
+- **Mobile**, **Sale or rent** (`sale` or `rent`) and **Budget** (whole rupees, `12000000` or `1,20,00,000`) are required. A decimal other than `.00`, or text such as `1.2 Cr`, fails the row. A mobile Excel has turned into scientific notation or a decimal fails the row.
+- **Property type** is required for sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank.
+- **Configurations** are typology names (`2 BHK`). Spaces and case do not matter. An empty cell copies them from the linked listings. A filled cell is used instead. An unknown name fails the row.
+- **Project codes** and **Property codes** take several values separated by commas, at most 20 in one cell. A code is `P-` plus 6 characters for a project and `H-` plus 6 characters for a property, shown on that project or property's list and detail. A cell may also contain the record id. A project cell may contain a LaunchIQ reference (`PR…`): the firm's own active copy is linked, otherwise the active marketplace row. Linking does not copy a marketplace project into My Projects.
+- **Location** is added to the localities on the linked listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
+- A project code on a rent row fails. A property is linked only when its sale/rent matches the row. An unknown code, an archived project, or a sold property fails the row and does not create the lead. A private code from another firm, and a code belonging to a firm that is not active, are reported as unknown. A shared property links only while that firm is active, matching `GET /properties/marketplace`.
+- The same mobile may be imported once as sale and once as rent. A second live row of the same kind fails. When the caller can see that lead, the error includes its code.
+
+`code` on a project and on a property is this import code. It is not
+`external_ref` and it is not the lead's `L-0001`.
+
 ### `GET /leads`
 
 Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
@@ -685,6 +732,11 @@ A **project** is a builder's development, sold from a brochure. A **property** i
 one resale or rental listing inside a **building**. Amenities live on the
 building, because every flat in it shares the same pool.
 
+Every project has a global `code` (`P-` and six characters) and every property
+has one (`H-` and six characters). They are random, not a sequence, and they
+are what the lead import sheet links. A firm's copy of a marketplace project
+gets its own code. `external_ref` is still the LaunchIQ reference.
+
 **My Projects vs marketplace.** `GET /projects` without `source`, and
 `GET /projects/search` without `include_marketplace`, return only `source: own`
 (My Projects). Marketplace
@@ -807,7 +859,7 @@ from web pages — are cleaned up first.
 - **`meta.fuzzy`** is `true` when these are close spellings rather than matches.
 - **`meta.query`** is what was actually searched, after trimming.
 
-A result carries only what a row shows, including `match_label`
+A result carries only what a row shows, including `code` and `match_label`
 (`Sale · Under construction` or `Sale · Ready possession`). Tap through to
 `GET /projects/:id` for the full project.
 
@@ -856,8 +908,9 @@ carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 `locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
 `carpet_max`, `building_id`, `listing_for`.
 
-List and detail also include `listed_on_marketplace` and `match_label`
+List and detail also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).
+The marketplace list includes `code` as well, and still omits private fields.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
 > from every list payload and absent from `shareable`. Never render it anywhere a

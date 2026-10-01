@@ -58,6 +58,8 @@ class Training < ApplicationRecord
 
   def expired? = valid_upto.present? && valid_upto < Date.current
 
+  # Deliberately NOT an activation blocker. The guide is the training; audio is
+  # an addition we can make later, and ops can swap it in without republishing.
   def podcast_ready? = podcast.attached? || podcast_url.present?
 
   # A row that has never been published carries nobody's notes and nothing a
@@ -75,7 +77,6 @@ class Training < ApplicationRecord
     blockers << "the intro text" if intro_text.blank?
     blockers << "a banner image" unless banner.attached?
     blockers << "the PDF guide" unless document.attached?
-    blockers << "a podcast file or link" unless podcast_ready?
     blockers << "a valid-upto date that has not passed" if expired?
     blockers
   end

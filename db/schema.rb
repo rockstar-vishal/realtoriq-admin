@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -683,10 +683,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
     t.string "company_code"
     t.datetime "turbo_pushed_at"
     t.text "brochure_source_url"
+    t.string "code", null: false
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index ["builder_id"], name: "index_projects_on_builder_id"
     t.index ["city_id"], name: "index_projects_on_city_id"
+    t.index ["code"], name: "index_projects_on_code", unique: true
     t.index ["external_ref"], name: "index_projects_on_global_catalog_external_ref", unique: true, where: "(((source)::text = 'catalog'::text) AND (firm_id IS NULL) AND (external_ref IS NOT NULL))"
     t.index ["firm_id", "builder_id"], name: "index_projects_on_firm_id_and_builder_id"
     t.index ["firm_id", "city_id"], name: "index_projects_on_firm_id_and_city_id"
@@ -696,6 +698,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
     t.index ["locality_id"], name: "index_projects_on_locality_id"
     t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.check_constraint "code::text ~ '^P-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "projects_code_format"
     t.check_constraint "firm_id IS NOT NULL OR source::text = 'catalog'::text", name: "projects_firm_required_unless_catalog"
     t.check_constraint "source::text = ANY (ARRAY['own'::character varying::text, 'catalog'::character varying::text])", name: "projects_source_check"
     t.check_constraint "starting_budget >= 0", name: "projects_starting_budget_check"
@@ -718,7 +721,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
     t.datetime "updated_at", null: false
     t.uuid "created_by_user_id"
     t.boolean "listed_on_marketplace", default: true, null: false
+    t.string "code", null: false
     t.index ["building_id"], name: "index_properties_on_building_id"
+    t.index ["code"], name: "index_properties_on_code", unique: true
     t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
     t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
@@ -726,6 +731,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
     t.index ["firm_id"], name: "index_properties_on_firm_id"
     t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
     t.index ["typology_id"], name: "index_properties_on_typology_id"
+    t.check_constraint "code::text ~ '^H-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "properties_code_format"
     t.check_constraint "floor_band IS NULL OR (floor_band::text = ANY (ARRAY['lower'::character varying::text, 'middle'::character varying::text, 'higher'::character varying::text]))", name: "properties_floor_band_check"
     t.check_constraint "listing_for::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "properties_listing_for_check"
     t.check_constraint "price >= 0", name: "properties_price_check"

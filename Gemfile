@@ -24,6 +24,10 @@ gem "bcrypt", "~> 3.1.7"
 # Pagination for admin tables and the broker API
 gem "pagy", "~> 9.3"
 
+# Ruby 3.4 no longer ships csv as a default gem. The lead import reads and
+# writes comma-separated sheets.
+gem "csv"
+
 # JWT access/refresh tokens for the broker API
 gem "jwt", "~> 2.9"
 

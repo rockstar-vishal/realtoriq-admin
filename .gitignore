@@ -48,3 +48,10 @@ Gemfile.lock
 # repo that gets pushed. Kept on disk, shared by hand.
 docs/audit-*.md
 docs/tech-debt.md
+
+# Local demo seeder and the database dump used to restore staging. The seeder
+# wipes firms and evaluates a data file. Neither belongs in a push.
+/lib/demo_portal.rb
+/lib/demo_portal/
+/lib/tasks/demo_portal.rake
+/realtoriq-local.dump

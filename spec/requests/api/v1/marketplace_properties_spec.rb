@@ -63,6 +63,19 @@ RSpec.describe "Shared property marketplace" do
     expect(mapped).not_to have_key("building")
   end
 
+  it "refuses to map a listing once that firm is suspended" do
+    other_firm.suspend!(reason: "Payment overdue")
+    lead = lead_for(under_type)
+
+    post "/api/v1/leads/#{lead.id}/properties", params: { property_id: listing.id },
+      headers: auth(broker), as: :json
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body.dig("error", "message")).to include("isn't one of this firm's records")
+    expect(response.body).not_to include("Sea Face Tower", "Owner is travelling")
+    expect(LeadProperty.across_firms.where(lead_id: lead.id)).to be_empty
+  end
+
   it "refuses to map a rent lead onto a sale listing or a project" do
     rental_lead = create(:lead, :rent, firm:, lead_status: new_status, assigned_user: broker)
     headers = auth(broker)
@@ -188,7 +201,7 @@ RSpec.describe "Shared property marketplace" do
       expect(row.dig("firm", "mobile")).to eq(mobile.value)
       expect(row.dig("firm", "whatsapp")).to eq(whatsapp.value)
       expect(row.keys).to contain_exactly(
-        "id", "title", "listing_for", "price", "typology", "locality", "city", "firm"
+        "id", "code", "title", "listing_for", "price", "typology", "locality", "city", "firm"
       )
       expect(response.body).not_to include("Sea Face Tower", "12 Sea Face", "Owner is travelling", "Sea-facing")
     end

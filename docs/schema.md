@@ -164,6 +164,10 @@ lead an agent creates is auto-assigned to them.
   name may exist once in each list. `GET /projects` lists own only. A marketplace
   row is the one project with no firm (`source` catalog). An own project with no
   firm is refused by `projects_firm_required_unless_catalog`.
+- **`projects.code` and `properties.code`** are `P-` or `H-` plus 6 characters
+  from an alphabet that skips I, O, 0 and 1. They are random, globally unique,
+  and assigned on create, including catalog rows with no firm. Existing rows
+  were backfilled. A firm's copy of a catalog project gets its own code.
 - **`properties.created_by_user_id`** is stamped on create (nullable on older
   rows) and nullified if that user is deleted.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
@@ -217,7 +221,8 @@ project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
 project or another firm's shared property. `properties.listed_on_marketplace`
 (default true) is that share switch. `GET /properties/marketplace` lists
-every other active firm's shared available properties as that safe card. `lead_localities` holds the lead's
+every other active firm's shared available properties as that safe card. A lead
+maps one of those listings only while that firm is still active. `lead_localities` holds the lead's
 preferred localities (no `firm_id`; the lead is the tenant). Price is one of
 50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
 20. See `docs/api.md`.
@@ -294,7 +299,9 @@ default steps), `language` (`hinglish` / `en` / `mr`), `status` (`draft` /
 `podcast_duration_seconds`, `created_by_admin_user_id`, `published_at`, plus
 `banner`, `document` and `podcast` attachments. Caps live on the model, not in
 `UploadPurpose`: ops upload straight from the admin form. `generating` joins the
-status list when podcast generation is wired.
+status list when podcast generation is wired. Activation needs the title,
+description, intro text, banner and PDF; **a podcast is not required** — the
+guide is the training, and audio can be attached later without republishing.
 
 **`training_notes`** — **built**, firm-scoped: `user_id`, `training_id`, `body`,
 unique on `(user_id, training_id)`. One running note per broker per training.

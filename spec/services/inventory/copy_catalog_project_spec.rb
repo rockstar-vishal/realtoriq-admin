@@ -23,6 +23,8 @@ RSpec.describe Inventory::CopyCatalogProject do
     expect(result.project.id).not_to eq(own.id)
     expect(result.project.name).to eq("Skyline (Lodha)")
     expect(result.project.external_ref).to eq("PRABC123")
+    expect(result.project.code).to match(Project.inventory_code_format)
+    expect(result.project.code).not_to eq(catalog.reload.code)
     expect(own.reload.external_ref).to be_nil
   end
 

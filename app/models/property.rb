@@ -3,6 +3,9 @@
 # A resale or rental listing. Distinct from Project, which is developer stock.
 class Property < ApplicationRecord
   include FirmScoped
+  include InventoryCode
+  self.inventory_code_prefix = "H"
+  self.inventory_code_index = "index_properties_on_code"
 
   LISTING_FOR = %w[sale rent].freeze
   FLOOR_BANDS = %w[lower middle higher].freeze
