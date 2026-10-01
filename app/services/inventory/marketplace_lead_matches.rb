@@ -2,8 +2,9 @@
 
 module Inventory
   # Other firms' leads that clear the marketplace score floor on this property.
-  # The client is not named. Location is the shared locality, and configuration
-  # is the lead's typology names.
+  # The client is not named. `firm_id` matches `marketplace_firms`, because
+  # firm names are not unique. `code` is that firm's own lead code. Location
+  # is the shared locality, and configuration is the lead's typology names.
   class MarketplaceLeadMatches
     LIMIT = MatchLeads::LIMIT
 
@@ -62,7 +63,9 @@ module Inventory
 
     def row(lead)
       {
+        firm_id: lead.firm_id,
         firm_name: lead.firm&.name,
+        code: lead.code,
         localities: [ property.building.locality&.name ].compact,
         configurations: lead.typologies.map(&:name).sort,
         marketplace: true

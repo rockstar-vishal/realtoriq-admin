@@ -274,10 +274,17 @@ RSpec.describe "Turbo marketplace events" do
     end
   end
 
-  it "stores promo text, starting brokerage, and queues the brokerage ladder" do
+  def allow_launch_host
+    allow(Realtoriq::Credentials).to receive(:turbo_public_origin).and_return("https://launch.example")
+    allow(Realtoriq::Credentials).to receive(:turbo_api_origin).and_return("https://launch.example")
+  end
+
+  it "stores promo text, starting brokerage, the LaunchIQ brochure link, and queues the brokerage ladder" do
+    allow_launch_host
     payload = upsert_payload(
       promo_text: "Launch offer",
       brokerage_percent: "2.5",
+      brochure: { url: "https://launch.example/brochure.pdf", checksum: "abc", filename: "brochure.pdf" },
       brokerage_ladder: { url: "https://launch.example/ladder.jpg", checksum: "abc", filename: "ladder.jpg" }
     )
 
@@ -288,8 +295,50 @@ RSpec.describe "Turbo marketplace events" do
     expect(project.promo_ends_on).to be_nil
     expect(project).to be_promo_live
     expect(project.brokerage_percent).to eq(BigDecimal("2.5"))
+    expect(project.brochure_source_url).to eq("https://launch.example/brochure.pdf")
     job = ActiveJob::Base.queue_adapter.enqueued_jobs.find { |entry| entry[:job] == Realtoriq::SyncProjectAssetsJob }
+    expect(job[:args][2]).to be_nil
     expect(job[:args].last).to include("url" => "https://launch.example/ladder.jpg")
+  end
+
+  it "leaves the stored brochure alone when the new URL is not on LaunchIQ" do
+    allow_launch_host
+    post_event(upsert_payload(
+      brochure: { url: "https://launch.example/brochure.pdf", checksum: "abc", filename: "brochure.pdf" }
+    ))
+    project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
+    Current.set(firm_scope_bypassed: true) do
+      project.brochure.attach(io: StringIO.new("%PDF"), filename: "old.pdf", content_type: "application/pdf")
+    end
+
+    expect {
+      post_event(upsert_payload(
+        pushed_at: "2026-09-28T12:05:00Z",
+        brochure: { url: "https://evil.example/phish.pdf", checksum: "abc", filename: "phish.pdf" }
+      ))
+    }.not_to have_enqueued_job(ActiveStorage::PurgeJob)
+
+    expect(project.reload.brochure_source_url).to eq("https://launch.example/brochure.pdf")
+    Current.set(firm_scope_bypassed: true) do
+      expect(project.brochure).to be_attached
+    end
+  end
+
+  it "clears the brochure link when LaunchIQ sends a blank brochure" do
+    allow_launch_host
+    post_event(upsert_payload(
+      brochure: { url: "https://launch.example/brochure.pdf", checksum: "abc", filename: "brochure.pdf" }
+    ))
+    project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
+    Current.set(firm_scope_bypassed: true) do
+      project.brochure.attach(io: StringIO.new("%PDF"), filename: "old.pdf", content_type: "application/pdf")
+    end
+
+    expect {
+      post_event(upsert_payload(pushed_at: "2026-09-28T12:05:00Z", brochure: nil))
+    }.to have_enqueued_job(ActiveStorage::PurgeJob)
+
+    expect(project.reload.brochure_source_url).to be_nil
   end
 
   it "refuses an upsert without a developer name, RERA number, or possession date" do

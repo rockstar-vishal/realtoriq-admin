@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_09_29_220000) do
+ActiveRecord::Schema[8.0].define(version: 2026_09_30_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -682,6 +682,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_29_220000) do
     t.string "rm_contact"
     t.string "company_code"
     t.datetime "turbo_pushed_at"
+    t.text "brochure_source_url"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index ["builder_id"], name: "index_projects_on_builder_id"

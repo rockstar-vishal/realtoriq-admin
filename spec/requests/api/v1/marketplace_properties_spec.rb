@@ -104,20 +104,62 @@ RSpec.describe "Shared property marketplace" do
   end
 
   it "shows another firm's matching lead as the firm, with locality and configuration" do
-    lead_for(ready_type, name: "Secret Client")
+    lead = lead_for(ready_type, name: "Secret Client")
 
     post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(owner), as: :json
 
     expect(response).to have_http_status(:ok)
     row = response.parsed_body["marketplace_matches"].first
     expect(row).to eq(
+      "firm_id" => firm.id,
       "firm_name" => "Shah Realty",
+      "code" => lead.code,
       "localities" => [ "Worli" ],
       "configurations" => [ "2 BHK" ],
       "marketplace" => true
     )
     expect(response.parsed_body["matches"].map { |match| match["name"] }).not_to include("Secret Client")
     expect(response.body).not_to include("Secret Client")
+  end
+
+  it "identifies each firm by id when two firms share a name" do
+    lead = lead_for(ready_type, name: "Secret Client")
+    twin = create(:firm, status: :active, name: firm.name)
+    create(:subscription, firm: twin, plan:)
+    twin_user = create(:user, :manager, firm: twin)
+    twin_lead = create(:lead, firm: twin, lead_status: new_status, assigned_user: twin_user,
+      name: "Other Client", budget_max: 10_000_000, transaction_type: "sale", property_type: ready_type)
+    twin_lead.typologies << typology
+    twin_lead.localities << locality
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(owner), as: :json
+
+    rows = response.parsed_body["marketplace_matches"]
+    expect(rows.map { |row| row["firm_id"] }).to contain_exactly(firm.id, twin.id)
+    expect(rows.map { |row| row["code"] }).to contain_exactly(lead.code, twin_lead.code)
+    expect(response.body).not_to include("Secret Client", "Other Client")
+  end
+
+  it "lets another firm explore only their own leads that clear the marketplace score" do
+    lead_for(ready_type, name: "Shown Client")
+    lead_for(ready_type, name: "Budget Miss").update!(budget_max: 1_000_000)
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(broker), as: :json
+
+    expect(response).to have_http_status(:ok)
+    names = response.parsed_body["matches"].map { |match| match["name"] }
+    expect(names).to eq([ "Shown Client" ])
+    expect(response.parsed_body["marketplace_matches"]).to eq([])
+    expect(response.parsed_body["marketplace_firms"]).to eq([])
+    expect(response.body).not_to include("Owner is travelling", "Sea-facing", "Budget Miss")
+  end
+
+  it "does not let another firm explore a listing that is no longer shared" do
+    listing.update!(listed_on_marketplace: false)
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(broker), as: :json
+
+    expect(response).to have_http_status(:not_found)
   end
 
   it "hides the limited page once the listing is no longer shared" do

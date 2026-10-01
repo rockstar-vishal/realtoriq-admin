@@ -43,7 +43,7 @@ module Api
             typologies: project.project_typologies.map { |pt| typology(pt) },
             photos: photos(project),
             photo_urls: photo_urls(project),
-            brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil,
+            brochure_url: brochure_url(project),
             brokerage_ladder_url: project.brokerage_ladder.attached? ? BlobUrl.call(project.brokerage_ladder) : nil,
             external_ref: project.external_ref,
             rm_name: project.rm_name,
@@ -91,13 +91,20 @@ module Api
             configurations: configuration_names(project),
             promo_text: project.promo_live? ? project.promo_text : nil,
             photo_urls: photo_urls(project),
-            brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil
+            brochure_url: brochure_url(project)
             # brokerage_percent and brokerage_ladder_url are deliberately absent:
             # what the broker earns is not the client's business.
           }
         end
 
         private
+
+        # Marketplace listings link the LaunchIQ PDF. A firm's own project
+        # uses the file it uploaded.
+        def brochure_url(project)
+          project.brochure_source_url.presence ||
+            (project.brochure.attached? ? BlobUrl.call(project.brochure) : nil)
+        end
 
         def typology(project_typology)
           {

@@ -887,8 +887,11 @@ super admin receives the lead. A firm that is not `active` is refused. A lapsed
 subscription is not.
 
 Detail adds `rm_name` and `rm_contact` for marketplace rows. They are not in
-`shareable`. Download the brochure from `brochure_url` on that detail. It is
-the file stored when the project was pushed, not a live call to turbo.
+`shareable`. `brochure_url` on a marketplace project is the LaunchIQ file
+URL from the push, and only when that host is LaunchIQ or S3. RealtorIQ does
+not copy that PDF. A firm's own project still serves the PDF it uploaded. `brokerage_ladder_url` is the copied ladder
+image and is on every project detail that has one, marketplace or own. It is
+not in `shareable`.
 
 ### `POST /projects/:id/lead_matches`
 
@@ -920,18 +923,28 @@ above-30 floor. A sale listing matches ready-possession leads. A rental matches
 rent leads. The lead must prefer the building's locality. Booked and sold-out
 listings return `[]`.
 
-`marketplace_matches` is the other firms' leads that score above 50. Each
-row is `{ firm_name, localities, configurations, marketplace: true }`.
+Another firm may call this for a listing that is still shared and available.
+`matches` is then that caller's own leads, and only those that score above 50.
+A listing that is not shared returns 404 to every firm except the owner.
+`marketplace_matches` and `marketplace_firms` are empty for every firm except
+the owner.
+
+`marketplace_matches` is the other firms' leads that score above 50, and only
+the owning firm receives them. Each row is
+`{ firm_id, firm_name, code, localities, configurations, marketplace: true }`.
+`firm_id` is the other firm's id, the same id as in `marketplace_firms`.
+Match a phone number on that id. Firm names are not unique.
+`code` is that firm's own lead code, so the other broker can find the client.
 `localities` is the shared locality. `configurations` is that lead's
-typology names. There is no lead id, name, code, phone, budget, or score.
+typology names. There is no lead id, name, phone, budget, or score.
 An under-construction lead is not included on a sale listing. The list is
 empty when `listed_on_marketplace` is false.
 
-`marketplace_firms` is the other firms to contact. Each row is
-`{ id, name, mobile, whatsapp }`. A firm is included when one of its leads
-would score above 50 on this property, or when that firm has mapped the
-property. No lead id, name, phone, budget, or score is included. The list is
-empty when `listed_on_marketplace` is false.
+`marketplace_firms` is the other firms to contact, and only the owning firm
+receives them. Each row is `{ id, name, mobile, whatsapp }`. A firm is
+included when one of its leads would score above 50 on this property, or
+when that firm has mapped the property. No lead id, name, phone, budget, or
+score is included. The list is empty when `listed_on_marketplace` is false.
 
 ### `GET /properties/marketplace`
 
@@ -1048,19 +1061,23 @@ Not a broker call. HMAC-SHA256 of the raw body in `X-RealtorIQ-Signature: sha256
 secret `realtoriq.webhook_secret`. `401` is `{ "error": "Unauthorized" }` (a
 string, not the broker error envelope). Other failures are
 `{ "error": "<sentence>" }` so the public enquiry form can show them. `200` is
-`{ "ok": true }`. An upsert is `202` once the listing is saved; brochure and
-photos are copied afterwards. `pushed_at` is required. An older `pushed_at` is
+`{ "ok": true }`. An upsert is `202` once the listing is saved. Photos and
+the brokerage ladder are copied afterwards. The brochure is not copied: an
+https URL is stored when its host is the LaunchIQ origin or S3. Any other
+URL is ignored and the previous link stays. A blank `brochure` clears the
+link. `pushed_at` is required. An older `pushed_at` is
 ignored. `event` is `upsert`, `hide`, `withdraw`, or `enquiry`. Hide archives
 the catalog row only. Withdraw archives the catalog row and every firm copy of
 that project code, and sets `mapped_projects[].withdrawn`. A later upsert makes
 them active again. Neither deletes leads. An upsert requires `developer_name`,
 `rera_number` and `possession_on` (`YYYY-MM-DD`). Images are
 `images: [{ url, checksum, filename }]` and the brochure is
-`{ url, filename, checksum }`. Optional on an upsert: `promo_text` (no length
+`{ url, filename, checksum }`. The brochure URL is stored, not downloaded.
+Optional on an upsert: `promo_text` (no length
 limit; a blank value clears it), `brokerage_percent` (starting brokerage,
 greater than 0 and at most 100; omitted leaves the stored percent alone, blank
-clears it), and `brokerage_ladder: { url, checksum, filename }` (copied with
-the brochure; omitted leaves the image alone). Detail shows all three on a
+clears it), and `brokerage_ladder: { url, checksum, filename }` (copied;
+omitted leaves the image alone). Detail shows all three on a
 marketplace project. `shareable` still omits the percent and the ladder. The
 builder is `developer_name`, not `company_code`.
 
