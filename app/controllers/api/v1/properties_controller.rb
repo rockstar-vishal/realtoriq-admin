@@ -44,10 +44,11 @@ module Api
       end
 
       def lead_matches
+        owner = @property.firm_id == current_firm.id
         render json: {
           matches: Inventory::MatchLeads.new(property: @property, user: current_user).call,
-          marketplace_matches: Inventory::MarketplaceLeadMatches.new(property: @property).call,
-          marketplace_firms: Inventory::MarketplaceFirms.new(property: @property).call
+          marketplace_matches: owner ? Inventory::MarketplaceLeadMatches.new(property: @property).call : [],
+          marketplace_firms: owner ? Inventory::MarketplaceFirms.new(property: @property).call : []
         }, status: :ok
       end
 
@@ -126,8 +127,24 @@ module Api
       def set_property
         @property = base_scope.find_by(id: params[:id])
         return if @property
+        return if action_name == "lead_matches" && assign_shared_listing
 
         render_error("not_found", "Property not found", status: :not_found)
+      end
+
+      # A shared listing belongs to another firm. Exploring matches still scores
+      # only this caller's own leads.
+      def assign_shared_listing
+        record = Property.unscoped.includes(:typology).find_by(id: params[:id])
+        return false unless record&.listed_on_marketplace? && record.available? && record.firm_id != current_firm.id
+
+        # The building's firm scope would hide it from the other firm, and a
+        # preloader scope is merged with that default scope rather than replacing it.
+        building = Building.unscoped.includes(:locality).find_by(id: record.building_id)
+        record.association(:building).target = building
+        record.association(:building).loaded!
+        @property = record
+        true
       end
 
       def base_scope

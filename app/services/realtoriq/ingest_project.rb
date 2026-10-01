@@ -69,6 +69,11 @@ module Realtoriq
           project ||= Project.new(source: "catalog", firm_id: nil, external_ref: code)
           project.assign_attributes(attributes(city, builder, budget, brokerage))
           project.save!
+          # A marketplace brochure is the LaunchIQ link, not a copied file.
+          # An illegal URL is :omit and must not wipe a link that is already stored.
+          if remote_brochure_url != :omit && project.brochure.attached?
+            project.brochure.purge_later
+          end
           replace_typologies(project, prices)
           repoint_copies(project, previous_builder_id)
           restore_after_archive(project, was_archived)
@@ -77,8 +82,9 @@ module Realtoriq
       end
 
       if saved
+        # Brochure is not copied. nil tells the job to leave any local file alone.
         SyncProjectAssetsJob.perform_later(
-          project.id, image_rows, brochure_row, pushed_at.iso8601, brokerage_ladder_row
+          project.id, image_rows, nil, pushed_at.iso8601, brokerage_ladder_row
         )
         Result.new(ok?: true, status: :accepted, project:)
       else
@@ -187,7 +193,35 @@ module Realtoriq
       }
       # Absent on an older push. A blank value clears a percent that was stored.
       attrs[:brokerage_percent] = brokerage unless brokerage == :omit
+      # The PDF stays on LaunchIQ. A blank brochure clears the link.
+      # A URL on any other host leaves the stored link alone.
+      attrs[:brochure_source_url] = remote_brochure_url unless remote_brochure_url == :omit
       attrs
+    end
+
+    # :omit leaves the stored link alone. nil clears it. A URL is kept only
+    # when a broker can open it on LaunchIQ or the S3 host behind that redirect.
+    def remote_brochure_url
+      return @remote_brochure_url if defined?(@remote_brochure_url)
+
+      @remote_brochure_url = accepted_brochure_url
+    end
+
+    def accepted_brochure_url
+      return :omit unless payload.key?("brochure")
+
+      row = payload["brochure"]
+      return if row.blank?
+
+      url = row.to_h.deep_stringify_keys["url"].to_s.strip
+      return if url.blank?
+
+      uri = URI.parse(url)
+      return :omit unless uri.is_a?(URI::HTTPS) && RemoteFile.allowed_host?(uri)
+
+      url
+    rescue URI::InvalidURIError
+      :omit
     end
 
     def starting_brokerage
@@ -350,12 +384,8 @@ module Realtoriq
       Array(payload["images"]).filter_map { |row| file_payload(row) }
     end
 
-    def brochure_row
-      file_payload(payload["brochure"])
-    end
-
     # nil leaves an existing ladder alone (older events). A present key with
-    # no file removes it. A file row is copied like the brochure.
+    # no file removes it. The image is copied; the brochure is not.
     def brokerage_ladder_row
       return unless payload.key?("brokerage_ladder")
 

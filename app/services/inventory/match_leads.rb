@@ -38,7 +38,11 @@ module Inventory
     end
 
     def floor
-      project&.marketplace? ? MARKETPLACE_FLOOR : OWN_FLOOR
+      return MARKETPLACE_FLOOR if project&.marketplace?
+      # Another firm's shared listing. Same bar as marketplace inventory on a lead.
+      return MARKETPLACE_FLOOR if property && property.firm_id != user.firm_id
+
+      OWN_FLOOR
     end
 
     def leads

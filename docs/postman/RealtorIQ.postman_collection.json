@@ -3256,7 +3256,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Own-firm leads that match this listing, above a score of 30. marketplace_matches lists other firms' leads that score above 50 as firm name, locality, and configuration only — no client name. marketplace_firms is the firms to call. Empty when the listing is not shared."
+            "description": "Own-firm leads that match this listing, above a score of 30. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
           }
         },
         {

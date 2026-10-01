@@ -26,7 +26,7 @@ module Realtoriq
       applied = false
       return if stale?(Project.unscoped.find_by(id: project.id))
 
-      brochure_blob = upload_brochure
+      brochure_blob = safe_upload { upload_brochure }
       ladder_blob = upload_ladder
       upload_images(image_blobs)
       Project.unscoped.transaction do
@@ -58,7 +58,19 @@ module Realtoriq
       row.turbo_pushed_at > pushed_at
     end
 
+    # A brochure that cannot be fetched must not drop the ladder image.
+    def safe_upload
+      yield
+    rescue RemoteFile::Error
+      :omit
+    end
+
     def upload_brochure
+      # nil means this push is not copying a brochure. Do not purge: the
+      # marketplace link lives on the project, and a failed download must
+      # not block the ladder image that runs next.
+      return :omit if brochure.nil?
+
       wanted = file_row(brochure)
       return :absent if wanted.nil?
       return :unchanged if project.brochure.blob&.checksum == wanted["checksum"]
@@ -96,6 +108,8 @@ module Realtoriq
     end
 
     def apply_brochure(locked, blob)
+      return if blob == :omit
+
       if blob == :absent
         locked.brochure.purge_later if locked.brochure.attached?
         return
