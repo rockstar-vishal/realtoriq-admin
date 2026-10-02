@@ -38,7 +38,9 @@
   <%= render "admin/firms/form_section", title: "What the broker reads",
         note: "Plain text. Paragraph breaks are kept; there is no formatting." do %>
     <%= render "admin/shared/field", f: f, form: training, attribute: :intro_text,
-          label: "Intro *", type: :text_area, html_options: { rows: 10 } %>
+          label: "Intro *", type: :text_area, html_options: { rows: 10 },
+          hint: "Markdown: ### for a sub-heading, **bold**, and - for bullets. " \
+                "A blank line starts a new paragraph. Nothing else is rendered." %>
 
     <%= render "admin/shared/field", f: f, form: training, attribute: :instructions_text,
           label: "How to do this training", type: :text_area, html_options: { rows: 4 },
