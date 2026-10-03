@@ -504,6 +504,161 @@
       ]
     },
     {
+      "name": "Reports",
+      "description": "Four grouped reports. Dates are inclusive IST days. export=csv (not format=csv). Bookings and revenue are managers and super admins only, and they ignore status.",
+      "item": [
+        {
+          "name": "Source wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/source_status?from=2026-04-01&upto=2026-04-30",
+            "description": "Leads created in the window, by current source and current status. One row per source name, plus No source."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the window and a total come back\", () => {",
+                  "  pm.expect(body.from).to.eql(\"2026-04-01\");",
+                  "  pm.expect(body.upto).to.eql(\"2026-04-30\");",
+                  "  pm.expect(body.summary.total).to.be.a(\"number\");",
+                  "  pm.expect(body.columns).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dead leads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/dead_leads?from=2026-04-01&upto=2026-04-30",
+            "description": "Generated is leads created in the month. Dead is distinct leads marked dead in the month, including ones later revived. Rate is null when generated is 0."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"April is one month row\", () => {",
+                  "  pm.expect(body.rows.length).to.eql(1);",
+                  "  pm.expect(body.rows[0].month).to.eql(\"2026-04\");",
+                  "  pm.expect(body.summary.generated).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/bookings?from=2026-04-01&upto=2026-04-30",
+            "description": "Managers and super admins. Counts plus Total AV of live bookings. Cancelled stay in the counts and out of the rupees. status is ignored."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"live never exceeds bookings\", () => {",
+                  "  pm.expect(body.summary.live).to.be.at.most(body.summary.bookings);",
+                  "  pm.expect(body.summary.agreement_value).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revenue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/revenue?from=2026-04-01&upto=2026-04-30",
+            "description": "Managers and super admins. Total AV and Revenue (net_income) of live bookings. Outstanding is invoiced minus collected, on those bookings, not cash received in the month."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"outstanding is invoiced minus collected\", () => {",
+                  "  pm.expect(body.summary.outstanding).to.eql(body.summary.invoiced - body.summary.collected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/assignees",
+            "description": "The report assignee dropdown. A manager or super admin gets the whole firm, including disabled users. An agent gets only themselves. This is not GET /users."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"users come back\", () => {",
+                  "  pm.expect(pm.response.json().users).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Source wise CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/source_status?from=2026-04-01&upto=2026-04-30&export=csv",
+            "description": "Same table as CSV. Use export=csv. format=csv is 406."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 CSV\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/csv\");",
+                  "  pm.expect(pm.response.text()).to.include(\"Source\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Notifications",
       "description": "In-app inbox and browser push for the signed-in session. A test push goes only to this device. Console: Notifications::SendTest.to_user(user) reaches every device that broker registered.",
       "item": [
@@ -985,7 +1140,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/leads?status=new&transaction_type=sale&property_type_id={{property_type_id}}&source_id={{lead_source_id}}&assigned_user_id={{user_id}}&budget_min=8000000&budget_max=25000000&possession_from=2026-01-01&possession_to=2028-12-31&typology_ids[]={{typology_id}}&ncd_from=2026-01-01&ncd_upto=2026-12-31&sort=ncd&per_page=5&page=1",
+              "raw": "{{api_base}}/leads?status=new&transaction_type=sale&property_type_id={{property_type_id}}&source_id={{lead_source_id}}&assigned_user_id={{user_id}}&budget_min=8000000&budget_max=25000000&possession_from=2026-01-01&possession_to=2028-12-31&typology_ids[]={{typology_id}}&ncd_from=2026-01-01&ncd_upto=2026-12-31&created_from=2026-01-01&created_upto=2026-12-31&died_from=2026-01-01&died_upto=2026-12-31&sort=ncd&per_page=5&page=1",
               "host": [
                 "{{api_base}}"
               ],
@@ -1042,6 +1197,22 @@
                   "value": "2026-12-31"
                 },
                 {
+                  "key": "created_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "created_upto",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "died_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "died_upto",
+                  "value": "2026-12-31"
+                },
+                {
                   "key": "sort",
                   "value": "ncd"
                 },
@@ -1055,7 +1226,7 @@
                 }
               ]
             },
-            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\nDrawer params are sent without `q` because a drawer field drops `q`. GET `budget_min`/`budget_max` are a window on the stored amount (`budget`), not range overlap. `ncd_from`/`ncd_upto` are inclusive IST days.\n\n`missed_followup=true` is not a real status — `next_action_at <= now` on a non-terminal lead. `status=hot_negotiation` is hot+negotiation.\n\n`sort` is `ncd` (default, NULLS FIRST), `worklist`, `recent` or `updated`. `typology_ids` repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25. Response includes `counts` (unfiltered pipeline totals)."
+            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\nDrawer params are sent without `q` because a drawer field drops `q`. GET `budget_min`/`budget_max` are a window on the stored amount (`budget`), not range overlap. `ncd_from`/`ncd_upto`, `created_from`/`created_upto` and `died_from`/`died_upto` are inclusive IST days. `died_*` matches a change into a dead status, including a lead later revived.\n\n`property_type_id`, `source_id` and `assigned_user_id` repeat or take commas. `source_missing=true` with `source_id` is those sources plus leads with no source. A backwards date pair is 422.\n\n`missed_followup=true` is not a real status — `next_action_at <= now` on a non-terminal lead. `status=hot_negotiation` is hot+negotiation.\n\n`sort` is `ncd` (default, NULLS FIRST), `worklist`, `recent` or `updated`. `typology_ids` repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25. Response includes `counts` (unfiltered pipeline totals)."
           },
           "event": [
             {

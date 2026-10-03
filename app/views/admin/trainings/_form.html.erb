@@ -44,7 +44,7 @@
 
     <%= render "admin/shared/field", f: f, form: training, attribute: :instructions_text,
           label: "How to do this training", type: :text_area, html_options: { rows: 4 },
-          hint: "Leave blank to use the standard steps: read the guide, listen to the podcast, make notes." %>
+          hint: "Leave blank to use the standard steps: read the guide, then make notes. When the training has a podcast, \"listen to it\" is included too." %>
   <% end %>
 
   <%= render "admin/firms/form_section", title: "Files",
@@ -81,7 +81,14 @@
         </p>
       <% end %>
       <%= f.file_field :podcast, accept: "audio/mpeg,audio/mp4,audio/aac", class: "input" %>
-      <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">MP3 or M4A. Or paste a link below instead — one of the two is enough.</p>
+      <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">Optional. MP3, M4A or AAC, or paste a link below.</p>
+      <% if training.podcast_ready? %>
+        <label class="mt-3 flex items-center gap-2 text-[14px] cursor-pointer">
+          <%= check_box_tag "training[remove_podcast]", "1", params.dig(:training, :remove_podcast) == "1" %>
+          Remove the podcast
+        </label>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">Takes the audio off this training. A new file, or a different link typed in this same save, is kept instead.</p>
+      <% end %>
     </div>
 
     <div class="grid grid-cols-2 gap-4">

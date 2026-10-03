@@ -40,9 +40,32 @@ module Admin
     def edit; end
 
     def update
-      if @training.update(training_params)
+      attrs = training_params
+      # The checkbox is not a column. A new file in this same save is a
+      # replacement, so checking remove does not also throw that file away.
+      purge_file = remove_podcast? && attrs[:podcast].blank?
+      # The link field is prefilled. Posting that same link back is not a
+      # choice to keep it; a different link is a switch from the upload to a URL.
+      clearing = purge_file && !replacement_podcast_link?(attrs)
+      remembered = { url: @training.podcast_url, duration: @training.podcast_duration_seconds }
+
+      if clearing
+        attrs[:podcast_url] = nil
+        attrs[:podcast_duration_seconds] = nil
+      end
+
+      if @training.update(attrs)
+        # After the row is saved. A failed validation must leave the file where it is.
+        @training.podcast.purge_later if purge_file && @training.podcast.attached?
+        clear_duration_without_audio
         redirect_to edit_admin_training_path(@training), notice: "Changes saved."
       else
+        # update assigned the cleared values in memory. Put the saved ones back
+        # so the form still shows the podcast the database has.
+        if clearing
+          @training.podcast_url = remembered[:url]
+          @training.podcast_duration_seconds = remembered[:duration]
+        end
         render :edit, status: :unprocessable_content
       end
     end
@@ -100,6 +123,25 @@ module Admin
       # the file already attached with nothing.
       FILE_FIELDS.each { |field| permitted.delete(field) if permitted[field].blank? }
       permitted
+    end
+
+    # Read beside params.expect: the flag is not a permitted attribute, and
+    # expect would drop it.
+    def remove_podcast?
+      ActiveModel::Type::Boolean.new.cast(params.dig(:training, :remove_podcast))
+    end
+
+    def replacement_podcast_link?(attrs)
+      submitted = attrs[:podcast_url].to_s.strip
+      submitted.present? && submitted != @training.podcast_url.to_s.strip
+    end
+
+    # A length with no audio is what the broker list renders as "20 min listen".
+    def clear_duration_without_audio
+      return if @training.podcast_ready?
+      return if @training.podcast_duration_seconds.nil?
+
+      @training.update!(podcast_duration_seconds: nil)
     end
   end
 end
