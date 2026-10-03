@@ -1246,7 +1246,7 @@ that project code, and sets `mapped_projects[].withdrawn`. A later upsert makes
 them active again. Neither deletes leads. An upsert requires `developer_name`,
 `rera_number` and `possession_on` (`YYYY-MM-DD`). Images are
 `images: [{ url, checksum, filename }]` and the brochure is
-`{ url, filename, checksum }`. The brochure URL is stored, not downloaded.
+`{ url, filename, checksum }`. The brochure URL is stored, not downloaded. When its host is `turbo_api_origin` and `turbo_public_origin` is a different host, the stored link uses the public host and keeps the path.
 Optional on an upsert: `promo_text` (no length
 limit; a blank value clears it), `brokerage_percent` (starting brokerage,
 greater than 0 and at most 100; omitted leaves the stored percent alone, blank

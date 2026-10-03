@@ -301,6 +301,21 @@ RSpec.describe "Turbo marketplace events" do
     expect(job[:args].last).to include("url" => "https://launch.example/ladder.jpg")
   end
 
+  it "stores a brochure sent on the API host under the public origin" do
+    allow(Realtoriq::Credentials).to receive(:turbo_public_origin).and_return("https://r.example")
+    allow(Realtoriq::Credentials).to receive(:turbo_api_origin).and_return("https://fb-connect.example")
+    brochure = "https://fb-connect.example/rails/active_storage/blobs/redirect/abc/brochure-grove.pdf"
+
+    post_event(upsert_payload(
+      brochure: { url: brochure, checksum: "abc", filename: "brochure-grove.pdf" }
+    ))
+
+    project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
+    expect(project.brochure_source_url).to eq(
+      "https://r.example/rails/active_storage/blobs/redirect/abc/brochure-grove.pdf"
+    )
+  end
+
   it "leaves the stored brochure alone when the new URL is not on LaunchIQ" do
     allow_launch_host
     post_event(upsert_payload(
