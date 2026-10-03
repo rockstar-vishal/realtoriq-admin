@@ -219,9 +219,26 @@ module Realtoriq
       uri = URI.parse(url)
       return :omit unless uri.is_a?(URI::HTTPS) && RemoteFile.allowed_host?(uri)
 
-      url
+      public_brochure_url(uri)
     rescue URI::InvalidURIError
       :omit
+    end
+
+    # LaunchIQ builds the file URL on APP_HOST. When that host is the API origin
+    # and brokers open a different public origin, store the public host and keep
+    # the path. The signed blob does not include the hostname.
+    def public_brochure_url(uri)
+      public_origin = URI.parse(Credentials.turbo_public_origin.to_s)
+      api_host = URI.parse(Credentials.turbo_api_origin.to_s).host
+      return uri.to_s if public_origin.host.blank? || api_host.blank?
+      return uri.to_s unless uri.host.casecmp?(api_host) && !uri.host.casecmp?(public_origin.host)
+
+      uri.scheme = public_origin.scheme
+      uri.host = public_origin.host
+      uri.port = public_origin.port
+      uri.to_s
+    rescue URI::InvalidURIError
+      uri.to_s
     end
 
     def starting_brokerage
