@@ -10,6 +10,7 @@ observed against a live server; nothing is aspirational.
 - [Session and reference data](#session-and-reference-data)
 - [Users](#users)
 - [Dashboard](#dashboard)
+- [Reports](#reports)
 - [Leads](#leads)
 - [Inventory — projects, buildings, properties](#inventory)
 - [Bookings and money](#bookings-and-money)
@@ -385,6 +386,121 @@ rule — a tile that disagreed with the list it opens would be the real bug.
 **`this_fy` is the Indian financial year, 1 April to 31 March.** A 31 March
 booking and a 1 April one fall in different years. `label` is `"2026-27"`.
 
+## Reports
+
+Four grouped queries. Dates are inclusive calendar days in **Asia/Kolkata**.
+Omit `from` and `upto` and the window is the last 30 days, including today.
+A lead created at 00:30 IST on 1 April belongs in April.
+
+`export=csv` returns the on-screen table as `text/csv`. Do not send
+`format=csv` — Rails treats `format` as the response type and answers 406.
+A cell that starts with `=`, `+`, `-` or `@` is prefixed with a quote.
+
+Shared filters, all optional:
+
+| Param | Notes |
+| --- | --- |
+| `from`, `upto` | `YYYY-MM-DD`. `from` after `upto`, or a non-date, is `422 invalid` |
+| `transaction_type` | `sale` or `rent`. Blank is both. Anything else is `422 invalid` |
+| `property_type_id` | Repeat the key, or comma-separate. Rent leads have no property type, so rent plus a type is an empty report |
+| `source_id` | Repeat or comma-separate |
+| `source_missing` | `true` adds leads with no source. With `source_id`, the list is those sources **plus** no source |
+| `assigned_user_id` | Repeat or comma-separate. Narrows the leads the caller can already see. An agent cannot widen it to someone else's leads |
+
+`GET /reports/source_status` and `GET /reports/dead_leads` are every role.
+An agent sees `Lead.visible_to` (their assigned leads). A manager or super
+admin sees the firm. Both also take `status` (status codes, repeated or
+comma-separated).
+
+`GET /reports/bookings` and `GET /reports/revenue` are managers and super
+admins, firm-wide. An agent gets `403 forbidden_role` with "Only a manager
+can work with bookings." These two **ignore `status`**: saving a booking
+does not mark the lead Booked. Cancelled bookings stay in the count columns
+and stay out of every rupee, invoice and collection figure.
+
+Money is whole rupees, already computed. Outstanding is invoiced minus
+collected. Do not recompute it, and do not sum money through an invoice join.
+
+### `GET /reports/source_status`
+
+One row per source, in `sort_order`, plus **No source**. Housing and 99acres
+stay separate; `lead_sources.category` is not used. An inactive source still
+gets a row when the window contains one of its leads. Columns are the active
+statuses in `sort_order`, plus any inactive status that has a lead in the
+window, plus Total. A cell is leads **created** in the window whose source
+and status are those **now**. A status or source filter hides the other
+columns and rows.
+
+```json
+{
+  "from": "2026-04-01", "upto": "2026-04-30",
+  "columns": [ { "id": "…", "code": "hot", "name": "Hot" } ],
+  "rows": [ { "source": { "id": "…", "name": "Housing" }, "counts": { "hot": 2 }, "total": 2 } ],
+  "summary": { "total": 2, "counts": { "hot": 2 } }
+}
+```
+
+`source.id` is `null` and `source.name` is `"No source"` for leads with no source.
+
+### `GET /reports/dead_leads`
+
+One row per IST calendar month the window touches, including months that are
+all zeros. **Generated** is leads created in that month's overlap with the
+window. **Dead** is `COUNT(DISTINCT lead_id)` of status changes into `is_dead`
+in that overlap — a lead marked dead twice in one month counts once, and a
+lead later revived still counts. **Rate** is the integer percent, half-up, of
+that row's dead over generated, or `null` when generated is 0. The summary
+rate uses the summary totals, not the average of the monthly rates. The rate
+can exceed 100. Source columns are the sources of the dead leads only;
+`by_source` keys are the source id or `"none"`.
+
+```json
+{
+  "from": "2026-08-01", "upto": "2026-09-30",
+  "sources": [ { "id": null, "name": "No source" } ],
+  "rows": [ { "month": "2026-08", "label": "Aug 2026", "generated": 1, "dead": 0, "rate": 0, "by_source": { "none": 0 } } ],
+  "summary": { "generated": 1, "dead": 2, "rate": 200, "by_source": { "none": 2 } }
+}
+```
+
+### `GET /reports/bookings`
+
+Month rows for `bookings.booked_on`. `agreement_value` is the sum of live
+bookings. `invoices` and `collections` are counts on those live bookings, not
+limited to documents raised inside the month.
+
+```json
+{
+  "from": "2026-04-01", "upto": "2026-04-30",
+  "rows": [ { "month": "2026-04", "label": "Apr 2026", "bookings": 2, "cancelled": 1, "live": 1, "agreement_value": 10000000, "invoices": 1, "collections": 1 } ],
+  "summary": { "bookings": 2, "cancelled": 1, "live": 1, "agreement_value": 10000000, "invoices": 1, "collections": 1 }
+}
+```
+
+### `GET /reports/revenue`
+
+Same months. `agreement_value` is Total AV. `net_income` is Revenue, summed
+as stored (it can be negative). `invoiced`, `collected` and `outstanding` are
+the lifetime totals on the live bookings booked in that month.
+
+```json
+{
+  "from": "2026-04-01", "upto": "2026-04-30",
+  "rows": [ { "month": "2026-04", "label": "Apr 2026", "agreement_value": 10000000, "net_income": 950, "invoiced": 800, "collected": 300, "outstanding": 500 } ],
+  "summary": { "agreement_value": 10000000, "net_income": 950, "invoiced": 800, "collected": 300, "outstanding": 500 }
+}
+```
+
+### `GET /reports/assignees`
+
+The assignee filter. Not `GET /users` — that list is a manager's reporting
+line. A manager or super admin receives every user in the firm, including
+disabled. An agent receives only themselves.
+
+```json
+{ "users": [ { "id": "…", "name": "Asha", "role": "agent", "status": "active" } ] }
+```
+
 ## Leads
 
 ### `POST /leads`
@@ -481,14 +597,19 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
-| `property_type_id`, `source_id`, `assigned_user_id` | Drawer |
+| `property_type_id`, `source_id`, `assigned_user_id` | Drawer. Repeat the key, or comma-separate. An IN list. `source_missing=true` with `source_id` is those sources plus leads with no source |
+| `source_missing` | Drawer. `true` keeps leads whose source is blank |
+| `created_from`, `created_upto` | Drawer. Inclusive **IST** calendar days on `created_at` |
+| `died_from`, `died_upto` | Drawer. Inclusive **IST** days of a change into a dead status. A lead later revived still matches |
 | `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
 | `possession_from`, `possession_to` | Drawer |
 | `typology_ids[]` | Drawer. Repeat the key |
 | `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` |
 | `page`, `per_page` | |
 
-Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`.
+Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `source_missing`, `assigned_user_id`, `created_from`, `created_upto`, `died_from`, `died_upto`.
+
+A backwards or non-date `created_*` or `died_*` pair is `422 invalid` with "Dates must be YYYY-MM-DD, and from must be on or before upto." One side on its own is an open range.
 
 **`missed_followup` is not a real status.** Send it as `missed_followup=true`
 (same shape as `visited`). It means `next_action_at <= now` on a non-terminal

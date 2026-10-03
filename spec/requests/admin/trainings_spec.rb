@@ -85,6 +85,100 @@ RSpec.describe "Admin trainings" do
       training.reload
       expect(training.title).to eq("Renamed")
       expect(training.document.blob.id).to eq(original)
+      expect(training.podcast).to be_attached
+    end
+
+    it "takes the podcast off when asked, including an unchanged link and the length" do
+      training = create(:training, :with_assets,
+        podcast_url: "https://cdn.example.com/a.mp3", podcast_duration_seconds: 1200)
+      banner_id = training.banner.blob.id
+      document_id = training.document.blob.id
+
+      patch admin_training_path(training), params: {
+        training: {
+          remove_podcast: "1",
+          podcast_url: training.podcast_url,
+          podcast_duration_seconds: 1200
+        }
+      }
+
+      training.reload
+      expect(training.podcast).not_to be_attached
+      expect(training.podcast_url).to be_nil
+      expect(training.podcast_duration_seconds).to be_nil
+      expect(training.banner.blob.id).to eq(banner_id)
+      expect(training.document.blob.id).to eq(document_id)
+    end
+
+    it "keeps a new audio file uploaded in the same save as remove" do
+      training = create(:training, :with_assets, podcast_url: "https://cdn.example.com/a.mp3")
+
+      patch admin_training_path(training), params: {
+        training: {
+          remove_podcast: "1",
+          podcast: upload("replacement.mp3", "audio/mpeg"),
+          podcast_url: "https://cdn.example.com/a.mp3",
+          podcast_duration_seconds: 900
+        }
+      }
+
+      training.reload
+      expect(training.podcast.filename.to_s).to eq("replacement.mp3")
+      expect(training.podcast_url).to eq("https://cdn.example.com/a.mp3")
+      expect(training.podcast_duration_seconds).to eq(900)
+    end
+
+    it "keeps a different link typed in the same save and drops the uploaded file" do
+      training = create(:training, :with_assets,
+        podcast_url: "https://cdn.example.com/old.mp3", podcast_duration_seconds: 1200)
+
+      patch admin_training_path(training), params: {
+        training: {
+          remove_podcast: "1",
+          podcast_url: "https://cdn.example.com/new.mp3",
+          podcast_duration_seconds: 900
+        }
+      }
+
+      training.reload
+      expect(training.podcast).not_to be_attached
+      expect(training.podcast_url).to eq("https://cdn.example.com/new.mp3")
+      expect(training.podcast_duration_seconds).to eq(900)
+    end
+
+    it "drops the length when the link is cleared and there is no file" do
+      training = create(:training,
+        podcast_url: "https://cdn.example.com/a.mp3", podcast_duration_seconds: 1200)
+
+      patch admin_training_path(training), params: {
+        training: { podcast_url: "", podcast_duration_seconds: 1200 }
+      }
+
+      training.reload
+      expect(training.podcast_url).to be_blank
+      expect(training.podcast_duration_seconds).to be_nil
+    end
+
+    it "leaves the podcast in place when the save is rejected" do
+      training = create(:training, :with_assets,
+        podcast_url: "https://cdn.example.com/a.mp3", podcast_duration_seconds: 1200)
+
+      patch admin_training_path(training), params: {
+        training: {
+          title: "",
+          remove_podcast: "1",
+          podcast_url: training.podcast_url,
+          podcast_duration_seconds: 1200
+        }
+      }
+
+      training.reload
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(training.podcast).to be_attached
+      expect(training.podcast_url).to eq("https://cdn.example.com/a.mp3")
+      expect(training.podcast_duration_seconds).to eq(1200)
+      expect(response.body).to include('name="training[remove_podcast]"')
+      expect(response.body).to include("checked")
     end
   end
 

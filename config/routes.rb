@@ -110,6 +110,14 @@ Rails.application.routes.draw do
       # an agent gets no money block at all.
       get "dashboard", to: "dashboard#show"
 
+      # Grouped reads over leads and bookings. No tables of their own.
+      # Bookings and revenue are manager-only; the lead reports are not.
+      get "reports/source_status", to: "reports#source_status"
+      get "reports/dead_leads", to: "reports#dead_leads"
+      get "reports/bookings", to: "reports#bookings"
+      get "reports/revenue", to: "reports#revenue"
+      get "reports/assignees", to: "reports#assignees"
+
       # No destroy: the design has no delete. `Dead` is the terminal state, and
       # it carries a reason so the dead-leads report can explain itself.
       resources :leads, only: %i[index create show update] do

@@ -312,10 +312,10 @@ No tables. All four report shapes are grouped queries over the above:
 
 | Report | Reads |
 | --- | --- |
-| Source × status matrix | `leads` grouped by `lead_source_id` × `lead_status_id`, date-filtered |
-| Dead leads by FY month | `lead_status_changes` into a status where `is_dead`, plus `leads.created_at` for the generated column |
-| Bookings by FY month | `bookings` counts, `invoices` / `collections` for the followup columns |
-| Revenue by FY month | Same shape, amounts instead of counts |
+| Source × status matrix | `leads` grouped by `lead_source_id` × `lead_status_id` (one row per source, not per category), date-filtered on `created_at` |
+| Dead leads by month | `lead_status_changes` into a status where `is_dead`, plus `leads.created_at` for the generated column. Months come from the selected range |
+| Bookings by month | `bookings` counts on `booked_on`, `invoices` / `collections` for the followup columns. Ignores a lead status filter |
+| Revenue by month | Same bookings, amounts instead of counts. Ignores a lead status filter |
 
 Materialised views are a later optimisation, and only if measurement asks for
 them.

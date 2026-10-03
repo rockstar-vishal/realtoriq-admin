@@ -19,10 +19,15 @@ module Api
       DRAWER_KEYS = %w[
         name mobile email ncd_from ncd_upto budget_min budget_max
         typology_ids transaction_type property_type_id possession_from possession_to
-        source_id assigned_user_id
+        source_id source_missing assigned_user_id
+        created_from created_upto died_from died_upto
       ].freeze
 
       def index
+        if (message = invalid_date_range)
+          return render_error("invalid", message, status: :unprocessable_content)
+        end
+
         leads = filtered_scope
         @pagy, records = pagy(leads, limit: per_page)
         Lead.preload_card_extras(records)
@@ -209,19 +214,37 @@ module Api
           .budget_between(params[:budget_min], params[:budget_max])
           .possession_between(params[:possession_from], params[:possession_to])
           .for_typologies(params[:typology_ids])
+          .created_between(params[:created_from], params[:created_upto])
+          .died_between(params[:died_from], params[:died_upto])
+          .with_sources(params[:source_id], missing: ActiveModel::Type::Boolean.new.cast(params[:source_missing]))
 
         scope = scope.where(transaction_type: params[:transaction_type]) if params[:transaction_type].present?
-        scope = scope.where(property_type_id: params[:property_type_id]) if params[:property_type_id].present?
-        scope = scope.where(lead_source_id: params[:source_id]) if params[:source_id].present?
+        property_types = ::Reports::Filters.list(params[:property_type_id])
+        scope = scope.where(property_type_id: property_types) if property_types.any?
         # Agents are already narrowed to themselves; for them this can only
         # filter further, never widen.
-        scope = scope.where(assigned_user_id: params[:assigned_user_id]) if params[:assigned_user_id].present?
+        assignees = ::Reports::Filters.list(params[:assigned_user_id])
+        scope = scope.where(assigned_user_id: assignees) if assignees.any?
 
         apply_sort(scope)
       end
 
       def drawer_filters_present?
         DRAWER_KEYS.any? { |key| params[key].present? }
+      end
+
+      def invalid_date_range
+        message = "Dates must be YYYY-MM-DD, and from must be on or before upto."
+        %w[created died].each do |prefix|
+          from = params[:"#{prefix}_from"]
+          upto = params[:"#{prefix}_upto"]
+          next if from.blank? && upto.blank?
+          return message if from.present? && !::Reports::Window.date?(from)
+          return message if upto.present? && !::Reports::Window.date?(upto)
+          next if from.blank? || upto.blank?
+          return message if Date.iso8601(from.to_s) > Date.iso8601(upto.to_s)
+        end
+        nil
       end
 
       def apply_sort(scope)

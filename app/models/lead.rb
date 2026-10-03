@@ -192,6 +192,39 @@ class Lead < ApplicationRecord
     scope
   }
 
+  # Inclusive IST calendar days on created_at. A blank side is open.
+  scope :created_between, ->(from, upto) {
+    range = Reports::Window.time_range(from, upto)
+    next all if range.nil?
+
+    where(created_at: range)
+  }
+
+  # A lead that entered a dead status during the IST range, even if it was
+  # revived afterwards. dead_at is cleared on revive, so it cannot answer this.
+  scope :died_between, ->(from, upto) {
+    range = Reports::Window.time_range(from, upto)
+    next all if range.nil?
+
+    where(id: LeadStatusChange.into_dead.where(changed_at: range).select(:lead_id))
+  }
+
+  # ids and missing are OR'd: "these sources, or no source at all".
+  # `where(column: [id, nil])` is the IN-or-NULL form, so the ids stay typed
+  # as uuids instead of being interpolated into SQL.
+  scope :with_sources, ->(ids, missing: false) {
+    list = Array(ids).flatten.flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
+    if list.any? && missing
+      where(lead_source_id: list + [ nil ])
+    elsif missing
+      where(lead_source_id: nil)
+    elsif list.any?
+      where(lead_source_id: list)
+    else
+      all
+    end
+  }
+
   # No `.distinct`: the subquery filters on the primary key, so a lead can match
   # at most once and it was never needed. It was also actively harmful — combined
   # with `as_worklist`, Postgres rejects the query ("for SELECT DISTINCT, ORDER BY
