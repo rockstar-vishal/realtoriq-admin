@@ -57,8 +57,8 @@ Rails.application.configure do
   config.solid_queue.connects_to = { database: { writing: :queue } }
 
   config.action_mailer.default_url_options = { host: ENV.fetch("APP_HOST", "localhost") }
-  # Staging must not email real people. Letters are written to the log; swap to
-  # :smtp only if you point it at a catch-all mailbox.
+  # Staging must not email real people. Production uses SES; this stays :test
+  # unless MAILER_DELIVERY points somewhere that cannot reach a broker.
   config.action_mailer.delivery_method = ENV.fetch("MAILER_DELIVERY", "test").to_sym
   config.action_mailer.perform_caching = false
   config.action_mailer.raise_delivery_errors = false
@@ -78,8 +78,8 @@ Rails.application.configure do
   #    network controls. config/initializers/otp_fixed_code.rb logs a warning at
   #    boot to keep this visible.
   #
-  # 2. OTP delivery defaults to :log (see config/application.rb), so MSG91 is
-  #    never called and no DLT template is needed to exercise sign-in.
+  # 2. OTP delivery defaults to :log (see config/application.rb), so MSG91 and
+  #    Twilio are never called and no template is needed to exercise sign-in.
   #
   # 3. The OTP rate limit is loose, because a QA pass legitimately signs in
   #    dozens of times from one address.

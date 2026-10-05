@@ -83,6 +83,9 @@ end
 group :development do
   # Use console on exceptions pages [https://github.com/rails/web-console]
   gem "web-console"
+
+  # Opens the message in a browser instead of trying localhost:25.
+  gem "letter_opener"
 end
 
 # Active Storage's S3 service. `require: false` because Active Storage loads it

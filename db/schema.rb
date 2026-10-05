@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -286,6 +286,29 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
     t.index ["slug"], name: "index_firms_on_slug", unique: true
     t.index ["status"], name: "index_firms_on_status"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'active'::character varying::text, 'suspended'::character varying::text, 'churned'::character varying::text])", name: "firms_status_check"
+  end
+
+  create_table "inbound_credentials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "token_digest", null: false
+    t.text "token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_inbound_credentials_on_firm_id", unique: true
+    t.index ["token_digest"], name: "index_inbound_credentials_on_token_digest", unique: true
+  end
+
+  create_table "inbound_enquiries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "channel", null: false
+    t.string "external_id", null: false
+    t.uuid "lead_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "channel", "external_id"], name: "index_inbound_enquiries_on_firm_channel_and_external_id", unique: true
+    t.index ["firm_id"], name: "index_inbound_enquiries_on_firm_id"
+    t.index ["lead_id"], name: "index_inbound_enquiries_on_lead_id"
+    t.check_constraint "channel::text = ANY (ARRAY['99acres'::character varying, 'magicbricks'::character varying, 'housing'::character varying, 'general'::character varying]::text[])", name: "inbound_enquiries_channel_check"
   end
 
   create_table "invoices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -590,7 +613,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
     t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying]::text[])", name: "notifications_kind_check"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying]::text[])", name: "notifications_kind_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -684,8 +707,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
     t.datetime "turbo_pushed_at"
     t.text "brochure_source_url"
     t.string "code", null: false
+    t.string "portal_99acres_code"
+    t.string "portal_magicbricks_code"
+    t.string "portal_housing_code"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
+    t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_projects_firm_portal_99acres_code", unique: true, where: "((portal_99acres_code IS NOT NULL) AND (firm_id IS NOT NULL))"
+    t.index "firm_id, lower((portal_housing_code)::text)", name: "index_projects_firm_portal_housing_code", unique: true, where: "((portal_housing_code IS NOT NULL) AND (firm_id IS NOT NULL))"
+    t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_projects_firm_portal_magicbricks_code", unique: true, where: "((portal_magicbricks_code IS NOT NULL) AND (firm_id IS NOT NULL))"
     t.index ["builder_id"], name: "index_projects_on_builder_id"
     t.index ["city_id"], name: "index_projects_on_city_id"
     t.index ["code"], name: "index_projects_on_code", unique: true
@@ -722,6 +751,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
     t.uuid "created_by_user_id"
     t.boolean "listed_on_marketplace", default: true, null: false
     t.string "code", null: false
+    t.string "portal_99acres_code"
+    t.string "portal_magicbricks_code"
+    t.string "portal_housing_code"
+    t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_properties_firm_portal_99acres_code", unique: true, where: "(portal_99acres_code IS NOT NULL)"
+    t.index "firm_id, lower((portal_housing_code)::text)", name: "index_properties_firm_portal_housing_code", unique: true, where: "(portal_housing_code IS NOT NULL)"
+    t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_properties_firm_portal_magicbricks_code", unique: true, where: "(portal_magicbricks_code IS NOT NULL)"
     t.index ["building_id"], name: "index_properties_on_building_id"
     t.index ["code"], name: "index_properties_on_code", unique: true
     t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
@@ -897,6 +932,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_120000) do
   add_foreign_key "firm_bank_accounts", "firms"
   add_foreign_key "firms", "cities"
   add_foreign_key "firms", "localities"
+  add_foreign_key "inbound_credentials", "firms"
+  add_foreign_key "inbound_enquiries", "firms"
+  add_foreign_key "inbound_enquiries", "leads"
   add_foreign_key "invoices", "bookings"
   add_foreign_key "invoices", "firms"
   add_foreign_key "lead_activities", "firms"

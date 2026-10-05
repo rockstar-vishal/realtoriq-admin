@@ -91,10 +91,9 @@ and has no escape hatch. Keep the staging URL off the public internet.
 
 ## Sending one-time codes for real
 
-SMS and WhatsApp go through **MSG91**; email goes through Action Mailer. The
-auth key is already in Rails credentials. Each transport still needs its own
-settings, and they're checked independently — SMS starts working the moment its
-template id lands, without waiting on WhatsApp onboarding.
+SMS goes through **MSG91**. WhatsApp goes through **Twilio**. Email goes
+through Action Mailer. Each transport is checked on its own, so sign-in SMS
+works before the Twilio account credentials are in place.
 
 ```bash
 bin/rails msg91:check     # what's configured, sends nothing
@@ -104,18 +103,31 @@ bin/rails credentials:edit
 ```yaml
 msg91:
   auth_key: <set>
-  sms_template_id: <DLT-approved flow template id>   # still needed
-  whatsapp_number: <WhatsApp Business number>         # still needed
-  whatsapp_template_name: <approved template name>    # still needed
+  sms_template_id: <MSG91 flow template id>
+  sms_sender_id: <DLT sender id>
+  dlt_entity_id: <DLT entity id, stored for the record>
+twilio:
+  account_sid: <AC…>
+  auth_token: <auth token>
+  whatsapp_from: <+E.164 WhatsApp sender>
+  content_sid: <HX…>
+  content_template_name: realtoriq_otp
 ```
 
 Indian transactional SMS is DLT-regulated: the message body is registered with
-the operator as a template and referenced by id, so the app never composes it —
-it only supplies the code as the template variable.
+the operator as a template and referenced by id, so the app never composes it.
+The approved SMS body uses `##var1##`, and that is the recipient key we send.
+The Twilio template's first placeholder (`{{1}}`) receives the WhatsApp code.
 
-Delivery is chosen by `OTP_DELIVERY`, which defaults to `msg91` in production
-and `log` everywhere else. An unconfigured transport raises a delivery error and
-the API returns `delivery_failed` rather than pretending a code was sent.
+`OTP_DELIVERY` defaults to `msg91` in production and `log` everywhere else.
+That value is the real-provider mode (the name stayed when WhatsApp moved to
+Twilio). An unconfigured transport raises a delivery error and the API returns
+`delivery_failed` rather than pretending a code was sent.
+
+Email uses Action Mailer. Development opens each message with Letter Opener.
+Production sends through SES over SMTP (`email-smtp.<region>.amazonaws.com`,
+port 587). The username and password are the SES SMTP credentials, added with
+`bin/rails credentials:edit` under `smtp`. Staging keeps `delivery_method = :test`.
 
 ## One-time codes in development
 

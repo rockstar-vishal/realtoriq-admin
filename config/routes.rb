@@ -88,6 +88,13 @@ Rails.application.routes.draw do
       get "me",        to: "me#show"
       get "reference", to: "reference#index"
 
+      # Websites post leads here. The key in Authorization picks the firm.
+      # These actions do not use a broker JWT.
+      post "inbound/:channel/projects", to: "inbound_leads#create", defaults: { kind: "projects" }
+      post "inbound/:channel/properties", to: "inbound_leads#create", defaults: { kind: "properties" }
+      get "inbound_credentials", to: "inbound_credentials#show"
+      post "inbound_credentials/rotate", to: "inbound_credentials#rotate"
+
       resources :notifications, only: %i[index] do
         collection do
           get :unread_count
@@ -167,6 +174,7 @@ Rails.application.routes.draw do
           get :mapped_customers
           post :share_link
           post :lead_matches
+          patch :portal_codes
           # Photos live on the detail screen, not the create form.
           post   "photos", to: "projects#add_photos"
           delete "photos/:photo_id", to: "projects#remove_photo", as: :photo
@@ -185,6 +193,7 @@ Rails.application.routes.draw do
           get :mapped_customers
           get :marketplace
           post :lead_matches
+          patch :portal_codes
           post   "photos", to: "properties#add_photos"
           delete "photos/:photo_id", to: "properties#remove_photo", as: :photo
         end

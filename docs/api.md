@@ -17,6 +17,8 @@ observed against a live server; nothing is aspirational.
 - [File uploads](#file-uploads)
 - [Firm contact channels](#firm-contact-channels)
 - [Notifications](#notifications)
+- [Trainings](#trainings)
+- [Inbound enquiries](#inbound-enquiries)
 - [Error codes](#error-codes)
 - [Traps worth knowing](#traps-worth-knowing)
 
@@ -219,7 +221,8 @@ floor_bands[]        code, name                  ← fixed: lower, middle, highe
 
 Seeded values today: statuses `new`, `hot`, `followup`, `visit_planned`,
 `negotiation`, `booked`, `dead` · sources `portal_housing`, `portal_99acres`,
-`referral`, `walk-in`, `social_meta`, `cold_call` · property types
+`portal_magicbricks`, `referral`, `walk-in`, `social_meta`, `cold_call`,
+`builder_microsite`, `website` · property types
 `under_construction`, `ready_possession`.
 
 Never hardcode these ids. **Switch on `code`**, and use `is_dead` / `is_booked`
@@ -871,6 +874,19 @@ row. A booking copies it into My Projects and stores that copy.
 (`403 forbidden_role`, gated in the app by `permissions.manage_projects`).
 Anyone in the firm may create a **property**.
 
+**Portal codes** are saved from the show page, not the create or edit form.
+`PATCH /projects/:id/portal_codes` is superadmin only. A catalog project is
+`422 catalog_readonly`. `PATCH /properties/:id/portal_codes` is any signed-in
+user in the firm. Body keys are `99acres`, `magicbricks` and `housing`. Send
+only the keys you are changing. A blank or null value clears that code. The
+same code cannot be saved on two projects, or on two properties, in the firm
+(comparison ignores case and extra spaces). Detail responses include
+`portal_codes`; list responses do not.
+
+```json
+{ "99acres": "ACME-22", "magicbricks": null, "housing": null }
+```
+
 Own-list names are unique case-insensitively per firm. Catalog names are unique
 the same way, in their own list. The same name may exist once in each.
 
@@ -1080,6 +1096,7 @@ return `[]`. At most 50, highest score first.
 ```json
 { "matches": [
   { "kind": "lead", "id": "…", "code": "L-0001", "name": "Meera Shah",
+    "mobile": "+919820144210",
     "budget": 16000000, "typologies": ["2 BHK"], "localities": ["Kolshet"],
     "score": 100,
     "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
@@ -1088,12 +1105,14 @@ return `[]`. At most 50, highest score first.
 ] }
 ```
 
-`mapped` is true when this lead is already linked to this project id.
+`mobile` is that lead's primary number, so the caller can open WhatsApp without
+a second request. It is only present because the caller can already open the
+lead. `mapped` is true when this lead is already linked to this project id.
 
 ### `POST /properties/:id/lead_matches`
 
-Own-firm leads use the same lead payload as the project endpoint, at the
-above-30 floor. A sale listing matches ready-possession leads. A rental matches
+Own-firm leads use the same lead payload as the project endpoint, including
+`mobile`, at the above-30 floor. A sale listing matches ready-possession leads. A rental matches
 rent leads. The lead must prefer the building's locality. Booked and sold-out
 listings return `[]`.
 
@@ -1635,6 +1654,121 @@ When a training is activated for the first time, every active broker in every
 active firm gets one `training_published` notification (`data.page` is
 `skills-training`). Archiving and activating it again says nothing: it is a
 correction, not news.
+
+---
+
+## Inbound enquiries
+
+A website posts a buyer here. The firm is the one that owns the key in
+`Authorization: Bearer`. The body cannot name a firm. These routes do not use
+a broker JWT. A bad or missing key, or a firm that is not active, is
+`401 unauthorized`. An unknown portal in the path is `404 not_found`, and only
+after the key is valid. The portal and project-or-property choice come from
+the path. A query string cannot change them.
+
+A body over 8 KB is `413 invalid` ("This enquiry is too large.") and is refused
+before the JSON is read. Calls are counted per address and per key we have
+already accepted. An unrecognised bearer does not get a bucket of its own.
+More than 20 failed keys a minute from one address, more than 300 calls a
+minute from one address, or more than 30 calls a minute for one valid key is
+`429 rate_limited`. A cache that cannot count refuses the call.
+
+`listing`, `enquiry_id`, `city`, `locality` and `configuration` longer than
+255 characters are rejected. `name` is shortened to 255. An `email` that is
+not a normal address is dropped and the lead is still saved. `budget` is at
+most 15 digits. A rejected call notifies the owner at most 10 times a day.
+The same rejection is only sent once that day. Retries of that same rejection
+do not use up the 10.
+
+| Method | Path |
+| --- | --- |
+| POST | `/inbound/99acres/projects` |
+| POST | `/inbound/99acres/properties` |
+| POST | `/inbound/magicbricks/projects` |
+| POST | `/inbound/magicbricks/properties` |
+| POST | `/inbound/housing/projects` |
+| POST | `/inbound/housing/properties` |
+| POST | `/inbound/general/projects` |
+| POST | `/inbound/general/properties` |
+
+The path sets the lead source: `portal_99acres`, `portal_magicbricks`,
+`portal_housing`, or `website`. Unknown body keys are ignored.
+
+| Field | Notes |
+| --- | --- |
+| `mobile` | **required.** A 10-digit Indian mobile. `9876543210`, `+91 98765 43210` and `09876543210` are the same number |
+| `name` | optional |
+| `email` | optional. A value that is not an email address is ignored |
+| `listing` | The saved portal code, the `P-` or `H-` code, or — for a project — the exact project name. Case and extra spaces are ignored |
+| `enquiry_id` | optional. The same id on the same portal is a no-op after it has been saved. A call that failed can be retried with the same id |
+| `budget` | Whole rupees, digits only (`12000000`), at most 15 digits. Used only when `listing` is omitted |
+| `city` | Exact city name. Required with `locality` when `listing` is omitted. Two cities with the same name are refused |
+| `locality` | Exact locality name inside that city |
+| `configuration` | Exact typology name, for example `2 BHK` |
+| `transaction_type` | `sale` or `rent`. Read only on `POST /inbound/general/properties` when `listing` is omitted |
+
+A named project is always a sale. Ready possession is set when the project's
+label is exactly `Ready`, or its possession month is this month or one of the
+next two in India. Anything else, including a past month and `Ready to move`,
+is Under construction. Budget, locality and every configuration are copied
+from the project. A project with no configuration is rejected. A project with
+no locality is still saved.
+
+A named property takes sale or rent from the listing. A sale is Ready
+possession. A rent has no property type. Budget is the listing price. The
+99acres, Magicbricks and Housing property URLs require `listing`. The general
+property URL can omit it, and then `budget`, `city`, `locality`,
+`configuration` and `transaction_type` are required. A sale in that case is
+Ready possession.
+
+Omitting `listing` on any projects URL requires `budget`, `city`, `locality`
+and `configuration`. The lead is a sale under construction. A phone number
+alone is rejected.
+
+When a listing is matched, `budget`, `city`, `locality`, `configuration`,
+`transaction_type` and `property_type` in the body are ignored.
+
+A second enquiry for the same mobile and the same sale or rent type does not
+create a second card. The listing is attached, a follow-up note is added, and
+a missing locality or configuration is added. Stored budget and property type
+stay as they are. A dead lead does not block a new one. The new lead is
+unassigned. The firm owner gets an in-app notification. A rejected call
+notifies the owner as well, without the key. Sold and booked properties still
+create the lead and link the property.
+
+Success is `200` and `{ "status": "created" }` or
+`{ "status": "already_in_pipeline" }`. A rejection is `422 invalid` with a
+plain `message`.
+
+### `GET /inbound_credentials`
+
+Superadmin only. Creates the firm's key the first time. Returns the token and
+four notes the owner can copy. The token is in the note, never in the URL.
+
+```json
+{
+  "inbound_credential": {
+    "token": "…",
+    "portals": [
+      {
+        "channel": "99acres",
+        "label": "99acres",
+        "projects_url": "https://api.example/api/v1/inbound/99acres/projects",
+        "properties_url": "https://api.example/api/v1/inbound/99acres/properties",
+        "message": "Please send new 99acres enquiries…"
+      }
+    ]
+  }
+}
+```
+
+`portals` is `99acres`, `magicbricks`, `housing`, then `general`.
+
+### `POST /inbound_credentials/rotate`
+
+Superadmin only. Replaces the key. Every previous URL stops. The response is
+the same shape as the GET. The audit row records the rotation and does not
+store the token.
 
 ---
 

@@ -83,11 +83,13 @@ end
 [
   [ "Portal — Housing", "portal" ],
   [ "Portal — 99acres", "portal" ],
+  [ "Portal — Magicbricks", "portal" ],
   [ "Referral", "referral" ],
   [ "Walk-in", "walk_in" ],
   [ "Social / Meta", "social" ],
   [ "Cold call", "outbound" ],
-  [ "Builder Microsite", "other" ]
+  [ "Builder Microsite", "other" ],
+  [ "Website", "other" ]
 ].each_with_index do |(name, category), index|
   LeadSource.find_or_create_by!(name:) { |s| s.category = category }.update!(sort_order: index)
 end

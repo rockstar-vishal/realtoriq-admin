@@ -38,10 +38,12 @@ module KgenRealtoriqAdmin
       g.system_tests = nil
     end
 
-    # How one-time codes are delivered. Production is the only environment that
-    # talks to MSG91; development and staging log the code instead, so sign-in is
-    # exercisable without an MSG91 account or a DLT template, and never reaches a
-    # real phone. LogDeliverer refuses to run in production regardless.
+    # How one-time codes are delivered. "msg91" is the real-provider mode:
+    # SMS through MSG91, WhatsApp through Twilio, email through Action Mailer.
+    # The name stayed when WhatsApp moved to Twilio, so production keeps
+    # sending without a new environment variable. Development and staging log
+    # the code instead, and never reach a real phone. LogDeliverer refuses to
+    # run in production regardless.
     config.x.otp_delivery = ENV.fetch("OTP_DELIVERY") { Rails.env.production? ? "msg91" : "log" }
 
     # A fixed sign-in code, so testing doesn't mean reading a log for six digits.

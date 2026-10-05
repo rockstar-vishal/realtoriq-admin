@@ -4,11 +4,13 @@
 # scope every query, so whatever sets it is effectively deciding which tenant's
 # data this request can see.
 #
-# It is set in exactly two places, both deliberate:
-#   - Api::V1::BaseController, from the verified JWT's firm claim
+# It is set in exactly three places, all deliberate:
+#   - Api::V1::AuthenticatedController, from the verified JWT
+#   - Inbound::ReceiveLead, from the firm's inbound key (not from the body)
 #   - the admin panel, when a controller narrows to a single firm
 #
-# Never set it from a request header, param or subdomain.
+# Never set it from a request header, param or subdomain. The inbound key is
+# a credential, looked up by digest, and that lookup is what names the firm.
 class Current < ActiveSupport::CurrentAttributes
   attribute :firm, :user, :admin_user, :request_ip, :user_agent
 
