@@ -5,6 +5,7 @@
 class Project < ApplicationRecord
   include FirmScoped
   include InventoryCode
+  include PortalListingCodes
   self.inventory_code_prefix = "P"
   self.inventory_code_index = "index_projects_on_code"
 

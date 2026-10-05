@@ -50,6 +50,7 @@ module Api
             rm_name: project.rm_name,
             rm_contact: project.rm_contact,
             shareable: shareable(project),
+            portal_codes: project.portal_codes_payload,
             updated_at: project.updated_at
           )
         end

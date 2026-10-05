@@ -84,6 +84,7 @@ module Inventory
         id: lead.id,
         code: lead.code,
         name: lead.display_name,
+        mobile: lead.mobile,
         budget: lead.budget_amount,
         typologies: lead.typologies.map(&:name),
         localities: lead.localities.map(&:name),

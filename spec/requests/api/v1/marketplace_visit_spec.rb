@@ -48,6 +48,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       expect(response).to have_http_status(:ok)
       match = response.parsed_body["matches"].find { |row| row["id"] == lead.id }
       expect(match["kind"]).to eq("lead")
+      expect(match["mobile"]).to eq(lead.mobile)
       expect(match["score"]).to eq(100)
       expect(match["matched_on"]).to eq(%w[locality price configuration])
     end
@@ -135,7 +136,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       end
 
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:created)
@@ -143,7 +144,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       expect(response.parsed_body.dig("visit_pass", "phone_suffix")).to eq("43210")
 
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-03T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 3.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:ok)
@@ -156,7 +157,7 @@ RSpec.describe "Marketplace visit passes and matches" do
 
       expect(Realtoriq::TurboClient).not_to receive(:create_visit_pass)
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -166,7 +167,7 @@ RSpec.describe "Marketplace visit passes and matches" do
     it "refreshes at most every six hours and records a follow-up without moving the pipeline" do
       allow(Realtoriq::TurboClient).to receive(:create_visit_pass).and_return("pass_code" => "CPVPABC123")
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
       pass_id = response.parsed_body.dig("visit_pass", "id")
       status_id = lead.reload.lead_status_id
@@ -205,7 +206,7 @@ RSpec.describe "Marketplace visit passes and matches" do
         .and_raise(Realtoriq::TurboClient::Error.new("Could not reach LaunchIQ (Net::OpenTimeout)"))
 
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -217,7 +218,7 @@ RSpec.describe "Marketplace visit passes and matches" do
         { "pass_code" => "CPVPABC123", "pass_url" => "https://launch.example/vp/token" }
       end
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:created)
@@ -227,7 +228,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       pending.reload.update!(turbo_status: "used")
       expect(Realtoriq::TurboClient).not_to receive(:create_visit_pass)
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-03T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 3.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -237,7 +238,7 @@ RSpec.describe "Marketplace visit passes and matches" do
     it "stores a duplicate status and writes the contact-your-RM follow-up" do
       allow(Realtoriq::TurboClient).to receive(:create_visit_pass).and_return("pass_code" => "CPVPABC123")
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
       pass_id = response.parsed_body.dig("visit_pass", "id")
       message = "This client is already registered with the developer. Contact your RM to get yourself tagged, subject to the builder's policy."
@@ -263,7 +264,7 @@ RSpec.describe "Marketplace visit passes and matches" do
 
       expect(Realtoriq::TurboClient).not_to receive(:create_visit_pass)
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -293,7 +294,7 @@ RSpec.describe "Marketplace visit passes and matches" do
 
       allow(Realtoriq::TurboClient).to receive(:create_visit_pass).and_return("pass_code" => "CPVPABC123")
       post "/api/v1/leads/#{lead.id}/visit_passes",
-        params: { project_id: copy_id, tentative_visit_planned: "2026-10-02T05:30:00Z" },
+        params: { project_id: copy_id, tentative_visit_planned: 2.days.from_now.utc.iso8601 },
         headers:, as: :json
 
       get "/api/v1/projects/#{catalog.id}/marketplace_leads", headers:, as: :json

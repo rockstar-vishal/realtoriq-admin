@@ -6,9 +6,9 @@ environment can be exercised without reaching a real broker or a real rupee:
 | | Staging | Production |
 | --- | --- | --- |
 | Sign-in code | **Always `888888`** | Generated, six random digits |
-| Delivery | Written to the log. MSG91 is never called | MSG91 (SMS/WhatsApp) + Action Mailer |
+| Delivery | Written to the log. MSG91 and Twilio are never called | MSG91 (SMS) + Twilio (WhatsApp) + Action Mailer |
 | OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
-| Email | `delivery_method = :test` — nothing leaves | Real SMTP |
+| Email | `delivery_method = :test` — nothing leaves | SES over SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
 | Logs | **`log/staging.log` and stdout** | stdout only |
@@ -238,12 +238,12 @@ not in staging, and real messages will be sent.
 bin/rails msg91:check
 ```
 
-Reports what is configured without sending anything.
+Reports SMS (MSG91) and WhatsApp (Twilio) without sending anything.
 
 ## Going to production later
 
 Nothing to undo. Deploy the same code with `RAILS_ENV=production` and do **not**
 set `OTP_FIXED_CODE` — production has no default, generates real codes, and
-refuses to boot if a fixed one is supplied. Before real brokers sign in you will
-need the MSG91 `sms_template_id` (DLT-approved) and, for WhatsApp, the business
-number and template name.
+refuses to boot if a fixed one is supplied. Sign-in SMS needs the MSG91 template
+id and sender id. WhatsApp verification needs the Twilio account sid, auth
+token, sender number, and content sid.

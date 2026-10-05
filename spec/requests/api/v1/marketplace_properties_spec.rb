@@ -154,7 +154,7 @@ RSpec.describe "Shared property marketplace" do
   end
 
   it "lets another firm explore only their own leads that clear the marketplace score" do
-    lead_for(ready_type, name: "Shown Client")
+    shown = lead_for(ready_type, name: "Shown Client")
     lead_for(ready_type, name: "Budget Miss").update!(budget_max: 1_000_000)
 
     post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(broker), as: :json
@@ -162,6 +162,8 @@ RSpec.describe "Shared property marketplace" do
     expect(response).to have_http_status(:ok)
     names = response.parsed_body["matches"].map { |match| match["name"] }
     expect(names).to eq([ "Shown Client" ])
+    shown_match = response.parsed_body["matches"].find { |match| match["name"] == "Shown Client" }
+    expect(shown_match["mobile"]).to eq(shown.mobile)
     expect(response.parsed_body["marketplace_matches"]).to eq([])
     expect(response.parsed_body["marketplace_firms"]).to eq([])
     expect(response.body).not_to include("Owner is travelling", "Sea-facing", "Budget Miss")

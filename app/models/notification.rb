@@ -4,7 +4,7 @@
 class Notification < ApplicationRecord
   include FirmScoped
 
-  KINDS = %w[followup_due test training_published marketplace_enquiry].freeze
+  KINDS = %w[followup_due test training_published marketplace_enquiry inbound_enquiry].freeze
 
   belongs_to :user, -> { unscope(where: :firm_id) }
   belongs_to_same_firm :user

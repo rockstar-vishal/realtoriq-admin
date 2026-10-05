@@ -34,9 +34,10 @@ module Api
 
       before_action :set_project, only: %i[
         show update add_photos remove_photo visitors share_link lead_matches marketplace_leads mapped_customers
+        portal_codes
       ]
-      before_action :require_super_admin, only: %i[create update add_photos remove_photo]
-      before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo]
+      before_action :require_super_admin, only: %i[create update add_photos remove_photo portal_codes]
+      before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo portal_codes]
 
       def index
         scope = filtered_scope
@@ -211,6 +212,14 @@ module Api
         end
       end
 
+      def portal_codes
+        @project.assign_portal_codes(portal_code_params)
+        render json: { project: ProjectSerializer.detail(@project.reload) }, status: :ok
+      rescue ActiveRecord::RecordNotUnique
+        render_error("invalid", "That portal code is already saved on another project.",
+          status: :unprocessable_content)
+      end
+
       private
 
       def set_project
@@ -312,6 +321,10 @@ module Api
           :google_place_id, :starting_budget, :possession_on, :possession_label,
           :rera_number, :brokerage_percent, :promo_text, :promo_ends_on, :status
         )
+      end
+
+      def portal_code_params
+        params.permit("99acres", "magicbricks", "housing").to_h
       end
     end
   end

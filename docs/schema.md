@@ -168,6 +168,19 @@ lead an agent creates is auto-assigned to them.
   from an alphabet that skips I, O, 0 and 1. They are random, globally unique,
   and assigned on create, including catalog rows with no firm. Existing rows
   were backfilled. A firm's copy of a catalog project gets its own code.
+- **Portal listing codes** (`portal_99acres_code`, `portal_magicbricks_code`,
+  `portal_housing_code`) sit on both `projects` and `properties`. Blank is
+  stored as NULL. Unique per firm, case-insensitively, and only when a code is
+  present. Catalog projects are excluded. Written by `PATCH …/portal_codes`,
+  never by the main project or property form.
+- **`inbound_credentials`** is one row per firm. `token` is encrypted.
+  `token_digest` is the SHA256 used to look the firm up. Rotating replaces
+  both and writes `inbound_credential.rotate` on `audit_events` without the
+  token.
+- **`inbound_enquiries`** stores a portal's `enquiry_id` only after the lead
+  is saved: `firm_id`, `channel` (`99acres`, `magicbricks`, `housing`,
+  `general`), `external_id`, `lead_id`. Unique on firm, channel and external
+  id. A failed call leaves no row, so the same id can be retried.
 - **`properties.created_by_user_id`** is stamped on create (nullable on older
   rows) and nullified if that user is deleted.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
@@ -280,7 +293,7 @@ control for it.
 
 ### Ancillary
 
-**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published` or `marketplace_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published`, `marketplace_enquiry` or `inbound_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
 
 **`marketplace_enquiries`** — one row per microsite form submission (`enquiry_id` unique). A repeat of that id does not create another lead.
 

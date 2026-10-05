@@ -127,6 +127,11 @@
       "type": "string"
     },
     {
+      "key": "inbound_token",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "booking_id",
       "value": "",
       "type": "string"
@@ -2730,7 +2735,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Live sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project or a project with no locality returns matches: []."
+            "description": "Live sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project or a project with no locality returns matches: []. Each match includes mobile, the lead's primary number."
           }
         },
         {
@@ -3464,7 +3469,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Own-firm leads that match this listing, above a score of 30. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
+            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
           }
         },
         {
@@ -4910,6 +4915,170 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"event\": \"enquiry\",\n  \"pushed_at\": \"2026-09-28T12:20:00Z\",\n  \"submitted_at\": \"2026-09-28T12:19:40Z\",\n  \"enquiry_id\": \"6f1c3c3e-1b2a-4c5d-9e8f-0a1b2c3d4e5f\",\n  \"project_code\": \"PR4F2A9C\",\n  \"share_token\": \"{{share_token}}\",\n  \"name\": \"Meera Shah\",\n  \"phone\": \"9876543210\",\n  \"message\": \"Saturday morning\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inbound enquiries",
+      "description": "Websites post leads with the firm's key. Sign in as the super admin first, then Get inbound key, which saves inbound_token. Portal calls use that key, not the broker JWT. The note in the GET response is what the owner copies to a vendor. A body over 8 KB is 413. More than 20 bad keys a minute from one address, 300 calls a minute from one address, or 30 calls a minute for one key is 429.",
+      "item": [
+        {
+          "name": "Get inbound key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json().inbound_credential;",
+                  "pm.collectionVariables.set(\"inbound_token\", body.token);",
+                  "pm.test(\"four portals\", () => pm.expect(body.portals).to.have.lengthOf(4));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/inbound_credentials",
+            "description": "Super admin only. Creates the key on first read. The token is inside each portal message and is not in the URL."
+          }
+        },
+        {
+          "name": "Rotate inbound key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"inbound_token\", pm.response.json().inbound_credential.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api_base}}/inbound_credentials/rotate",
+            "description": "Super admin only. The previous key stops working for every portal."
+          }
+        },
+        {
+          "name": "99acres project enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/99acres/projects",
+            "description": "listing is the 99acres code saved on the project, the P- code, or the exact project name. Budget and location are copied. 200 { status: created } or { status: already_in_pipeline }.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"{{project_id}}\",\n  \"enquiry_id\": \"99acres-1001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Magicbricks property enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/magicbricks/properties",
+            "description": "listing is required. Sale or rent is taken from the property. The body must not decide it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"MB-9\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Housing project enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/housing/projects",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"Lodha Palava\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Website enquiry with no project",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/general/projects",
+            "description": "Without a listing, budget, city, locality and configuration are required. The lead is a sale under construction.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"budget\": \"12000000\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Kharghar\",\n  \"configuration\": \"2 BHK\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Website enquiry with no property",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/general/properties",
+            "description": "transaction_type is sale or rent. A sale is saved as Ready possession.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543211\",\n  \"budget\": \"45000\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Kharghar\",\n  \"configuration\": \"2 BHK\",\n  \"transaction_type\": \"rent\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Save project portal codes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{api_base}}/projects/{{project_id}}/portal_codes",
+            "description": "Super admin only. Not accepted on the main project form. Blank clears a code.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"99acres\": \"ACME-22\",\n  \"magicbricks\": \"\",\n  \"housing\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Save property portal codes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{api_base}}/properties/{{property_id}}/portal_codes",
+            "description": "Any user in the firm. The same code cannot be saved on two properties.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"magicbricks\": \"MB-9\"\n}"
             }
           }
         }

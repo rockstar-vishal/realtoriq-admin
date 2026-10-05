@@ -67,6 +67,7 @@ module Api
             photo_urls: photo_urls(property),
             building: building_detail(property.building),
             shareable: shareable(property),
+            portal_codes: property.portal_codes_payload,
             updated_at: property.updated_at
           )
         end

@@ -37,7 +37,7 @@ RSpec.describe "Environment guarantees" do
       expect(config_for("staging")[:otp_fixed_code]).to eq("888888")
     end
 
-    it "never talks to MSG91 — codes go to the log" do
+    it "never talks to MSG91 or Twilio — codes go to the log" do
       expect(config_for("staging")[:otp_delivery]).to eq("log")
     end
 
@@ -114,7 +114,7 @@ RSpec.describe "Environment guarantees" do
       expect(config_for("production")[:otp_fixed_code]).to be_nil
     end
 
-    it "sends through MSG91" do
+    it "selects real delivery, which sends SMS through MSG91 and WhatsApp through Twilio" do
       expect(config_for("production")[:otp_delivery]).to eq("msg91")
     end
 
@@ -151,6 +151,26 @@ RSpec.describe "Environment guarantees" do
 
     it "does not inherit staging's open CORS" do
       expect(cors_origins_for("production")).not_to include("*")
+    end
+
+    it "sends mail through SES over SMTP and refuses to boot without those credentials" do
+      source = Rails.root.join("config/environments/production.rb").read
+
+      expect(source).to include("delivery_method = :smtp")
+      expect(source).to include("email-smtp.")
+      expect(source).to include('credentials.dig(:smtp, :user_name)')
+      expect(source).to include('credentials.dig(:smtp, :password)')
+      expect(source).to include("enable_starttls_auto: true")
+      expect(source).to match(/raise/)
+    end
+  end
+
+  describe "development" do
+    it "opens mail in the browser with Letter Opener" do
+      source = Rails.root.join("config/environments/development.rb").read
+
+      expect(source).to include("delivery_method = :letter_opener")
+      expect(Rails.root.join("Gemfile").read).to match(/gem "letter_opener"/)
     end
   end
 

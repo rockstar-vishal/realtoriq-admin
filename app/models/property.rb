@@ -4,6 +4,7 @@
 class Property < ApplicationRecord
   include FirmScoped
   include InventoryCode
+  include PortalListingCodes
   self.inventory_code_prefix = "H"
   self.inventory_code_index = "index_properties_on_code"
 

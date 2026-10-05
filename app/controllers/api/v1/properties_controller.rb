@@ -22,7 +22,7 @@ module Api
 
       include AttachesPhotos
 
-      before_action :set_property, only: %i[show update add_photos remove_photo visitors lead_matches mapped_customers]
+      before_action :set_property, only: %i[show update add_photos remove_photo visitors lead_matches mapped_customers portal_codes]
 
       def index
         @pagy, records = pagy(filtered_scope, limit: per_page)
@@ -112,6 +112,14 @@ module Api
         end
       end
 
+      def portal_codes
+        @property.assign_portal_codes(portal_code_params)
+        render json: { property: PropertySerializer.detail(@property.reload) }, status: :ok
+      rescue ActiveRecord::RecordNotUnique
+        render_error("invalid", "That portal code is already saved on another property.",
+          status: :unprocessable_content)
+      end
+
       private
 
       def preload_shared_buildings(records)
@@ -194,6 +202,10 @@ module Api
         params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :available_from, :description,
                       :confidential_note, :status, :listed_on_marketplace)
+      end
+
+      def portal_code_params
+        params.permit("99acres", "magicbricks", "housing").to_h
       end
     end
   end
