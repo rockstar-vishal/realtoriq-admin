@@ -146,7 +146,7 @@ RSpec.describe "Turbo marketplace events" do
       expect(Lead.find_by(mobile: "+919876543210").lead_followups).to be_present
       mail = ActionMailer::Base.deliveries.last
       expect(mail.to).to eq([ "broker@example.com" ])
-      expect(mail[:from].formatted).to eq([ "RealtorIQ by KGen <realtoriq-noreply@kgen.tech>" ])
+      expect(mail[:from].formatted).to eq([ "RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>" ])
       Current.firm = firm
       notice = broker.notifications.find_by(kind: "marketplace_enquiry")
       expect(notice.title).to eq("Marketplace enquiry on #{Lead.find_by(mobile: '+919876543210').code}")

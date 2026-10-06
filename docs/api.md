@@ -1068,7 +1068,7 @@ the same broker and project. A double tap returns the same token.
 enquiry on that link creates a sale lead for the broker, with lead source
 `Builder Microsite`. A live lead for the same mobile is not duplicated; its
 source is left as it was. The owner is emailed from
-`RealtorIQ by KGen <realtoriq-noreply@kgen.tech>` when they have an email, a
+`RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>` when they have an email, a
 follow-up is recorded, and the owner gets a `marketplace_enquiry` notification.
 A dead lead does not block a new one. The same `enquiry_id` again is `200` and
 does nothing else. `pushed_at` more than 10 minutes from now is `422` with
