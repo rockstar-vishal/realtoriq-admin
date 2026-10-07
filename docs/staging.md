@@ -240,6 +240,37 @@ bin/rails msg91:check
 
 Reports SMS (MSG91) and WhatsApp (Twilio) without sending anything.
 
+## Facebook Lead Ads
+
+Credentials live under `facebook` in the Rails credentials: `app_id`,
+`app_secret`, `configuration_id`, `verify_token`, `web_origin`, and optionally
+`access_token_kind` (`system_user` selects the system-user login; omit it for a
+user token). `web_origin` is the Next.js origin, with no trailing slash.
+`APP_HOST` is the Rails origin Meta calls. Locally that default is
+`http://localhost:3000`, so a real Facebook redirect needs `APP_HOST` pointed
+at Rails on port 3001.
+
+Meta's two URLs, both with no broker session:
+
+- `https://<APP_HOST>/facebook/callback`
+- `https://<APP_HOST>/facebook/webhook`
+
+Recurring jobs, staging and production only:
+
+| Job | Schedule |
+| --- | --- |
+| `Facebook::ImportSweeperJob` | every 5 minutes |
+| `Facebook::ImportFailureDigestJob` | every minute |
+| `Facebook::TokenHealthCheckJob` | 2am every Sunday, Asia/Kolkata |
+| `Facebook::CleanupJob` | 3am every day |
+
+Staging email uses `delivery_method = :test`, so the digest and reconnect
+emails do not leave the server. The in-app notices still appear.
+
+A Page connected on public staging can be read by anyone who knows a broker's
+mobile, because the sign-in code there is always `888888`. Do not connect a
+Page that receives real buyer leads until staging is no longer open.
+
 ## Going to production later
 
 Nothing to undo. Deploy the same code with `RAILS_ENV=production` and do **not**

@@ -21,6 +21,15 @@ module Realtoriq
     end
 
     def call
+      if lead.firm&.review_demo? || user.firm&.review_demo?
+        return Result.new(
+          ok?: false,
+          status: :forbidden,
+          error_code: "demo_account_restricted",
+          error_message: "Not available in the demo account."
+        )
+      end
+
       project = mapped_project
       return project if project.is_a?(Result)
 

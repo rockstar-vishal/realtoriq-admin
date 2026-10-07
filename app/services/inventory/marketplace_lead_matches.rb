@@ -15,6 +15,7 @@ module Inventory
     def call
       return [] unless property.listed_on_marketplace? && property.available?
       return [] if locality_id.blank?
+      return [] if Current.firm&.review_demo? || property.firm&.review_demo?
 
       candidates.filter_map { |lead| row(lead) if score_for(lead) > MatchInventory::MARKETPLACE_FLOOR }
         .sort_by { |row| row[:firm_name].to_s.downcase }
@@ -31,6 +32,7 @@ module Inventory
 
     def candidates
       scope = Lead.unscoped
+        .where(firm_id: Firm.marketplace_eligible.select(:id))
         .where.not(firm_id: property.firm_id)
         .where(transaction_type: property.listing_for)
         .joins(:lead_status)

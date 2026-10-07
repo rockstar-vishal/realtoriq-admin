@@ -95,10 +95,11 @@ module Inventory
 
     def shared_properties
       return [] if Current.firm_id.blank?
+      return [] if lead.firm&.review_demo? || Current.firm&.review_demo?
 
       records = Property.unscoped
         .where(listed_on_marketplace: true, status: "available", listing_for: lead.transaction_type)
-        .where.not(firm_id: Current.firm_id)
+        .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
         .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
         .where(buildings: { locality_id: locality_ids })
         .includes(:typology, :firm)

@@ -4,13 +4,16 @@
 # scope every query, so whatever sets it is effectively deciding which tenant's
 # data this request can see.
 #
-# It is set in exactly three places, all deliberate:
+# It is set in these places, all deliberate:
 #   - Api::V1::AuthenticatedController, from the verified JWT
 #   - Inbound::ReceiveLead, from the firm's inbound key (not from the body)
 #   - the admin panel, when a controller narrows to a single firm
+#   - TenantJob, from the firm id that was the job's first argument
+#   - Facebook::RouteLead and Facebook::CallbackController, from a row we stored
 #
-# Never set it from a request header, param or subdomain. The inbound key is
-# a credential, looked up by digest, and that lookup is what names the firm.
+# Never set it from a request header, param, subdomain, or a field Meta sends.
+# The inbound key is a credential, looked up by digest, and that lookup is
+# what names the firm. A Facebook page or form row names the firm the same way.
 class Current < ActiveSupport::CurrentAttributes
   attribute :firm, :user, :admin_user, :request_ip, :user_agent
 

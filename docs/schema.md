@@ -66,7 +66,7 @@ console session.
 
 | Table | Notes |
 | --- | --- |
-| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. Logo via Active Storage. |
+| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). Logo via Active Storage. |
 | `firm_bank_accounts` | Printed on invoices the broker raises. `account_number` is encrypted (deterministic, so duplicates are still detectable). Partial unique index enforces one primary per firm. |
 | `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. Disabled users still count toward `plans.max_users`. |
 | `user_managers` | Reporting graph, not a tree: `(user_id, manager_id)` with no cap on how many managers a person has. Superadmins are not stored here — they see the whole firm by default. Agents may be `manager_id`. Cycle-checked in the model; `User#manageables` walks the graph with a recursive CTE that carries a path array so a bad row cannot loop. |
@@ -91,6 +91,30 @@ console session.
 reports writable without hardcoding names in SQL), `property_types`.
 
 **Buildings are deliberately not here** — see Phase 2.
+
+### Facebook Lead Ads
+
+Statuses are strings with check constraints, like the rest of this app.
+`form_id`, `leadgen_id`, and `page_id` are unique across every firm. A firm
+holds a Page only while that row has a page token or `subscribed` is true.
+A stale row is deleted when another firm connects the Page, or when ops
+release it. Disconnect clears the token and the subscription, so the row
+is no longer a hold. At most one connection per firm has `status = 'active'`.
+
+| Table | Notes |
+| --- | --- |
+| `facebook_connections` | One Facebook login. `access_token` is encrypted. `token_kind`: user_access / system_access. `status`: active / invalid / disconnected. Disconnect keeps the row and clears the token. |
+| `facebook_pages` | A Page granted to this firm. `page_id` is unique across firms. Held only with a page token or `subscribed`. `page_access_token` is encrypted. `status`: active / unsubscribed / error. New pages start unsubscribed. |
+| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. |
+| `facebook_lead_imports` | One `leadgen_id` in the whole database. `status`: pending / processing / created / failed / dead / duplicate. `raw_payload` and `fetched_payload` are jsonb. |
+| `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. |
+| `facebook_import_alert_states` | One row per firm. Clocks for the failure digest and the duplicate notice. |
+
+Deleting a firm deletes these rows before its users. Deleting the user who
+connected Facebook cascades to the connection, its pages, forms and imports.
+A lead, project, property, assignee or lead source that is removed nullifies
+the foreign key. Disconnect does not delete the connection, so the page setup
+stays.
 
 ---
 

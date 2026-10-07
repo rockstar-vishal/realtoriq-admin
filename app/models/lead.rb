@@ -47,8 +47,10 @@ class Lead < ApplicationRecord
   # they have no dependents and no callbacks worth running.
   has_many :lead_status_changes, -> { unscope(where: :firm_id) }, dependent: :delete_all
 
+  MOBILE_FORMAT = /\A\+\d{10,15}\z/
+
   validates :mobile, presence: true, format: {
-    with: /\A\+\d{10,15}\z/,
+    with: MOBILE_FORMAT,
     message: "must be in international format, e.g. +919820144210"
   }
   validates :email, allow_blank: true, format: { with: URI::MailTo::EMAIL_REGEXP }

@@ -72,9 +72,9 @@ module Api
       # Another firm's view of a shared listing. The owning firm uses #show.
       def marketplace
         property = Property.unscoped.includes(:typology, :firm).find_by(id: params[:id])
-        unless property&.listed_on_marketplace? && property.available? && property.firm_id != current_firm.id
-          return render_error("not_found", "Property not found", status: :not_found)
-        end
+        visible = property&.listed_on_marketplace? && property.available? && property.firm_id != current_firm.id
+        visible &&= !current_firm.review_demo? && !property.firm.review_demo?
+        return render_error("not_found", "Property not found", status: :not_found) unless visible
 
         render json: { property: PropertySerializer.marketplace(property) }, status: :ok
       end

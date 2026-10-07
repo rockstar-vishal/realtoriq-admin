@@ -21,6 +21,10 @@ second copy of the file. A copied collection drifts, and it drifts silently.
 bin/rails db:seed && bin/rails demo:seed && bin/dev
 ```
 
+`bin/rails review_demo:setup` creates the one Meta review firm. It is safe in
+production. `bin/rails review_demo:reset` clears that firm's leads and Facebook
+pages between review rounds. See [docs/review_demo.md](../review_demo.md).
+
 `demo:seed` creates the firm the collection signs into, with three users:
 
 | Role | Mobile |
