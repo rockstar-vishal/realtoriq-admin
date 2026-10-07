@@ -10,12 +10,12 @@ module Inventory
 
     def scope
       return Property.unscoped.none if Current.firm_id.blank?
+      return Property.unscoped.none if Current.firm&.review_demo?
 
       relation = Property.unscoped
         .where(listed_on_marketplace: true, status: "available")
-        .where.not(firm_id: Current.firm_id)
+        .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
         .joins("INNER JOIN firms ON firms.id = properties.firm_id")
-        .where(firms: { status: "active" })
         .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
         .joins("INNER JOIN localities ON localities.id = buildings.locality_id")
         .joins("INNER JOIN cities ON cities.id = buildings.city_id")

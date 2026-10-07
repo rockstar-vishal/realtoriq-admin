@@ -46,9 +46,9 @@ module FirmScoped
     # path — console sessions and future code included.
     #
     # A marketplace project has no firm. Pass allow_marketplace: true only on
-    # a lead mapping, a visit, or a visit pass. Those link the shared row.
-    # A booking does not: it stores the firm's copy. Another firm's own
-    # project is still refused.
+    # a lead mapping, a visit, a visit pass, or a Facebook form's listing.
+    # Those link the shared row. A booking does not: it stores the firm's
+    # copy. Another firm's own project is still refused.
     def belongs_to_same_firm(*names, allow_marketplace: false)
       names.each do |name|
         validate do

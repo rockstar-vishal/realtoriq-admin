@@ -1,0 +1,13 @@
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <%= @count %> Facebook <%= "lead".pluralize(@count) %> could not be imported.
+</p>
+
+<ul style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <% @reasons.each do |reason| %>
+    <li><%= reason[:count] %> — <%= reason[:message] %></li>
+  <% end %>
+</ul>
+
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <a href="<%= @settings_url %>">Open Connect Facebook</a>
+</p>

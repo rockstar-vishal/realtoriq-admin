@@ -17,6 +17,10 @@ module Api
       end
 
       def create
+        if current_firm.review_demo?
+          return render_error("demo_account_restricted", "Not available in the demo account.", status: :forbidden)
+        end
+
         result = ::Users::Create.new(
           firm: current_firm,
           actor: current_user,
@@ -29,6 +33,10 @@ module Api
       end
 
       def update
+        if current_firm.review_demo? && mobile_change_requested?
+          return render_error("demo_account_restricted", "Not available in the demo account.", status: :forbidden)
+        end
+
         result = ::Users::Update.new(
           user: @user,
           actor: current_user,
@@ -57,6 +65,12 @@ module Api
 
       def user_params
         params.permit(:name, :mobile, :email, :rera_number, :notification_mode)
+      end
+
+      def mobile_change_requested?
+        return false unless params.key?(:mobile)
+
+        Phone.normalise(params[:mobile]) != @user.mobile
       end
 
       def render_user_result(result, status:)

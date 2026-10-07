@@ -19,6 +19,7 @@ observed against a live server; nothing is aspirational.
 - [Notifications](#notifications)
 - [Trainings](#trainings)
 - [Inbound enquiries](#inbound-enquiries)
+- [Facebook Lead Ads](#facebook-lead-ads)
 - [Error codes](#error-codes)
 - [Traps worth knowing](#traps-worth-knowing)
 
@@ -1772,6 +1773,53 @@ store the token.
 
 ---
 
+## Facebook Lead Ads
+
+Super admin only. Every other role is `403 forbidden_role`. Another firm's
+page, form or import id is `404 not_found`. Responses never include
+`access_token`, `page_access_token`, or an OAuth attempt's result.
+
+Meta calls two routes **outside** `/api/v1`, with no broker JWT:
+
+| Method | Path | |
+| --- | --- | --- |
+| GET | `/facebook/webhook` | `hub.mode=subscribe` and the verify token → plain-text `hub.challenge`. Otherwise 403 |
+| POST | `/facebook/webhook` | `X-Hub-Signature-256` must be `sha256=` plus HMAC-SHA256 of the raw body. 401 if it does not match, 413 if the body is over 1 MB, 400 if it is not JSON. 200 when every lead was stored or dropped on purpose. 500 only when a database write failed, so Meta retries |
+| GET | `/facebook/callback` | Facebook's redirect. It only sends the browser to `web_origin/settings/facebook` |
+
+The broker app uses:
+
+| Method | Path | |
+| --- | --- | --- |
+| GET | `/facebook/integration` | `configured`, `system_user_login`, the newest connection that is `active` or `invalid`, its pages with form listings, import counters. A disconnected firm has `connection: null` |
+| POST | `/facebook/connect` | `{ nonce }` at least 32 characters. Returns `authorization_url` |
+| POST | `/facebook/connections` | `{ attempt_id, nonce }`. Stores the connection. `warnings[]` has `kind`, `page_id` and `page_name`. `page_taken` means that Page is held by another firm and was skipped. `subscription_refresh` means the lead subscription could not be refreshed. `page_taken` is a 422 only when every granted Page is held |
+| DELETE | `/facebook/connection` | Stops delivery for the newest `active` or `invalid` connection. Pages, forms and past imports stay. Tokens are cleared, so the Pages are no longer held |
+| POST | `/facebook/connection/health_check` | `{ ok, connection }` for that same connection |
+| POST | `/facebook/pages/:id/subscribe` | Subscribes the Page to lead ads |
+| DELETE | `/facebook/pages/:id/subscribe` | Unsubscribes it at Meta, then here |
+| POST | `/facebook/pages/:id/sync_forms` | Counts: `mapped`, `available` |
+| POST | `/facebook/pages/:id/forms` | `{ meta_form_id }`. 422 `already_mapped` if another firm owns it |
+| GET | `/facebook/forms/:id` | Questions, mappings, listing, sample lead. `ui_field_mappings` is what the editor shows, including suggestions |
+| PATCH | `/facebook/forms/:id` | 422 `invalid_form` with an active form and no listing, an unusable listing, mappings that skip Name or Mobile, or a newly chosen lead source that is turned off |
+| GET | `/facebook/imports?page=` | 20 per page, newest first |
+| POST | `/facebook/imports/:id/retry` | Failed or dead only. Resets the retry count and queues the lead |
+| POST | `/facebook/imports/retry_failed` | The same for every failed or dead import. `{ retried }` |
+
+A lead's mobile is any number the lead form already accepts: `+` and 10 to 15
+digits. A missing or malformed mobile is a dead import. A 10-digit number with
+no country code is stored as India (`+91`).
+
+Connect error codes, all 422 unless noted: `invalid_request`, `not_configured`,
+`expired`, `not_yours`, `wrong_browser`, `already_used`, `denied`,
+`exchange_failed`, `short_lived_token`, `no_pages`, `missing_subscribed_pages`
+(`details.pages` is the page names), `page_taken` (`details.pages` is the page
+names; returned only when every granted Page is held, and the current
+connection is left as it was), `already_connected`, `already_mapped`,
+`invalid_form`, `facebook_error`, `not_retryable`.
+
+---
+
 ## Error codes
 
 Switch on `code`. The `message` is for humans and may be reworded.
@@ -1790,6 +1838,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `account_disabled` | 403 | This user |
 | `subscription_lapsed` | **402** | Billing wall, not an auth wall |
 | `forbidden_role` | 403 | The role may not do this |
+| `demo_account_restricted` | 403 | Not available in the demo account. The Meta review firm cannot send contact-channel codes, add users, change a mobile, or create a LaunchIQ visit pass |
 
 ### Requests
 
@@ -1845,6 +1894,26 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `push_not_configured` | 503 | VAPID keys are missing from credentials |
 | `push_rejected` | 422 | The push service refused, or the subscription was already gone |
 | `push_key_mismatch` | 422 | The VAPID key does not match the key the browser subscribed with. The subscription is kept |
+
+### Facebook Lead Ads
+
+| Code | Status | |
+| --- | --- | --- |
+| `not_configured` | 422 | The server has no Facebook app credentials |
+| `expired` | 422 | The Facebook login expired, or the return link was bad |
+| `not_yours` / `wrong_browser` | 422 | Started in another browser or by another user. The attempt is voided |
+| `already_used` | 422 | That login was already turned into a connection |
+| `denied` | 422 | The person cancelled or Facebook refused |
+| `exchange_failed` | 422 | The code could not be exchanged |
+| `short_lived_token` | 422 | The Meta configuration returned a token that expires in under a day |
+| `no_pages` | 422 | Facebook shared no Pages. The current connection is left as it was |
+| `missing_subscribed_pages` | 422 | A subscribed Page was not in the new grant. `details.pages` |
+| `page_taken` | 422 | Every Page in the login is already held by another firm. `details.pages`. A login that also includes a free Page connects that Page and lists the rest under `warnings` with `kind: page_taken` |
+| `already_connected` | 422 | Another connect finished first |
+| `already_mapped` | 422 | That form belongs to another firm |
+| `invalid_form` | 422 | An active form with no listing, an unusable listing, mappings without Name and Mobile, or a newly chosen lead source that is turned off |
+| `facebook_error` | 422 | Meta refused a subscribe, unsubscribe or form sync |
+| `not_retryable` | 422 | That import is not failed or dead |
 
 ---
 

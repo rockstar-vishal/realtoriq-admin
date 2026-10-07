@@ -15,6 +15,10 @@ module Verifications
     end
 
     def call
+      if channel.firm&.review_demo?
+        return failure("Not available in the demo account.")
+      end
+
       return failure("Wait a moment before sending another code.") if channel.resend_throttled?
       return failure("This channel is already verified.") if channel.verified?
 

@@ -22,6 +22,9 @@
     <div class="flex items-center gap-2 mt-2">
       <span class="text-[13px] text-[var(--color-neutral-700)]"><%= @firm.code %></span>
       <%= firm_status_tag(@firm) %>
+      <% if @firm.review_demo? %>
+        <span class="tag tag-solid">Review demo</span>
+      <% end %>
       <% if (subscription = @firm.current_subscription) %>
         <span class="tag <%= subscription.entitled? ? "tag-neutral" : "tag-solid" %>">
           <%= subscription.plan.name %><%= " · lapsed" unless subscription.entitled? %>

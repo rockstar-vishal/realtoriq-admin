@@ -10,8 +10,9 @@ module Inventory
 
     def call
       return [] unless property.listed_on_marketplace? && property.available?
+      return [] if Current.firm&.review_demo? || property.firm&.review_demo?
 
-      firms = Firm.where(id: firm_ids).order(:name).to_a
+      firms = Firm.marketplace_eligible.where(id: firm_ids).order(:name).to_a
       channels = ContactChannel.unscoped.where(firm_id: firms.map(&:id)).group_by(&:firm_id)
       firms.map { |firm| payload(firm, channels[firm.id] || []) }
     end
@@ -25,7 +26,11 @@ module Inventory
     end
 
     def mapped_firm_ids
-      LeadProperty.unscoped.where(property_id: property.id).where.not(firm_id: property.firm_id).distinct.pluck(:firm_id)
+      LeadProperty.unscoped
+        .where(property_id: property.id, firm_id: Firm.marketplace_eligible.select(:id))
+        .where.not(firm_id: property.firm_id)
+        .distinct
+        .pluck(:firm_id)
     end
 
     def score_firm_ids
@@ -34,6 +39,7 @@ module Inventory
 
     def candidates
       scope = Lead.unscoped
+        .where(firm_id: Firm.marketplace_eligible.select(:id))
         .where.not(firm_id: property.firm_id)
         .where(transaction_type: property.listing_for)
         .joins(:lead_status)

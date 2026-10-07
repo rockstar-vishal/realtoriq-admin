@@ -31,6 +31,9 @@ gem "csv"
 # JWT access/refresh tokens for the broker API
 gem "jwt", "~> 2.9"
 
+# Facebook Lead Ads. The Graph version is pinned in config/initializers/koala.rb.
+gem "koala", "~> 3.7"
+
 # Browser push (VAPID). The inbox stays in Postgres; this only delivers a payload
 # to the subscription endpoint the browser already handed us.
 gem "web-push", "~> 3.0"

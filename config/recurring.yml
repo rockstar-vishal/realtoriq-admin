@@ -13,6 +13,18 @@ staging:
   dispatch_due_followups:
     class: Notifications::DispatchDueFollowupsJob
     schedule: every minute
+  facebook_import_sweeper:
+    class: Facebook::ImportSweeperJob
+    schedule: every 5 minutes
+  facebook_import_failure_digest:
+    class: Facebook::ImportFailureDigestJob
+    schedule: every minute
+  facebook_token_health_check:
+    class: Facebook::TokenHealthCheckJob
+    schedule: at 2am every Sunday
+  facebook_cleanup:
+    class: Facebook::CleanupJob
+    schedule: at 3am every day
 
 production:
   clear_solid_queue_finished_jobs:
@@ -21,3 +33,15 @@ production:
   dispatch_due_followups:
     class: Notifications::DispatchDueFollowupsJob
     schedule: every minute
+  facebook_import_sweeper:
+    class: Facebook::ImportSweeperJob
+    schedule: every 5 minutes
+  facebook_import_failure_digest:
+    class: Facebook::ImportFailureDigestJob
+    schedule: every minute
+  facebook_token_health_check:
+    class: Facebook::TokenHealthCheckJob
+    schedule: at 2am every Sunday
+  facebook_cleanup:
+    class: Facebook::CleanupJob
+    schedule: at 3am every day

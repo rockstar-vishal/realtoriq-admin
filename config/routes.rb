@@ -7,6 +7,11 @@ Rails.application.routes.draw do
   # realtoriq.webhook_url on the turbo side.
   post "turbo/events", to: "turbo/events#create"
 
+  # Meta calls these. No broker JWT. The callback only redirects to web_origin.
+  get "facebook/callback", to: "facebook/callback#show", as: :facebook_callback
+  get "facebook/webhook", to: "facebook/webhooks#verify"
+  post "facebook/webhook", to: "facebook/webhooks#receive"
+
   # Active Storage mounts its own direct-upload endpoint. It sits outside our
   # JWT auth and enforces none of the per-purpose size or type rules, so anyone
   # able to fetch a CSRF token could mint upload tickets against our storage.
@@ -35,6 +40,10 @@ Rails.application.routes.draw do
       end
 
       scope module: :firms do
+        resources :facebook_pages, only: [] do
+          member { delete :release }
+        end
+
         resources :contact_channels, only: %i[update] do
           member do
             post :send_code
@@ -94,6 +103,23 @@ Rails.application.routes.draw do
       post "inbound/:channel/properties", to: "inbound_leads#create", defaults: { kind: "properties" }
       get "inbound_credentials", to: "inbound_credentials#show"
       post "inbound_credentials/rotate", to: "inbound_credentials#rotate"
+
+      namespace :facebook do
+        get "integration", to: "integration#show"
+        post "connect", to: "connect#create"
+        post "connections", to: "connections#create"
+        delete "connection", to: "connection#destroy"
+        post "connection/health_check", to: "connection#health_check"
+        post "pages/:id/subscribe", to: "pages#subscribe"
+        delete "pages/:id/subscribe", to: "pages#unsubscribe"
+        post "pages/:id/sync_forms", to: "pages#sync_forms"
+        post "pages/:id/forms", to: "forms#create"
+        get "forms/:id", to: "forms#show"
+        patch "forms/:id", to: "forms#update"
+        get "imports", to: "imports#index"
+        post "imports/retry_failed", to: "imports#retry_failed"
+        post "imports/:id/retry", to: "imports#retry"
+      end
 
       resources :notifications, only: %i[index] do
         collection do

@@ -12,6 +12,18 @@ class Firm < ApplicationRecord
   belongs_to :city, optional: true
   belongs_to :locality, optional: true
 
+  # Facebook rows before users. The connecting user and the attempt's user are
+  # ON DELETE CASCADE, so destroying a user first would delete the connection
+  # out from under its pages. delete_all skips callbacks; declaration order is
+  # what keeps the foreign keys happy. Imports and forms go before the pages
+  # and connections they point at.
+  has_many :facebook_lead_imports, dependent: :delete_all
+  has_many :facebook_lead_forms, dependent: :delete_all
+  has_many :facebook_pages, dependent: :delete_all
+  has_many :facebook_connections, dependent: :delete_all
+  has_many :facebook_oauth_attempts, dependent: :delete_all
+  has_many :facebook_import_alert_states, dependent: :delete_all
+
   # Join rows first: a user destroy would otherwise hit RESTRICT on this table
   # if the association order ran the other way.
   has_many :user_managers, dependent: :destroy
@@ -61,6 +73,10 @@ class Firm < ApplicationRecord
   before_validation :normalise_identifiers
   before_validation :assign_slug, on: :create
   before_validation :assign_code, on: :create
+
+  # Other firms' marketplace. The review demo firm is public, so it is neither
+  # a source nor a viewer. Active firms only — a suspended firm is already out.
+  scope :marketplace_eligible, -> { active.where(review_demo: false) }
 
   # An EXISTS subquery rather than a join onto :users. A join would inherit
   # User's FirmScoped default scope and match nothing whenever the caller

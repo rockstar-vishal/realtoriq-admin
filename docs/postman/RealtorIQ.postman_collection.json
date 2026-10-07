@@ -5083,6 +5083,91 @@
           }
         }
       ]
+    },
+    {
+      "name": "Facebook Lead Ads",
+      "description": "Super admin only. Tokens are never in the responses. Connect starts in the browser: POST /connect, open authorization_url, then POST /connections with the same nonce.",
+      "item": [
+        {
+          "name": "Integration",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/facebook/integration"
+          }
+        },
+        {
+          "name": "Start connect",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/connect",
+            "body": { "mode": "raw", "raw": "{\n  \"nonce\": \"0123456789abcdef0123456789abcdef\"\n}" }
+          }
+        },
+        {
+          "name": "Confirm connect",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/connections",
+            "body": { "mode": "raw", "raw": "{\n  \"attempt_id\": \"{{facebook_attempt_id}}\",\n  \"nonce\": \"0123456789abcdef0123456789abcdef\"\n}" }
+          }
+        },
+        {
+          "name": "Health check",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/connection/health_check" }
+        },
+        {
+          "name": "Disconnect",
+          "request": { "method": "DELETE", "url": "{{api_base}}/facebook/connection" }
+        },
+        {
+          "name": "Subscribe page",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/subscribe" }
+        },
+        {
+          "name": "Unsubscribe page",
+          "request": { "method": "DELETE", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/subscribe" }
+        },
+        {
+          "name": "Sync forms",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/sync_forms" }
+        },
+        {
+          "name": "Map form",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/forms",
+            "body": { "mode": "raw", "raw": "{\n  \"meta_form_id\": \"123\"\n}" }
+          }
+        },
+        {
+          "name": "Get form",
+          "request": { "method": "GET", "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}" }
+        },
+        {
+          "name": "Update form",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
+            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Imports",
+          "request": { "method": "GET", "url": "{{api_base}}/facebook/imports?page=1" }
+        },
+        {
+          "name": "Retry import",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/imports/{{facebook_import_id}}/retry" }
+        },
+        {
+          "name": "Retry all failed",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/imports/retry_failed" }
+        }
+      ]
     }
   ]
 }

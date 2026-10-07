@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_07_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -242,6 +242,129 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
     t.check_constraint "verification_state::text = ANY (ARRAY['unverified'::character varying::text, 'pending'::character varying::text, 'verified'::character varying::text, 'failed'::character varying::text])", name: "contact_channels_verification_state_check"
   end
 
+  create_table "facebook_connections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "connected_by_user_id", null: false
+    t.string "fb_user_id", null: false
+    t.string "fb_user_name"
+    t.string "token_kind", default: "user_access", null: false
+    t.string "client_business_id"
+    t.text "access_token"
+    t.datetime "token_expires_at"
+    t.datetime "token_obtained_at"
+    t.datetime "last_health_check_at"
+    t.string "status", default: "active", null: false
+    t.string "error_code"
+    t.jsonb "error_details", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["connected_by_user_id"], name: "index_facebook_connections_on_connected_by_user_id"
+    t.index ["firm_id", "status"], name: "index_facebook_connections_on_firm_id_and_status"
+    t.index ["firm_id"], name: "index_facebook_connections_on_firm_id"
+    t.index ["firm_id"], name: "index_facebook_connections_one_active_per_firm", unique: true, where: "((status)::text = 'active'::text)"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'invalid'::character varying, 'disconnected'::character varying]::text[])", name: "facebook_connections_status_check"
+    t.check_constraint "token_kind::text = ANY (ARRAY['user_access'::character varying, 'system_access'::character varying]::text[])", name: "facebook_connections_token_kind_check"
+  end
+
+  create_table "facebook_import_alert_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.datetime "last_failure_emailed_at"
+    t.datetime "last_duplicate_notified_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_facebook_import_alert_states_on_firm_id", unique: true
+  end
+
+  create_table "facebook_lead_forms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_page_id", null: false
+    t.string "form_id", null: false
+    t.string "form_name", null: false
+    t.string "meta_status"
+    t.boolean "active", default: true, null: false
+    t.jsonb "questions", default: [], null: false
+    t.jsonb "field_mappings", default: {}, null: false
+    t.uuid "project_id"
+    t.uuid "property_id"
+    t.uuid "assigned_user_id"
+    t.uuid "lead_source_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_user_id"], name: "index_facebook_lead_forms_on_assigned_user_id"
+    t.index ["facebook_page_id"], name: "index_facebook_lead_forms_on_facebook_page_id"
+    t.index ["firm_id"], name: "index_facebook_lead_forms_on_firm_id"
+    t.index ["form_id"], name: "index_facebook_lead_forms_on_form_id", unique: true
+    t.index ["lead_source_id"], name: "index_facebook_lead_forms_on_lead_source_id"
+    t.index ["project_id"], name: "index_facebook_lead_forms_on_project_id"
+    t.index ["property_id"], name: "index_facebook_lead_forms_on_property_id"
+    t.check_constraint "project_id IS NULL OR property_id IS NULL", name: "facebook_lead_forms_one_listing"
+  end
+
+  create_table "facebook_lead_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_page_id", null: false
+    t.uuid "facebook_lead_form_id"
+    t.uuid "lead_id"
+    t.string "leadgen_id", null: false
+    t.string "status", default: "pending", null: false
+    t.jsonb "raw_payload", default: {}, null: false
+    t.jsonb "fetched_payload", default: {}, null: false
+    t.text "error_message"
+    t.jsonb "error_details", default: {}, null: false
+    t.integer "retry_count", default: 0, null: false
+    t.datetime "next_attempt_at"
+    t.datetime "processing_started_at"
+    t.datetime "processed_at"
+    t.datetime "failure_alert_pending_at"
+    t.datetime "failure_alerted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["facebook_lead_form_id"], name: "index_facebook_lead_imports_on_facebook_lead_form_id"
+    t.index ["facebook_page_id"], name: "index_facebook_lead_imports_on_facebook_page_id"
+    t.index ["failure_alert_pending_at"], name: "index_facebook_lead_imports_on_failure_alert_pending", where: "(failure_alert_pending_at IS NOT NULL)"
+    t.index ["firm_id", "created_at"], name: "index_facebook_lead_imports_on_firm_id_and_created_at"
+    t.index ["firm_id", "status"], name: "index_facebook_lead_imports_on_firm_id_and_status"
+    t.index ["firm_id"], name: "index_facebook_lead_imports_on_firm_id"
+    t.index ["lead_id"], name: "index_facebook_lead_imports_on_lead_id"
+    t.index ["leadgen_id"], name: "index_facebook_lead_imports_on_leadgen_id", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'created'::character varying, 'failed'::character varying, 'dead'::character varying, 'duplicate'::character varying]::text[])", name: "facebook_lead_imports_status_check"
+  end
+
+  create_table "facebook_oauth_attempts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.string "nonce_digest", null: false
+    t.string "status", default: "started", null: false
+    t.text "result"
+    t.string "error_code"
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_facebook_oauth_attempts_on_firm_id"
+    t.index ["user_id"], name: "index_facebook_oauth_attempts_on_user_id"
+    t.check_constraint "status::text = ANY (ARRAY['started'::character varying, 'completed'::character varying, 'failed'::character varying, 'consumed'::character varying]::text[])", name: "facebook_oauth_attempts_status_check"
+  end
+
+  create_table "facebook_pages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_connection_id", null: false
+    t.string "page_id", null: false
+    t.string "page_name", null: false
+    t.text "page_access_token"
+    t.boolean "subscribed", default: false, null: false
+    t.datetime "subscribed_at"
+    t.string "status", default: "unsubscribed", null: false
+    t.string "status_message"
+    t.jsonb "form_catalog", default: [], null: false
+    t.datetime "forms_synced_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["facebook_connection_id"], name: "index_facebook_pages_on_facebook_connection_id"
+    t.index ["firm_id"], name: "index_facebook_pages_on_firm_id"
+    t.index ["page_id"], name: "index_facebook_pages_on_page_id", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'unsubscribed'::character varying, 'error'::character varying]::text[])", name: "facebook_pages_status_check"
+  end
+
   create_table "firm_bank_accounts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.string "account_number", null: false
@@ -280,9 +403,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
     t.text "suspension_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "review_demo", default: false, null: false
     t.index ["city_id"], name: "index_firms_on_city_id"
     t.index ["code"], name: "index_firms_on_code", unique: true
     t.index ["locality_id"], name: "index_firms_on_locality_id"
+    t.index ["review_demo"], name: "index_firms_one_review_demo", unique: true, where: "review_demo"
     t.index ["slug"], name: "index_firms_on_slug", unique: true
     t.index ["status"], name: "index_firms_on_status"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'active'::character varying::text, 'suspended'::character varying::text, 'churned'::character varying::text])", name: "firms_status_check"
@@ -613,7 +738,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
     t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying]::text[])", name: "notifications_kind_check"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying]::text[])", name: "notifications_kind_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -929,6 +1054,23 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_05_160000) do
   add_foreign_key "collections", "invoices"
   add_foreign_key "contact_channels", "firms"
   add_foreign_key "contact_channels", "users", column: "verified_by_user_id"
+  add_foreign_key "facebook_connections", "firms"
+  add_foreign_key "facebook_connections", "users", column: "connected_by_user_id", on_delete: :cascade
+  add_foreign_key "facebook_import_alert_states", "firms"
+  add_foreign_key "facebook_lead_forms", "facebook_pages", on_delete: :cascade
+  add_foreign_key "facebook_lead_forms", "firms"
+  add_foreign_key "facebook_lead_forms", "lead_sources", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "projects", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "properties", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "users", column: "assigned_user_id", on_delete: :nullify
+  add_foreign_key "facebook_lead_imports", "facebook_lead_forms", on_delete: :nullify
+  add_foreign_key "facebook_lead_imports", "facebook_pages", on_delete: :cascade
+  add_foreign_key "facebook_lead_imports", "firms"
+  add_foreign_key "facebook_lead_imports", "leads", on_delete: :nullify
+  add_foreign_key "facebook_oauth_attempts", "firms", on_delete: :cascade
+  add_foreign_key "facebook_oauth_attempts", "users", on_delete: :cascade
+  add_foreign_key "facebook_pages", "facebook_connections", on_delete: :cascade
+  add_foreign_key "facebook_pages", "firms"
   add_foreign_key "firm_bank_accounts", "firms"
   add_foreign_key "firms", "cities"
   add_foreign_key "firms", "localities"
