@@ -51,6 +51,7 @@ module Admin
       Current.request_ip = request.remote_ip
       Current.user_agent = request.user_agent
       current_admin_session&.touch_seen!
+      Sentry.set_user(id: current_admin.id) if current_admin
     end
   end
 end

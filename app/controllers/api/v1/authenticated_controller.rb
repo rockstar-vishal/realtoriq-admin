@@ -38,6 +38,8 @@ module Api
         Current.firm = user.firm
         Current.user = user
         session.touch_used!
+        Sentry.set_user(id: user.id)
+        Sentry.set_tags(firm_id: user.firm_id)
       end
 
       # Blocked states from the design, as codes the app can switch on.
