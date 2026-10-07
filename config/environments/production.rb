@@ -35,7 +35,7 @@ Rails.application.configure do
     raise <<~ABORT
       Refusing to boot: Active Storage is set to :amazon but AWS_BUCKET is unset.
 
-      Set AWS_BUCKET, and AWS_REGION if the bucket is not in ap-south-1.
+      Set AWS_BUCKET in config/application.yml, and AWS_REGION if the bucket is not in ap-south-1.
       Credentials are optional — omit them on EC2/ECS and the instance role is
       used, which is preferable since there is then no long-lived secret.
 

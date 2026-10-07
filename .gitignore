@@ -43,6 +43,9 @@ tmp/*
 config/database.yml
 Gemfile.lock
 
+# Figaro. Per machine, like database.yml. config/application.yml.sample is the template.
+config/application.yml
+
 # Working notes, not codebase documentation. Dated write-ups that go stale, and
 # the audit report lists findings that are not fixed yet — neither belongs in a
 # repo that gets pushed. Kept on disk, shared by hand.

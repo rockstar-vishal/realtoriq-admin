@@ -11,8 +11,8 @@ local:
 # Keys are optional on purpose. Set them for a machine outside AWS; leave them
 # unset on EC2 or ECS and the SDK picks up the instance role, which is the
 # better arrangement because there is then no long-lived secret to leak or
-# rotate. Bucket and region come from the environment so one image can serve
-# more than one deployment.
+# rotate. The bucket and region come from ENV, loaded by Figaro from
+# config/application.yml. The bucket is never read from Rails credentials.
 #
 # ap-south-1 (Mumbai) is the default: this is an India-only product, so it is
 # both the nearest region and the one that keeps customer data in-country.

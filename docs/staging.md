@@ -9,7 +9,7 @@ environment can be exercised without reaching a real broker or a real rupee:
 | Delivery | Written to the log. MSG91 and Twilio are never called | MSG91 (SMS) + Twilio (WhatsApp) + Action Mailer |
 | OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
 | Email | `delivery_method = :test` — nothing leaves | SES over SMTP |
-| CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
+| CORS | **Any origin** | Explicit `CORS_ORIGINS` list in `config/application.yml` |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
 | Logs | **`log/staging.log` and stdout** | stdout only |
 
@@ -66,14 +66,18 @@ and gets a 401 — it gains nothing it could not already do with `curl`.
 admin panel's cookie session is never reachable cross-origin.
 
 To close it down again — a shared staging box, or one that outlives its
-audience — name the origins:
+audience — name the origins in `config/application.yml`. Figaro loads that
+file into `ENV` before boot. A variable already set in the process environment
+is left alone.
 
-```bash
-export CORS_ORIGINS=https://app.realtoriq.com,http://localhost:5173
+```yaml
+staging:
+  CORS_ORIGINS: "https://app.realtoriq.com,http://localhost:3000"
 ```
 
 An explicit list always wins over the wildcard. Production has no wildcard
-default; setting one there works but logs a warning at boot.
+default; setting one there works but logs a warning at boot. `AWS_BUCKET`
+lives in the same file, under `production:`. Staging never reads it.
 
 ## Setup
 
@@ -96,7 +100,7 @@ Optional, with sensible defaults:
 | --- | --- | --- |
 | `APP_HOST` | `http://localhost:3000` | Public origin. **Set this** — file URLs are absolute |
 | `ALLOWED_HOSTS` | unset (any) | Comma-separated, e.g. `staging.realtoriq.in` |
-| `CORS_ORIGINS` | **`*`** on staging | Set a comma-separated list to close it down again |
+| `CORS_ORIGINS` | **`*`** on staging | Set in `config/application.yml` to close it down again |
 | `DATABASE_HOST` | unset | **Leave unset** for a local Postgres — see below |
 | `DATABASE_USERNAME` | unset | Only for a remote database |
 | `KGEN_REALTORIQ_ADMIN_DATABASE_PASSWORD` | unset | Only for a remote database |
