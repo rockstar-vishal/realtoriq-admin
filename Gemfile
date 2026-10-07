@@ -41,6 +41,10 @@ gem "web-push", "~> 3.0"
 # Cross-origin requests from the React broker app
 gem "rack-cors"
 
+# Loads config/application.yml into ENV before the environment files run.
+# CORS_ORIGINS and AWS_BUCKET are read from there. Secrets stay in credentials.
+gem "figaro", "~> 1.3"
+
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 

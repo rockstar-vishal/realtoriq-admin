@@ -21,6 +21,8 @@
 # while curl (no Origin) keeps working.
 DEFAULT_CORS_ORIGINS = %w[http://localhost:3000 http://127.0.0.1:3000].freeze
 
+# Figaro loads config/application.yml into ENV before this file runs.
+# A value already in the process environment is left as it is.
 cors_origins = ENV["CORS_ORIGINS"].to_s.split(",").map(&:strip).compact_blank
 cors_origins = (Rails.env.staging? ? [ "*" ] : DEFAULT_CORS_ORIGINS.dup) if cors_origins.empty?
 

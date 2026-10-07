@@ -1,0 +1,15 @@
+# Copy to config/application.yml. That file is gitignored and read by Figaro
+# into ENV before the environment files run.
+#
+# CORS_ORIGINS and AWS_BUCKET are read from ENV only. They are not in Rails
+# credentials. A variable already set in the process environment is left alone.
+#
+# Leave staging out and it keeps answering any origin. Add a staging: entry
+# only to close that down. See docs/staging.md.
+
+development:
+  CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+
+production:
+  CORS_ORIGINS: "https://your-frontend-origin"
+  AWS_BUCKET: "your-bucket-name"
