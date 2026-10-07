@@ -22,14 +22,16 @@ module Verifications
       return failure("Wait a moment before sending another code.") if channel.resend_throttled?
       return failure("This channel is already verified.") if channel.verified?
 
+      field_demo = channel.firm&.field_demo?
       _record, plaintext = OneTimeCode.issue!(
         purpose: "verify_#{channel.kind}",
         destination: channel.value,
         contact_channel: channel,
-        ip: @ip
+        ip: @ip,
+        code: (Auth::FieldDemo::CODE if field_demo)
       )
 
-      deliver(plaintext)
+      deliver(plaintext) unless field_demo
 
       channel.update!(verification_state: :pending, last_code_sent_at: Time.current)
 

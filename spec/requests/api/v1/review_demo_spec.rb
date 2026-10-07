@@ -364,6 +364,6 @@ RSpec.describe "Meta review demo account" do
   end
 
   it "cannot be set through the admin firm form" do
-    expect(Admin::FirmForm::FIRM_FIELDS).not_to include(:review_demo)
+    expect(Admin::FirmForm::FIRM_FIELDS).not_to include(:review_demo, :field_demo)
   end
 end

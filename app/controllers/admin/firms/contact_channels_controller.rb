@@ -14,7 +14,12 @@ module Admin
         if result.ok?
           AuditEvent.record!(subject: @channel, firm: @firm, action: "channel.code_sent",
                              metadata: { kind: @channel.kind })
-          respond_with_row(notice: "Code sent to #{@channel.display_value}.")
+          notice = if @firm.field_demo?
+            "Field demo code is ready. Nothing was sent."
+          else
+            "Code sent to #{@channel.display_value}."
+          end
+          respond_with_row(notice:)
         else
           respond_with_row(alert: result.error)
         end

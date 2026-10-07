@@ -22,22 +22,30 @@ module Api
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
 
         review_login = Auth::ReviewLogin.applies_to?(user)
+        field_demo = Auth::FieldDemo.applies_to?(user)
 
-        # The review account's code is public, so a lockout only locks the
-        # reviewer out. Everyone else still stops after three wrong codes.
-        if !review_login && user.locked_out?
+        # Those codes are known to the people holding the phone, so a lockout
+        # only locks the demo out. Everyone else still stops after three wrong codes.
+        if !review_login && !field_demo && user.locked_out?
           return render_error("otp_locked", "Too many incorrect codes. Try again in 30 minutes.",
                               status: :too_many_requests,
                               details: { retry_after: user.otp_locked_until })
         end
 
+        fixed_code = if review_login
+          Auth::ReviewLogin::CODE
+        elsif field_demo
+          Auth::FieldDemo::CODE
+        end
         record, code = OneTimeCode.issue!(
           purpose: "login", destination: user.mobile, user:, ip: request.remote_ip,
-          code: (Auth::ReviewLogin::CODE if review_login)
+          code: fixed_code
         )
 
         if review_login
           Rails.logger.info("[auth] review demo code issued")
+        elsif field_demo
+          Rails.logger.info("[auth] field demo code issued")
         else
           Notifications::Deliverer.current.deliver_code(
             transport: :sms, destination: user.mobile, code:, purpose: "login"
@@ -61,12 +69,13 @@ module Api
 
         user = record.user
         review_login = Auth::ReviewLogin.applies_to?(user)
-        if !review_login && user.locked_out?
+        field_demo = Auth::FieldDemo.applies_to?(user)
+        if !review_login && !field_demo && user.locked_out?
           return render_error("otp_locked", "Too many incorrect codes. Try again in 30 minutes.", status: :too_many_requests)
         end
 
         unless record.verify(params.require(:code))
-          user.register_failed_otp_attempt! unless review_login
+          user.register_failed_otp_attempt! unless review_login || field_demo
           return render_error("invalid_code", "That code isn't right.", status: :unauthorized,
                               details: { attempts_left: [ User::MAX_FAILED_OTP_ATTEMPTS - user.failed_otp_attempts, 0 ].max })
         end
@@ -86,6 +95,7 @@ module Api
         user.update_column(:last_seen_at, Time.current)
         metadata = { device: device_params[:device_name] }
         metadata[:review_login] = true if review_login
+        metadata[:field_demo] = true if field_demo
         AuditEvent.record!(subject: user, firm: user.firm, actor: user, action: "user.signed_in", metadata:)
 
         render json: token_payload(user, session, refresh_token), status: :ok

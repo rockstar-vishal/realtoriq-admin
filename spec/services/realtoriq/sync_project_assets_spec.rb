@@ -88,6 +88,28 @@ RSpec.describe Realtoriq::SyncProjectAssets do
     end
   end
 
+  it "replaces a photo that is still on another service, even when the checksum matches" do
+    bytes = "kept-bytes"
+    Current.set(firm_scope_bypassed: true) do
+      project.photos.attach(io: StringIO.new(bytes), filename: "kept.jpg")
+      project.photos.blobs.first.update!(service_name: "local")
+    end
+    allow(Realtoriq::RemoteFile).to receive(:fetch).and_return(bytes)
+
+    described_class.call(
+      project:,
+      images: [ { "url" => "https://launch.example/kept.jpg", "checksum" => checksum(bytes), "filename" => "kept.jpg" } ],
+      brochure: nil
+    )
+
+    Current.set(firm_scope_bypassed: true) do
+      perform_enqueued_jobs
+      project.reload
+      expect(project.photos.blobs.map(&:service_name)).to eq([ "test" ])
+      expect(project.photos.blobs.map(&:checksum)).to eq([ checksum(bytes) ])
+    end
+  end
+
   it "downloads a file whose checksum is new" do
     bytes = "new-photo"
     allow(Realtoriq::RemoteFile).to receive(:fetch).and_return(bytes)
