@@ -31,10 +31,8 @@ Rails.application.configure do
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") == "true"
   config.force_ssl = ENV.fetch("FORCE_SSL", "true") == "true"
 
-  # Operators on this VM tail log/staging.log. Production logs only to stdout,
-  # because a container collector reads that and the container disk is thrown
-  # away. Here the file is the place people look, and stdout stays so the
-  # process supervisor still has a copy.
+  # Operators on this VM tail log/staging.log. Stdout stays so the process
+  # supervisor still has a copy. Production does the same with log/production.log.
   #
   # One shared formatter, wrapped once. Two tagged loggers inside a
   # BroadcastLogger would each answer `push_tags`, and the request logger

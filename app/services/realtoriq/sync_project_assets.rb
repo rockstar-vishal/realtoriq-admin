@@ -73,7 +73,7 @@ module Realtoriq
 
       wanted = file_row(brochure)
       return :absent if wanted.nil?
-      return :unchanged if project.brochure.blob&.checksum == wanted["checksum"]
+      return :unchanged if current_copy?(project.brochure.blob, wanted["checksum"])
 
       upload(wanted, RemoteFile::BROCHURE_TYPES, "brochure.pdf")
     end
@@ -83,7 +83,7 @@ module Realtoriq
 
       wanted = file_row(brokerage_ladder)
       return :absent if wanted.nil?
-      return :unchanged if project.brokerage_ladder.blob&.checksum == wanted["checksum"]
+      return :unchanged if current_copy?(project.brokerage_ladder.blob, wanted["checksum"])
 
       upload(wanted, RemoteFile::IMAGE_TYPES, "ladder.jpg")
     end
@@ -97,7 +97,13 @@ module Realtoriq
     end
 
     def attached_image_checksums
-      @attached_image_checksums ||= project.photos.blobs.map(&:checksum)
+      @attached_image_checksums ||= project.photos.blobs.select { |blob| current_copy?(blob, blob.checksum) }.map(&:checksum)
+    end
+
+    # A matching checksum on the disk service is not a copy we can serve in
+    # production. Those URLs 404 once the file is no longer on that machine.
+    def current_copy?(blob, checksum)
+      blob.present? && blob.checksum == checksum && blob.service_name == ActiveStorage::Blob.service.name.to_s
     end
 
     def upload(row, content_types, fallback)
@@ -115,7 +121,7 @@ module Realtoriq
         return
       end
       return if blob == :unchanged || !blob.is_a?(ActiveStorage::Blob)
-      return if locked.brochure.blob&.checksum == blob.checksum
+      return if current_copy?(locked.brochure.blob, blob.checksum)
 
       locked.brochure.attach(blob)
     end
@@ -128,7 +134,7 @@ module Realtoriq
         return
       end
       return if blob == :unchanged || !blob.is_a?(ActiveStorage::Blob)
-      return if locked.brokerage_ladder.blob&.checksum == blob.checksum
+      return if current_copy?(locked.brokerage_ladder.blob, blob.checksum)
 
       locked.brokerage_ladder.attach(blob)
     end
@@ -138,11 +144,13 @@ module Realtoriq
       checksums = wanted.map { |row| row["checksum"] }
       attachments = locked.photos.attachments.includes(:blob).to_a
       attachments.each do |attachment|
-        attachment.purge_later unless checksums.include?(attachment.blob.checksum)
+        attachment.purge_later unless current_copy?(attachment.blob, attachment.blob.checksum) &&
+          checksums.include?(attachment.blob.checksum)
       end
 
-      attached_ids = attachments.map(&:blob_id)
-      seen = attachments.map { |attachment| attachment.blob.checksum }
+      kept = attachments.select { |attachment| current_copy?(attachment.blob, attachment.blob.checksum) }
+      attached_ids = kept.map(&:blob_id)
+      seen = kept.map { |attachment| attachment.blob.checksum }
       blobs.each do |blob|
         if seen.include?(blob.checksum)
           blob.purge_later unless attached_ids.include?(blob.id)

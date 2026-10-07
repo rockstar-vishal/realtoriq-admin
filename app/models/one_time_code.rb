@@ -27,11 +27,13 @@ class OneTimeCode < ApplicationRecord
   # Returns [record, plaintext_code]. The caller is expected to hand the
   # plaintext to a deliverer and then drop it.
   #
-  # `code:` is only for Auth::ReviewLogin. Every other caller leaves it nil
-  # and gets a generated code. Hashing, expiry and single use are the same
-  # either way.
+  # `code:` is only for Auth::ReviewLogin (login) and Auth::FieldDemo (any
+  # purpose). Every other caller leaves it nil and gets a generated code.
+  # Hashing, expiry and single use are the same either way.
   def self.issue!(purpose:, destination:, user: nil, contact_channel: nil, ttl: DEFAULT_TTL, ip: nil, code: nil)
-    raise ArgumentError, "a fixed code is only for login" if code && purpose.to_s != "login"
+    if code && purpose.to_s != "login" && code.to_s != Auth::FieldDemo::CODE
+      raise ArgumentError, "a fixed code is only for login"
+    end
 
     code = code.nil? ? generate_code : code.to_s
 

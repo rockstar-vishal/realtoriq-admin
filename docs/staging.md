@@ -11,7 +11,7 @@ environment can be exercised without reaching a real broker or a real rupee:
 | Email | `delivery_method = :test` — nothing leaves | SES over SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list in `config/application.yml` |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
-| Logs | **`log/staging.log` and stdout** | stdout only |
+| Logs | **`log/staging.log` and stdout** | **`log/production.log` and stdout** |
 
 Everything else — eager loading, caching, SSL, Solid Queue/Cache/Cable, the four
 databases — matches production.

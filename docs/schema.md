@@ -66,7 +66,7 @@ console session.
 
 | Table | Notes |
 | --- | --- |
-| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). Logo via Active Storage. |
+| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). `field_demo` flags Aarav Realty and Deshmukh Properties, whose OTPs are fixed and never sent. Logo via Active Storage. |
 | `firm_bank_accounts` | Printed on invoices the broker raises. `account_number` is encrypted (deterministic, so duplicates are still detectable). Partial unique index enforces one primary per firm. |
 | `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. Disabled users still count toward `plans.max_users`. |
 | `user_managers` | Reporting graph, not a tree: `(user_id, manager_id)` with no cap on how many managers a person has. Superadmins are not stored here — they see the whole firm by default. Agents may be `manager_id`. Cycle-checked in the model; `User#manageables` walks the graph with a recursive CTE that carries a path array so a bad row cannot loop. |

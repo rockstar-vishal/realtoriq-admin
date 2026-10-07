@@ -153,6 +153,14 @@ RSpec.describe "Environment guarantees" do
       expect(cors_origins_for("production")).not_to include("*")
     end
 
+    it "writes log/production.log as well as stdout" do
+      source = Rails.root.join("config/environments/production.rb").read
+
+      expect(source).to include('Rails.root.join("log/production.log")')
+      expect(source).to include("ActiveSupport::BroadcastLogger.new(stdout_logger, file_logger)")
+      expect(source).not_to include("TaggedLogging.logger(STDOUT)")
+    end
+
     it "sends mail through SES over SMTP and refuses to boot without those credentials" do
       source = Rails.root.join("config/environments/production.rb").read
 
