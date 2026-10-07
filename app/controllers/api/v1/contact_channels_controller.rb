@@ -18,6 +18,10 @@ module Api
       end
 
       def request_code
+        if current_firm.review_demo?
+          return render_error("demo_account_restricted", "Not available in the demo account.", status: :forbidden)
+        end
+
         result = Verifications::SendCode.new(channel: @channel, ip: request.remote_ip).call
 
         if result.ok?

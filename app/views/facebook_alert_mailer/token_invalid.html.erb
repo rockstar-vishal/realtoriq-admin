@@ -1,0 +1,8 @@
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  Facebook access for <%= @connection.fb_user_name.presence || "your Page" %> has expired.
+  New leads from Facebook will not come in until you connect again.
+</p>
+
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <a href="<%= @settings_url %>">Open Connect Facebook</a>
+</p>

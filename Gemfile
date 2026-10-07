@@ -24,8 +24,19 @@ gem "bcrypt", "~> 3.1.7"
 # Pagination for admin tables and the broker API
 gem "pagy", "~> 9.3"
 
+# Ruby 3.4 no longer ships csv as a default gem. The lead import reads and
+# writes comma-separated sheets.
+gem "csv"
+
 # JWT access/refresh tokens for the broker API
 gem "jwt", "~> 2.9"
+
+# Facebook Lead Ads. The Graph version is pinned in config/initializers/koala.rb.
+gem "koala", "~> 3.7"
+
+# Browser push (VAPID). The inbox stays in Postgres; this only delivers a payload
+# to the subscription endpoint the browser already handed us.
+gem "web-push", "~> 3.0"
 
 # Cross-origin requests from the React broker app
 gem "rack-cors"
@@ -75,6 +86,9 @@ end
 group :development do
   # Use console on exceptions pages [https://github.com/rails/web-console]
   gem "web-console"
+
+  # Opens the message in a browser instead of trying localhost:25.
+  gem "letter_opener"
 end
 
 # Active Storage's S3 service. `require: false` because Active Storage loads it

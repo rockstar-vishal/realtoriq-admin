@@ -1,4 +1,4 @@
 class ApplicationMailer < ActionMailer::Base
-  default from: "from@example.com"
+  default from: "RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>"
   layout "mailer"
 end

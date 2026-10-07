@@ -14,6 +14,7 @@ module Api
         def list(property)
           {
             id: property.id,
+            code: property.code,
             title: property.title,
             listing_for: property.listing_for,
             status: property.status,
@@ -26,9 +27,34 @@ module Api
             building: building_summary(property.building),
             cover_photo_url: photo_urls(property).first,
             photo_count: property.photos.attachments.size,
-            created_at: property.created_at
+            created_by: named_user(property.created_by_user),
+            created_at: property.created_at,
+            listed_on_marketplace: property.listed_on_marketplace,
+            match_label: property.for_rent? ? "Rent" : "Sale · Ready possession"
             # confidential_note is deliberately absent.
           }
+        end
+
+        # One row of the marketplace directory. No carpet, photo, or building.
+        def marketplace_list(property, channels)
+          card = Inventory::PropertyCard.for(property)
+          {
+            id: property.id,
+            code: property.code,
+            title: card[:title],
+            listing_for: property.listing_for,
+            price: property.price,
+            typology: typology_ref(property),
+            locality: card[:locality],
+            city: card[:city],
+            firm: firm_lines(card[:firm_name], channels)
+          }
+        end
+
+        # Another firm. No note, address, pin, photos, floor, or description.
+        def marketplace(property)
+          channels = ContactChannel.unscoped.where(firm_id: property.firm_id).to_a
+          marketplace_list(property, channels).merge(carpet_area_sqft: property.carpet_area_sqft)
         end
 
         def detail(property)
@@ -41,6 +67,7 @@ module Api
             photo_urls: photo_urls(property),
             building: building_detail(property.building),
             shareable: shareable(property),
+            portal_codes: property.portal_codes_payload,
             updated_at: property.updated_at
           )
         end
@@ -68,6 +95,18 @@ module Api
 
         private
 
+        def typology_ref(property)
+          property.typology && { id: property.typology_id, name: property.typology.name }
+        end
+
+        def firm_lines(name, channels)
+          {
+            name: name,
+            mobile: channels.find { |channel| channel.kind == "mobile" }&.value,
+            whatsapp: channels.find { |channel| channel.kind == "whatsapp" }&.value
+          }
+        end
+
         def building_summary(building)
           return nil if building.nil?
 
@@ -75,6 +114,12 @@ module Api
             id: building.id, name: building.name,
             locality: building.locality&.name, city: building.city&.name
           }
+        end
+
+        def named_user(user)
+          return nil if user.nil?
+
+          { id: user.id, name: user.name }
         end
 
         def building_detail(building)

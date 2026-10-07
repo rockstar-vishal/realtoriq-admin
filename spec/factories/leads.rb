@@ -10,6 +10,18 @@ FactoryBot.define do
       sort_order { 0 }
     end
 
+    trait :hot do
+      name { "Hot" }
+    end
+
+    trait :visit_planned do
+      name { "Visit planned" }
+    end
+
+    trait :negotiation do
+      name { "Negotiation" }
+    end
+
     trait :dead do
       name { "Dead" }
       is_dead { true }
@@ -44,14 +56,25 @@ FactoryBot.define do
     sequence(:mobile) { |n| "+9198#{format('%08d', 70_000_000 + n)}" }
     transaction_type { "sale" }
     property_type
-    budget_min { 10_000_000 }
+    budget_min { nil }
     budget_max { 15_000_000 }
 
     trait :rent do
       transaction_type { "rent" }
       property_type { nil }
-      budget_min { 50_000 }
+      budget_min { nil }
       budget_max { 70_000 }
+    end
+
+    trait :matchable do
+      after(:create) do |lead|
+        if lead.typologies.none?
+          lead.typologies << create(:typology, name: "Match #{SecureRandom.hex(4)}")
+        end
+        next if lead.localities.any?
+
+        lead.localities << create(:locality, city: create(:city))
+      end
     end
 
     trait :overdue do
@@ -69,6 +92,20 @@ FactoryBot.define do
     kind { "call" }
     body { "Spoke about the 3 BHK" }
     occurred_at { Time.current }
+  end
+
+  factory :lead_visit do
+    firm { lead.firm }
+    lead
+    user { association :user, firm: lead.firm }
+    visited_at { Time.find_zone("Asia/Kolkata").now.beginning_of_day }
+  end
+
+  factory :lead_followup do
+    firm { lead.firm }
+    lead
+    user { association :user, firm: lead.firm }
+    comment { "Asked for the floor plan" }
   end
 end
 
@@ -92,6 +129,11 @@ FactoryBot.define do
     city
     starting_budget { 14_200_000 }
     possession_on { 18.months.from_now.to_date }
+
+    trait :catalog do
+      source { "catalog" }
+      sequence(:external_ref) { |n| "launchiq-#{n}" }
+    end
   end
 
   factory :property do
@@ -146,5 +188,17 @@ FactoryBot.define do
     received_on { Date.current }
     amount { 50_000 }
     mode { "neft_rtgs" }
+  end
+
+  factory :lead_project do
+    lead { association :lead }
+    firm { lead.firm }
+    project { association :project, firm: lead.firm }
+  end
+
+  factory :lead_property do
+    lead { association :lead }
+    firm { lead.firm }
+    property { association :property, firm: lead.firm }
   end
 end

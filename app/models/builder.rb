@@ -18,6 +18,7 @@ class Builder < ApplicationRecord
   validates :name, presence: true
   validates :slug, presence: true
   validate :name_is_unique_within_its_scope
+  validate :firm_name_does_not_clash_with_global
 
   before_validation :assign_slug
 
@@ -50,5 +51,15 @@ class Builder < ApplicationRecord
     scope = scope.where.not(id:) if id.present?
 
     errors.add(:name, "has already been taken") if scope.exists?
+  end
+
+  # Brokers pick the master row rather than minting a private duplicate. Ops
+  # promote is the only path from firm-owned to global.
+  def firm_name_does_not_clash_with_global
+    return if name.blank? || firm_id.blank?
+
+    if self.class.global.where("LOWER(name) = ?", name.to_s.downcase).exists?
+      errors.add(:name, "already exists on the master list")
+    end
   end
 end

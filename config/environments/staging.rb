@@ -31,8 +31,23 @@ Rails.application.configure do
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") == "true"
   config.force_ssl = ENV.fetch("FORCE_SSL", "true") == "true"
 
+  # Operators on this VM tail log/staging.log. Production logs only to stdout,
+  # because a container collector reads that and the container disk is thrown
+  # away. Here the file is the place people look, and stdout stays so the
+  # process supervisor still has a copy.
+  #
+  # One shared formatter, wrapped once. Two tagged loggers inside a
+  # BroadcastLogger would each answer `push_tags`, and the request logger
+  # would pop the wrong number of tags.
   config.log_tags = [ :request_id ]
-  config.logger = ActiveSupport::TaggedLogging.logger($stdout)
+  file_logger = ActiveSupport::Logger.new(Rails.root.join("log/staging.log").to_s, 10, 100 * 1024 * 1024)
+  stdout_logger = ActiveSupport::Logger.new($stdout)
+  formatter = ActiveSupport::Logger::SimpleFormatter.new
+  file_logger.formatter = formatter
+  stdout_logger.formatter = formatter
+  config.logger = ActiveSupport::TaggedLogging.new(
+    ActiveSupport::BroadcastLogger.new(stdout_logger, file_logger)
+  )
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
 
   config.active_support.report_deprecations = false
@@ -42,8 +57,8 @@ Rails.application.configure do
   config.solid_queue.connects_to = { database: { writing: :queue } }
 
   config.action_mailer.default_url_options = { host: ENV.fetch("APP_HOST", "localhost") }
-  # Staging must not email real people. Letters are written to the log; swap to
-  # :smtp only if you point it at a catch-all mailbox.
+  # Staging must not email real people. Production uses SES; this stays :test
+  # unless MAILER_DELIVERY points somewhere that cannot reach a broker.
   config.action_mailer.delivery_method = ENV.fetch("MAILER_DELIVERY", "test").to_sym
   config.action_mailer.perform_caching = false
   config.action_mailer.raise_delivery_errors = false
@@ -63,8 +78,8 @@ Rails.application.configure do
   #    network controls. config/initializers/otp_fixed_code.rb logs a warning at
   #    boot to keep this visible.
   #
-  # 2. OTP delivery defaults to :log (see config/application.rb), so MSG91 is
-  #    never called and no DLT template is needed to exercise sign-in.
+  # 2. OTP delivery defaults to :log (see config/application.rb), so MSG91 and
+  #    Twilio are never called and no template is needed to exercise sign-in.
   #
   # 3. The OTP rate limit is loose, because a QA pass legitimately signs in
   #    dozens of times from one address.

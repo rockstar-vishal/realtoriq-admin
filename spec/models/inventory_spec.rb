@@ -8,6 +8,23 @@ RSpec.describe "Inventory models" do
   before { Current.firm = firm }
 
   describe Project do
+    describe "firm" do
+      it "lets the database refuse an own project with no firm" do
+        project = create(:project, firm:)
+
+        expect { project.update_columns(firm_id: nil) }
+          .to raise_error(ActiveRecord::StatementInvalid, /projects_firm_required_unless_catalog/)
+      end
+
+      it "allows a marketplace catalog row with no firm" do
+        project = Current.set(firm: nil, firm_scope_bypassed: true) do
+          create(:project, :catalog, firm: nil, external_ref: "PR#{SecureRandom.hex(3).upcase}")
+        end
+
+        expect(Project.unscoped.find(project.id).firm_id).to be_nil
+      end
+    end
+
     describe "price and area bands" do
       it "derives them from the typologies rather than storing them" do
         # The design's index card reads "₹1.42–1.80 Cr" and "720–1,340 sqft".
@@ -54,6 +71,20 @@ RSpec.describe "Inventory models" do
         project = build(:project, firm:, promo_text: "Extra 1%", promo_ends_on: 1.day.ago)
 
         expect(project).not_to be_promo_live
+      end
+    end
+
+    describe "name uniqueness" do
+      it "refuses a second own project with the same name" do
+        create(:project, firm:, name: "Aurum Vista")
+
+        expect(build(:project, firm:, name: "aurum vista")).not_to be_valid
+      end
+
+      it "allows the same name on the catalog list" do
+        create(:project, firm:, name: "Aurum Vista")
+
+        expect(build(:project, :catalog, firm:, name: "Aurum Vista")).to be_valid
       end
     end
 
@@ -160,6 +191,14 @@ RSpec.describe "Inventory models" do
 
     it "rejects a floor band it doesn't recognise" do
       expect(build(:property, firm:, floor_band: "penthouse-ish")).not_to be_valid
+    end
+  end
+
+  describe Builder do
+    it "refuses a firm-owned name that already sits on the master list" do
+      create(:builder, firm: nil, name: "Lodha Group")
+
+      expect(build(:builder, firm:, name: "lodha group")).not_to be_valid
     end
   end
 

@@ -40,7 +40,9 @@ module Api
           # client never has to reimplement the role rules.
           permissions: {
             manage_firm_settings: current_user.can_manage_firm_settings?,
-            verify_contact_channels: current_user.can_manage_firm_settings?
+            verify_contact_channels: current_user.can_manage_firm_settings?,
+            manage_users: current_user.super_admin?,
+            manage_projects: current_user.can_manage_projects?
           },
           limits: {
             devices: current_firm.device_limit,

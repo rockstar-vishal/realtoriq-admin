@@ -10,6 +10,7 @@ class AuthSession < ApplicationRecord
   # from a token *in order to* establish the tenant, so Current.firm is still
   # nil at that point.
   belongs_to :user, -> { unscope(where: :firm_id) }
+  has_many :push_subscriptions, -> { unscope(where: :firm_id) }, dependent: :delete_all
 
   scope :live, -> { where(revoked_at: nil).where(expires_at: Time.current..) }
   scope :oldest_first, -> { order(:last_used_at, :created_at) }
@@ -24,8 +25,14 @@ class AuthSession < ApplicationRecord
 
     transaction do
       # Reinstalling the app on a known device should reclaim its slot rather
-      # than consume another one.
-      user.auth_sessions.live.where(device_id:).find_each { |s| s.revoke!("replaced_by_same_device") } if device_id
+      # than consume another one. `live` excludes expired rows, but the unique
+      # index does not — an idle-expired session with revoked_at still null
+      # occupies the slot and the next sign-in on that device 500s.
+      if device_id
+        user.auth_sessions.where(device_id:, revoked_at: nil).find_each do |s|
+          s.revoke!("replaced_by_same_device")
+        end
+      end
 
       evict_over_limit(user)
 
@@ -61,8 +68,30 @@ class AuthSession < ApplicationRecord
 
   def active? = revoked_at.nil? && expires_at.future?
 
+  # Revoke drops push subscriptions too. Sign-in on the same device replaces
+  # this row, and a revoked session must not keep receiving reminders. Current
+  # firm is often unset here (sign-in, device-limit eviction), so the delete
+  # is explicit and unscoped. Refresh does not revoke, so it keeps the row.
   def revoke!(reason = "signed_out")
-    update!(revoked_at: Time.current, revoked_reason: reason)
+    transaction do
+      PushSubscription.across_firms.where(auth_session_id: id).delete_all
+      update!(revoked_at: Time.current, revoked_reason: reason)
+    end
+  end
+
+  # Returns a new refresh token, or nil when this row no longer matches the
+  # digest the caller presented — another request already rotated it. Callers
+  # must treat nil as a replay (401), not issue a second pair.
+  def rotate_if_matches!(presented_digest)
+    token = nil
+    AuthSession.across_firms.transaction do
+      locked = AuthSession.across_firms.lock.find_by(id:)
+      if locked&.active? &&
+          ActiveSupport::SecurityUtils.secure_compare(locked.refresh_token_digest, presented_digest)
+        token = locked.rotate_refresh_token!
+      end
+    end
+    token
   end
 
   # Refresh tokens rotate on every use: a stolen token is good for one call, and

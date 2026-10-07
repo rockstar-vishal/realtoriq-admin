@@ -7,13 +7,18 @@ module Api
         def list(project)
           {
             id: project.id,
+            code: project.code,
             name: project.name,
             status: project.status,
             source: project.source,
             builder: project.builder && { id: project.builder_id, name: project.builder.name },
             city: project.city&.name,
+            city_id: project.city_id,
             locality: project.locality&.name,
+            locality_id: project.locality_id,
             starting_budget: project.starting_budget,
+            # Unweighted mean of config rates; null when none can produce a rate.
+            avg_psf: project.avg_psf,
             # Derived from the typologies, never stored — a stored band can end
             # up disagreeing with the rows it came from.
             price_band: project.price_band,
@@ -22,9 +27,9 @@ module Api
             possession_display: project.possession_display,
             brokerage_percent: project.brokerage_percent&.to_f,
             promo: project.promo_live? ? { text: project.promo_text, ends_on: project.promo_ends_on } : nil,
-            configurations: project.typologies.map(&:name),
-            cover_photo_url: photo_urls(project).first,
-            photo_count: project.photos.attachments.size,
+            configurations: configuration_names(project),
+            cover_photo_url: cover_photo_url(project),
+            photo_count: photo_attachments(project).size,
             created_at: project.created_at
           }
         end
@@ -39,11 +44,37 @@ module Api
             typologies: project.project_typologies.map { |pt| typology(pt) },
             photos: photos(project),
             photo_urls: photo_urls(project),
-            brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil,
+            brochure_url: brochure_url(project),
+            brokerage_ladder_url: project.brokerage_ladder.attached? ? BlobUrl.call(project.brokerage_ladder) : nil,
             external_ref: project.external_ref,
+            rm_name: project.rm_name,
+            rm_contact: project.rm_contact,
             shareable: shareable(project),
+            portal_codes: project.portal_codes_payload,
             updated_at: project.updated_at
           )
+        end
+
+        # One row of typeahead results — what the row shows and nothing more.
+        # The full project is one tap away at GET /projects/:id.
+        #
+        # `source` is `own` unless the caller passed include_marketplace, in
+        # which case an active catalog row can appear as `catalog`. Mapping
+        # that id links the marketplace row. A booking is what copies it.
+        def search_hit(project)
+          {
+            id: project.id,
+            code: project.code,
+            name: project.name,
+            rera_number: project.rera_number,
+            source: project.source,
+            builder: project.builder && { id: project.builder_id, name: project.builder.name },
+            locality: project.locality&.name,
+            locality_id: project.locality_id,
+            city: project.city&.name,
+            city_id: project.city_id,
+            match_label: Inventory::PossessionMatch.match_label(project)
+          }
         end
 
         # Everything safe to send a client. Projects carry no confidential
@@ -60,16 +91,23 @@ module Api
             area_band: project.area_band,
             possession_display: project.possession_display,
             rera_number: project.rera_number,
-            configurations: project.typologies.map(&:name),
+            configurations: configuration_names(project),
             promo_text: project.promo_live? ? project.promo_text : nil,
             photo_urls: photo_urls(project),
-            brochure_url: project.brochure.attached? ? BlobUrl.call(project.brochure) : nil
-            # brokerage_percent is deliberately absent: what the broker earns is
-            # not the client's business.
+            brochure_url: brochure_url(project)
+            # brokerage_percent and brokerage_ladder_url are deliberately absent:
+            # what the broker earns is not the client's business.
           }
         end
 
         private
+
+        # Marketplace listings link the LaunchIQ PDF. A firm's own project
+        # uses the file it uploaded.
+        def brochure_url(project)
+          project.brochure_source_url.presence ||
+            (project.brochure.attached? ? BlobUrl.call(project.brochure) : nil)
+        end
 
         def typology(project_typology)
           {
@@ -84,6 +122,15 @@ module Api
 
         # Attachment ids are UUIDv7, so ordering by id is creation order and the
         # first is the cover. The design shows no reordering, so none exists.
+        def configuration_names(project)
+          project.project_typologies.map { |row| row.typology&.name }.compact
+        end
+
+        def cover_photo_url(project)
+          first = photo_attachments(project).first
+          first && BlobUrl.call(first)
+        end
+
         def photo_attachments(project) = project.photos.attachments.sort_by(&:id)
 
         # Carries the attachment id, which `photo_urls` does not — and without

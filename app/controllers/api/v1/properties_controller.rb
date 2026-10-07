@@ -3,9 +3,26 @@
 module Api
   module V1
     class PropertiesController < AuthenticatedController
+      # `sort=recent` (the default — properties were already newest first, and
+      # that stays unchanged) or `sort=name`. A property has no name of its
+      # own; brokers know a listing by its building, so `name` means building
+      # name. `id` breaks ties for the same reason as in ProjectsController —
+      # several flats share a building, and without it pagination is unstable.
+      SORTS = {
+        "recent" => -> { order(created_at: :desc, id: :desc) },
+        "name" => -> { joins(:building).order("buildings.name ASC", :id) }
+      }.freeze
+      DEFAULT_SORT = "recent"
+
+      # Drawer fields. `status` is a heading pill and must not drop `q`.
+      DRAWER_KEYS = %w[
+        city_id locality_id typology_id price_min price_max carpet_min carpet_max
+        building_id listing_for
+      ].freeze
+
       include AttachesPhotos
 
-      before_action :set_property, only: %i[show update add_photos remove_photo]
+      before_action :set_property, only: %i[show update add_photos remove_photo visitors lead_matches mapped_customers portal_codes]
 
       def index
         @pagy, records = pagy(filtered_scope, limit: per_page)
@@ -21,9 +38,56 @@ module Api
         render json: { property: PropertySerializer.detail(@property) }, status: :ok
       end
 
+      def visitors
+        render json: Inventory::VisitorList.new(site: @property, user: current_user, page: params[:page]).as_json,
+               status: :ok
+      end
+
+      def lead_matches
+        owner = @property.firm_id == current_firm.id
+        render json: {
+          matches: Inventory::MatchLeads.new(property: @property, user: current_user).call,
+          marketplace_matches: owner ? Inventory::MarketplaceLeadMatches.new(property: @property).call : [],
+          marketplace_firms: owner ? Inventory::MarketplaceFirms.new(property: @property).call : []
+        }, status: :ok
+      end
+
+      # Every other active firm's shared, available listing. Safe cards only.
+      def marketplace_index
+        scope = Inventory::MarketplaceListings.new(query: params[:q]).scope
+        @pagy, records = pagy(scope, limit: per_page)
+        preload_shared_buildings(records)
+        channels = ContactChannel.unscoped
+          .where(firm_id: records.map(&:firm_id), kind: %w[mobile whatsapp])
+          .group_by(&:firm_id)
+
+        render json: {
+          properties: records.map { |property|
+            PropertySerializer.marketplace_list(property, channels[property.firm_id] || [])
+          },
+          meta: pagination_meta(@pagy)
+        }, status: :ok
+      end
+
+      # Another firm's view of a shared listing. The owning firm uses #show.
+      def marketplace
+        property = Property.unscoped.includes(:typology, :firm).find_by(id: params[:id])
+        visible = property&.listed_on_marketplace? && property.available? && property.firm_id != current_firm.id
+        visible &&= !current_firm.review_demo? && !property.firm.review_demo?
+        return render_error("not_found", "Property not found", status: :not_found) unless visible
+
+        render json: { property: PropertySerializer.marketplace(property) }, status: :ok
+      end
+
+      def mapped_customers
+        render json: Inventory::MappedCustomers.new(site: @property, user: current_user, page: params[:page]).as_json,
+               status: :ok
+      end
+
       def create
         property = Property.new(property_params)
         property.firm = current_firm
+        property.created_by_user = current_user
 
         return render_validation_errors(property.errors) unless property.save
 
@@ -37,7 +101,7 @@ module Api
       end
 
       def add_photos
-        attach_photos(@property, params[:photo_signed_ids] || params[:signed_ids]) do
+        attach_photos(@property, params[:photo_signed_ids] || params[:signed_ids], purpose: "property_photo") do
           render json: { property: PropertySerializer.detail(@property.reload) }, status: :created
         end
       end
@@ -48,23 +112,58 @@ module Api
         end
       end
 
+      def portal_codes
+        @property.assign_portal_codes(portal_code_params)
+        render json: { property: PropertySerializer.detail(@property.reload) }, status: :ok
+      rescue ActiveRecord::RecordNotUnique
+        render_error("invalid", "That portal code is already saved on another property.",
+          status: :unprocessable_content)
+      end
+
       private
+
+      def preload_shared_buildings(records)
+        return if records.empty?
+
+        ActiveRecord::Associations::Preloader.new(
+          records: records,
+          associations: { building: %i[locality city] },
+          scope: Building.unscoped
+        ).call
+      end
 
       def set_property
         @property = base_scope.find_by(id: params[:id])
         return if @property
+        return if action_name == "lead_matches" && assign_shared_listing
 
         render_error("not_found", "Property not found", status: :not_found)
       end
 
+      # A shared listing belongs to another firm. Exploring matches still scores
+      # only this caller's own leads.
+      def assign_shared_listing
+        record = Property.unscoped.includes(:typology).find_by(id: params[:id])
+        return false unless record&.listed_on_marketplace? && record.available? && record.firm_id != current_firm.id
+
+        # The building's firm scope would hide it from the other firm, and a
+        # preloader scope is merged with that default scope rather than replacing it.
+        building = Building.unscoped.includes(:locality).find_by(id: record.building_id)
+        record.association(:building).target = building
+        record.association(:building).loaded!
+        @property = record
+        true
+      end
+
       def base_scope
-        Property.includes(:typology, building: %i[city locality])
+        Property.includes(:typology, :created_by_user, building: %i[city locality])
       end
 
       def filtered_scope
         scope = base_scope
-          .search(params[:q])
+          .search(drawer_filters_present? ? nil : params[:q])
           .price_between(params[:price_min], params[:price_max])
+          .carpet_between(params[:carpet_min], params[:carpet_max])
           .in_city(params[:city_id])
           .in_locality(params[:locality_id])
 
@@ -72,9 +171,19 @@ module Api
         scope = scope.where(building_id: params[:building_id]) if params[:building_id].present?
         scope = scope.where(typology_id: params[:typology_id]) if params[:typology_id].present?
         scope = scope.where(floor_band: params[:floor_band]) if params[:floor_band].present?
-        scope = scope.where(status: params[:status].presence || "available")
+        # `all` is the list chip; omitting status still means available, which is
+        # what every existing caller that does not send the param expects.
+        scope = scope.where(status: params[:status].presence || "available") unless params[:status].to_s == "all"
 
-        scope.newest_first
+        apply_sort(scope)
+      end
+
+      def drawer_filters_present?
+        DRAWER_KEYS.any? { |key| params[key].present? }
+      end
+
+      def apply_sort(scope)
+        scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
       end
 
       def render_validation_errors(errors)
@@ -92,7 +201,11 @@ module Api
       def property_params
         params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :available_from, :description,
-                      :confidential_note, :status)
+                      :confidential_note, :status, :listed_on_marketplace)
+      end
+
+      def portal_code_params
+        params.permit("99acres", "magicbricks", "housing").to_h
       end
     end
   end

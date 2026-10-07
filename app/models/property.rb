@@ -3,16 +3,26 @@
 # A resale or rental listing. Distinct from Project, which is developer stock.
 class Property < ApplicationRecord
   include FirmScoped
+  include InventoryCode
+  include PortalListingCodes
+  self.inventory_code_prefix = "H"
+  self.inventory_code_index = "index_properties_on_code"
 
   LISTING_FOR = %w[sale rent].freeze
   FLOOR_BANDS = %w[lower middle higher].freeze
-  STATUSES = %w[available under_offer closed].freeze
+  STATUSES = %w[available booked sold_out].freeze
 
   enum :listing_for, LISTING_FOR.index_by(&:itself), prefix: :for
   enum :status, STATUSES.index_by(&:itself), validate: true
 
   belongs_to :building
   belongs_to :typology
+  belongs_to :created_by_user, -> { unscope(where: :firm_id) },
+    class_name: "User", optional: true
+  belongs_to_same_firm :created_by_user
+
+  has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visit_properties, -> { unscope(where: :firm_id) }, dependent: :restrict_with_error
 
   has_many_attached :photos
 
@@ -22,19 +32,36 @@ class Property < ApplicationRecord
   validates :carpet_area_sqft,
     numericality: { greater_than: 0, only_integer: true }, allow_nil: true
 
+  # The card title is "{typology} in {locality}" — that whole string, either
+  # half of it, the building name, or the description. The city is not part
+  # of the title and is not searched.
   scope :search, ->(term) {
     next all if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    joins(:building).where(
-      "buildings.name ILIKE :q OR properties.description ILIKE :q", q: pattern
-    )
+    left_joins(:typology, building: :locality).where(<<~SQL.squish, q: pattern)
+      buildings.name ILIKE :q
+      OR properties.description ILIKE :q
+      OR typologies.name ILIKE :q
+      OR localities.name ILIKE :q
+      OR CONCAT_WS(' in ', NULLIF(typologies.name, ''), NULLIF(localities.name, '')) ILIKE :q
+    SQL
   }
 
   scope :price_between, ->(min, max) {
     scope = all
     scope = scope.where(price: min..) if min.present?
     scope = scope.where(price: ..max) if max.present?
+    scope
+  }
+
+  # NULL carpet drops out of a range — a listing without area is not "600–800".
+  scope :carpet_between, ->(min, max) {
+    next all if min.blank? && max.blank?
+
+    scope = where.not(carpet_area_sqft: nil)
+    scope = scope.where(carpet_area_sqft: min.to_i..) if min.present?
+    scope = scope.where(carpet_area_sqft: ..max.to_i) if max.present?
     scope
   }
 

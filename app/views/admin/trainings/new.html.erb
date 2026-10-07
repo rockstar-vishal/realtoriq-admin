@@ -1,0 +1,10 @@
+<% content_for :title, "New training · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">New training</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]">Saves as a draft. Brokers see nothing until you activate it.</span>
+</div>
+
+<hr class="rule">
+
+<%= render "form", training: @training, url: admin_trainings_path, method: :post, submit_label: "Save draft" %>

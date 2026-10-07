@@ -1,0 +1,106 @@
+<%# Ops fill this in over more than one sitting: a draft saves with the text
+    alone, and the files can follow. Only activation demands the full set. %>
+
+<%= form_with model: training, url: url, method: method, class: "max-w-[820px]" do |f| %>
+  <% if training.errors.any? %>
+    <div class="mb-6 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)]">
+      <p class="font-heading font-extrabold text-[13px] text-[var(--color-accent-800)] mb-1">
+        <%= pluralize(training.errors.count, "problem") %> stopped this from saving
+      </p>
+      <ul class="text-[13px] text-[var(--color-accent-800)] list-disc pl-5">
+        <% training.errors.full_messages.uniq.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "The course" do %>
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: training, attribute: :title, label: "Title *" %>
+
+      <div class="field">
+        <%= f.label :language, "Language *" %>
+        <%= f.select :language, Training::LANGUAGE_LABELS.map { |code, label| [ label, code ] }, {}, class: "input" %>
+      </div>
+    </div>
+
+    <%= render "admin/shared/field", f: f, form: training, attribute: :description,
+          label: "Description *", type: :text_area,
+          html_options: { rows: 2 },
+          hint: "One line. It sits under the title on the broker's list." %>
+
+    <%= render "admin/shared/field", f: f, form: training, attribute: :valid_upto,
+          label: "Valid upto", type: :date_field,
+          hint: "Leave blank for a training that never expires. The last day counts." %>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "What the broker reads",
+        note: "Plain text. Paragraph breaks are kept; there is no formatting." do %>
+    <%= render "admin/shared/field", f: f, form: training, attribute: :intro_text,
+          label: "Intro *", type: :text_area, html_options: { rows: 10 },
+          hint: "Markdown: ### for a sub-heading, **bold**, and - for bullets. " \
+                "A blank line starts a new paragraph. Nothing else is rendered." %>
+
+    <%= render "admin/shared/field", f: f, form: training, attribute: :instructions_text,
+          label: "How to do this training", type: :text_area, html_options: { rows: 4 },
+          hint: "Leave blank to use the standard steps: read the guide, then make notes. When the training has a podcast, \"listen to it\" is included too." %>
+  <% end %>
+
+  <%= render "admin/firms/form_section", title: "Files",
+        note: "Banner up to 2 MB, guide up to 10 MB, podcast up to 40 MB." do %>
+    <div class="field">
+      <%= f.label :banner, "Banner image" %>
+      <% if training.banner.attached? %>
+        <div class="mb-2 flex items-center gap-3">
+          <%= image_tag rails_blob_path(training.banner), class: "h-16 w-28 object-cover border border-[var(--color-divider)]" %>
+          <span class="text-[12px] text-[var(--color-neutral-600)]"><%= training.banner.filename %></span>
+        </div>
+      <% end %>
+      <%= f.file_field :banner, accept: "image/png,image/jpeg,image/webp", class: "input" %>
+      <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">PNG, JPEG or WebP. Shown on the list card and again on the detail page.</p>
+    </div>
+
+    <div class="field">
+      <%= f.label :document, "PDF guide" %>
+      <% if training.document.attached? %>
+        <p class="mb-2 text-[12px]">
+          <%= link_to training.document.filename, rails_blob_path(training.document), target: "_blank", rel: "noopener" %>
+          · <%= number_to_human_size(training.document.byte_size) %>
+        </p>
+      <% end %>
+      <%= f.file_field :document, accept: "application/pdf", class: "input" %>
+    </div>
+
+    <div class="field">
+      <%= f.label :podcast, "Podcast audio" %>
+      <% if training.podcast.attached? %>
+        <p class="mb-2 text-[12px]">
+          <%= link_to training.podcast.filename, rails_blob_path(training.podcast), target: "_blank", rel: "noopener" %>
+          · <%= number_to_human_size(training.podcast.byte_size) %>
+        </p>
+      <% end %>
+      <%= f.file_field :podcast, accept: "audio/mpeg,audio/mp4,audio/aac", class: "input" %>
+      <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">Optional. MP3, M4A or AAC, or paste a link below.</p>
+      <% if training.podcast_ready? %>
+        <label class="mt-3 flex items-center gap-2 text-[14px] cursor-pointer">
+          <%= check_box_tag "training[remove_podcast]", "1", params.dig(:training, :remove_podcast) == "1" %>
+          Remove the podcast
+        </label>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">Takes the audio off this training. A new file, or a different link typed in this same save, is kept instead.</p>
+      <% end %>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <%= render "admin/shared/field", f: f, form: training, attribute: :podcast_url,
+            label: "Podcast link", hint: "https://… Used when the audio is hosted elsewhere." %>
+      <%= render "admin/shared/field", f: f, form: training, attribute: :podcast_duration_seconds,
+            label: "Length in seconds", hint: "1200 for a 20-minute episode." %>
+    </div>
+  <% end %>
+
+  <div class="flex items-center gap-3 mt-8">
+    <%= f.submit submit_label, class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_trainings_path, class: "btn btn-ghost" %>
+  </div>
+<% end %>

@@ -21,19 +21,28 @@ module Api
 
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
 
-        if user.locked_out?
+        review_login = Auth::ReviewLogin.applies_to?(user)
+
+        # The review account's code is public, so a lockout only locks the
+        # reviewer out. Everyone else still stops after three wrong codes.
+        if !review_login && user.locked_out?
           return render_error("otp_locked", "Too many incorrect codes. Try again in 30 minutes.",
                               status: :too_many_requests,
                               details: { retry_after: user.otp_locked_until })
         end
 
         record, code = OneTimeCode.issue!(
-          purpose: "login", destination: user.mobile, user:, ip: request.remote_ip
+          purpose: "login", destination: user.mobile, user:, ip: request.remote_ip,
+          code: (Auth::ReviewLogin::CODE if review_login)
         )
 
-        Notifications::Deliverer.current.deliver_code(
-          transport: :sms, destination: user.mobile, code:, purpose: "login"
-        )
+        if review_login
+          Rails.logger.info("[auth] review demo code issued")
+        else
+          Notifications::Deliverer.current.deliver_code(
+            transport: :sms, destination: user.mobile, code:, purpose: "login"
+          )
+        end
 
         render json: {
           request_id: record.id,
@@ -51,10 +60,13 @@ module Api
         return render_error("invalid_code", "That code has expired. Request a new one.", status: :unauthorized) if record.nil?
 
         user = record.user
-        return render_error("otp_locked", "Too many incorrect codes. Try again in 30 minutes.", status: :too_many_requests) if user.locked_out?
+        review_login = Auth::ReviewLogin.applies_to?(user)
+        if !review_login && user.locked_out?
+          return render_error("otp_locked", "Too many incorrect codes. Try again in 30 minutes.", status: :too_many_requests)
+        end
 
         unless record.verify(params.require(:code))
-          user.register_failed_otp_attempt!
+          user.register_failed_otp_attempt! unless review_login
           return render_error("invalid_code", "That code isn't right.", status: :unauthorized,
                               details: { attempts_left: [ User::MAX_FAILED_OTP_ATTEMPTS - user.failed_otp_attempts, 0 ].max })
         end
@@ -72,15 +84,17 @@ module Api
         )
 
         user.update_column(:last_seen_at, Time.current)
-        AuditEvent.record!(subject: user, firm: user.firm, actor: user, action: "user.signed_in",
-                           metadata: { device: device_params[:device_name] })
+        metadata = { device: device_params[:device_name] }
+        metadata[:review_login] = true if review_login
+        AuditEvent.record!(subject: user, firm: user.firm, actor: user, action: "user.signed_in", metadata:)
 
         render json: token_payload(user, session, refresh_token), status: :ok
       end
 
       def refresh
         token = params.require(:refresh_token)
-        session = AuthSession.across_firms.live.find_by(refresh_token_digest: AuthSession.digest(token))
+        digest = AuthSession.digest(token)
+        session = AuthSession.across_firms.live.find_by(refresh_token_digest: digest)
 
         return render_error("unauthorized", "Sign in again.", status: :unauthorized) if session.nil?
 
@@ -88,7 +102,8 @@ module Api
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
         return render_error("account_suspended", "This account is suspended.", status: :forbidden) if user.firm.suspended?
 
-        rotated = session.rotate_refresh_token!
+        rotated = session.rotate_if_matches!(digest)
+        return render_error("unauthorized", "Sign in again.", status: :unauthorized) if rotated.nil?
 
         render json: token_payload(user, session, rotated), status: :ok
       end

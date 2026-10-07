@@ -7,14 +7,17 @@ module Leads
   # Nothing should set lead.lead_status directly — a bare column update leaves
   # the dead-leads report unable to say when the lead died.
   class TransitionStatus
-    Result = Struct.new(:ok?, :lead, :error_code, :error_message, keyword_init: true)
+    DUPLICATE_INDEX = "index_leads_on_firm_type_and_open_identity"
 
-    def initialize(lead:, to_status:, actor:, reason: nil, note: nil)
+    Result = Struct.new(:ok?, :lead, :error_code, :error_message, :error_details, keyword_init: true)
+
+    def initialize(lead:, to_status:, actor:, reason: nil, note: nil, booked_at: nil)
       @lead = lead
       @to_status = to_status
       @actor = actor
       @reason = reason.to_s.strip.presence
       @note = note.to_s.strip.presence
+      @booked_at = booked_at
     end
 
     def call
@@ -28,6 +31,10 @@ module Leads
       end
 
       from_status = lead.lead_status
+      if reviving?(from_status)
+        existing = lead.duplicate_on_mobile_and_type
+        return duplicate_failure(existing) if existing
+      end
 
       Lead.transaction do
         apply_status_columns(from_status)
@@ -39,11 +46,15 @@ module Leads
       Result.new(ok?: true, lead:)
     rescue ActiveRecord::RecordInvalid => e
       failure("invalid", e.record.errors.full_messages.to_sentence)
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.message.include?(DUPLICATE_INDEX)
+
+      duplicate_failure(lead.duplicate_on_mobile_and_type)
     end
 
     private
 
-    attr_reader :lead, :to_status, :actor, :reason, :note
+    attr_reader :lead, :to_status, :actor, :reason, :note, :booked_at
 
     def apply_status_columns(_from_status)
       lead.lead_status = to_status
@@ -58,7 +69,10 @@ module Leads
         lead.dead_at = nil
       end
 
-      lead.booked_at = Time.current if to_status.is_booked?
+      lead.booked_at = booked_at.presence || Time.current if to_status.is_booked?
+      # Today's Calls counts any NCD that falls today, including booked/dead.
+      # Clearing here so a terminal lead leaves the call list.
+      lead.next_action_at = nil if to_status.is_terminal?
     end
 
     def record_history(from_status)
@@ -77,10 +91,26 @@ module Leads
       )
     end
 
+    def reviving?(from_status)
+      from_status&.is_dead? && !to_status.is_dead?
+    end
+
+    def duplicate_failure(existing)
+      type = lead.transaction_type
+      failure(
+        "duplicate_lead",
+        "A live #{type} lead already exists for this number.",
+        lead_id: existing&.id, transaction_type: type
+      )
+    end
+
     def unchanged = Result.new(ok?: true, lead:)
 
-    def failure(code, message)
-      Result.new(ok?: false, lead:, error_code: code, error_message: message)
+    def failure(code, message, **details)
+      Result.new(
+        ok?: false, lead:, error_code: code, error_message: message,
+        error_details: details.presence
+      )
     end
   end
 end

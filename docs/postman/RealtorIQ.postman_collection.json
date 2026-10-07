@@ -77,6 +77,11 @@
       "type": "string"
     },
     {
+      "key": "created_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "property_type_id",
       "value": "",
       "type": "string"
@@ -122,6 +127,11 @@
       "type": "string"
     },
     {
+      "key": "inbound_token",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "booking_id",
       "value": "",
       "type": "string"
@@ -150,6 +160,16 @@
     {
       "key": "brochure_signed_id",
       "value": ""
+    },
+    {
+      "key": "lead_project_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "training_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -342,7 +362,7 @@
                 "me"
               ]
             },
-            "description": "What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.\n\nThis is also where the blocked states surface — suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`."
+            "description": "What the app loads at boot: the user, their firm, the subscription, and **permissions resolved server-side** so the client never reimplements the role rules.\n\n`permissions.manage_users` drives the team screen. `permissions.manage_projects` drives My Projects create/edit and inline builder create.\n\nThis is also where the blocked states surface — suspend the firm in the admin panel and this returns 403 `account_suspended`; let the subscription lapse and it returns 402 `subscription_lapsed`."
           },
           "event": [
             {
@@ -356,6 +376,8 @@
                   "",
                   "pm.test(\"resolves permissions server-side\", () => {",
                   "  pm.expect(body.permissions).to.have.property(\"verify_contact_channels\");",
+                  "  pm.expect(body.permissions).to.have.property(\"manage_users\");",
+                  "  pm.expect(body.permissions).to.have.property(\"manage_projects\");",
                   "});",
                   "",
                   "pm.test(\"reports the device limit from the plan\", () => {",
@@ -428,7 +450,7 @@
                 "dashboard"
               ]
             },
-            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
+            "description": "The whole home screen in one request — the lead pipeline counters, the money tiles, the inventory strip, and the top three of each list.\n\nIt exists because every counter here is derivable from a filter the API already exposes, so the alternative was six round trips for one card.\n\nHome **Your pipeline** tiles read `total`, `new`, `todays_followups` (label: Today's Calls), `missed_followups`, `visit_planned`, `hot_negotiation`. `hot`, `visited` and `bookings` stay on the payload. This is not `GET /leads` `counts`.\n\n`leads.recent` is at most three **missed followups**, most overdue first — not the worklist.\n\n**The `money` block is absent for an agent**, not zeroed. Agents get `forbidden_role` on every booking endpoint, and a block full of zeroes would read as \"no revenue\" — a different and wrong statement. Branch on the key being present.\n\n`this_fy` is the **Indian financial year**, 1 April to 31 March. A 31 March booking and a 1 April one fall in different years."
           },
           "event": [
             {
@@ -441,11 +463,11 @@
                   "const b = pm.response.json();",
                   "",
                   "pm.test(\"the lead counters are all there\", () => {",
-                  "  [\"total\",\"hot\",\"todays_followups\",\"missed_followups\",\"visited\",\"bookings\"].forEach(k => {",
+                  "  [\"total\",\"new\",\"hot\",\"hot_negotiation\",\"todays_followups\",\"missed_followups\",\"visit_planned\",\"visited\",\"bookings\"].forEach(k => {",
                   "    pm.expect(b.leads[k], k).to.be.a(\"number\");",
                   "  });",
                   "});",
-                  "pm.test(\"the worklist strip is at most three leads\", () => {",
+                  "pm.test(\"the missed-followup strip is at most three leads\", () => {",
                   "  pm.expect(b.leads.recent.length).to.be.at.most(3);",
                   "});",
                   "",
@@ -483,6 +505,216 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "description": "Four grouped reports. Dates are inclusive IST days. export=csv (not format=csv). Bookings and revenue are managers and super admins only, and they ignore status.",
+      "item": [
+        {
+          "name": "Source wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/source_status?from=2026-04-01&upto=2026-04-30",
+            "description": "Leads created in the window, by current source and current status. One row per source name, plus No source."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the window and a total come back\", () => {",
+                  "  pm.expect(body.from).to.eql(\"2026-04-01\");",
+                  "  pm.expect(body.upto).to.eql(\"2026-04-30\");",
+                  "  pm.expect(body.summary.total).to.be.a(\"number\");",
+                  "  pm.expect(body.columns).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dead leads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/dead_leads?from=2026-04-01&upto=2026-04-30",
+            "description": "Generated is leads created in the month. Dead is distinct leads marked dead in the month, including ones later revived. Rate is null when generated is 0."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"April is one month row\", () => {",
+                  "  pm.expect(body.rows.length).to.eql(1);",
+                  "  pm.expect(body.rows[0].month).to.eql(\"2026-04\");",
+                  "  pm.expect(body.summary.generated).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/bookings?from=2026-04-01&upto=2026-04-30",
+            "description": "Managers and super admins. Counts plus Total AV of live bookings. Cancelled stay in the counts and out of the rupees. status is ignored."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"live never exceeds bookings\", () => {",
+                  "  pm.expect(body.summary.live).to.be.at.most(body.summary.bookings);",
+                  "  pm.expect(body.summary.agreement_value).to.be.a(\"number\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revenue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/revenue?from=2026-04-01&upto=2026-04-30",
+            "description": "Managers and super admins. Total AV and Revenue (net_income) of live bookings. Outstanding is invoiced minus collected, on those bookings, not cash received in the month."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"outstanding is invoiced minus collected\", () => {",
+                  "  pm.expect(body.summary.outstanding).to.eql(body.summary.invoiced - body.summary.collected);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/assignees",
+            "description": "The report assignee dropdown. A manager or super admin gets the whole firm, including disabled users. An agent gets only themselves. This is not GET /users."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"users come back\", () => {",
+                  "  pm.expect(pm.response.json().users).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Source wise CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/reports/source_status?from=2026-04-01&upto=2026-04-30&export=csv",
+            "description": "Same table as CSV. Use export=csv. format=csv is 406."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 CSV\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/csv\");",
+                  "  pm.expect(pm.response.text()).to.include(\"Source\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "In-app inbox and browser push for the signed-in session. A test push goes only to this device. Console: Notifications::SendTest.to_user(user) reaches every device that broker registered.",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/notifications"
+          }
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/notifications/unread_count"
+          }
+        },
+        {
+          "name": "Mark all read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api_base}}/notifications/mark_all_read"
+          }
+        },
+        {
+          "name": "This device's push subscription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/push_subscriptions"
+          }
+        },
+        {
+          "name": "VAPID public key",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/push_subscriptions/vapid_public_key"
+          }
+        },
+        {
+          "name": "Send test push",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api_base}}/notifications/test",
+            "description": "201 means the push service accepted the message for this session only. 422 no_subscription means this browser was never registered."
+          }
         }
       ]
     },
@@ -636,8 +868,187 @@
       ]
     },
     {
+      "name": "Users",
+      "description": "Ops create the firm and its one super admin. That person creates everyone else — no invite SMS.\n\n`GET /users` is also the reassignment picker. The super admin sees the whole firm (including disabled). Everyone else sees **active manageables**: themselves plus anyone who reports to them.\n\nA person may have several managers. Super admins are not in that graph. A cycle is `422 reporting_cycle`.",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/users",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Picker and team screen. Saves the first non-super-admin id as `created_user_id` for the requests below."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const users = pm.response.json().users || [];",
+                  "pm.test(\"returns an array\", () => pm.expect(users).to.be.an(\"array\"));",
+                  "",
+                  "const other = users.find(u => u.role !== \"super_admin\");",
+                  "if (other) { pm.collectionVariables.set(\"created_user_id\", other.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create an agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "description": "Super admin only. `role` is `manager` or `agent`. `manager_ids` is an array. The new user can sign in immediately.\n\n`422 user_limit_reached` when the plan is full — disabled accounts still occupy a seat.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ananya Iyer\",\n  \"mobile\": \"9820199001\",\n  \"email\": \"ananya.iyer@example.com\",\n  \"role\": \"agent\",\n  \"manager_ids\": [\n    \"{{user_id}}\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/me\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200) { pm.collectionVariables.set(\"user_id\", res.json().user.id); }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created, or already exists / over limit\", () => {",
+                  "  pm.expect([201, 422]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set(\"created_user_id\", pm.response.json().user.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a reporting line",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users/{{created_user_id}}/managers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users",
+                "{{created_user_id}}",
+                "managers"
+              ]
+            },
+            "description": "Super admin only. A cycle is `422 reporting_cycle`. The super admin cannot be a manager in this table.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"manager_id\": \"{{user_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"created, already exists, or would cycle\", () => {",
+                  "  pm.expect([201, 422, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disable a user",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/users/{{created_user_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "users",
+                "{{created_user_id}}"
+              ]
+            },
+            "description": "Revokes every live session. Reversible. The firm's super admin cannot be disabled.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"disabled\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 or 422 (super admin cannot be disabled)\", () => {",
+                  "  pm.expect([200, 422, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Leads",
-      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Two filter semantics worth knowing.** `status=missed_followup` is a *derived* tab, not a status: it means an overdue `next_action_at` on a non-terminal lead. And budget filtering is **overlap**, not containment — `budget_min`/`budget_max` return leads whose own range intersects your window.\n\nMoney is raw integer rupees throughout; the client formats lakh/crore.",
+      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Write `budget` (single amount → `budget_max`).** GET `budget_min`/`budget_max` are a filter *window* on that stored amount, not range overlap.\n\n`missed_followup=true` is an overdue-NCD filter (not a status). `status=hot_negotiation` is hot+negotiation. Drawer params drop `q`; cards (`status`, `visited`, `missed_followup`) do not.\n\nList returns `counts` (pipeline totals, unfiltered). Default sort is NCD NULLS FIRST. Money is raw integer rupees; the client formats lakh/crore. Screen guide: frontend/YASH.md.",
       "item": [
         {
           "name": "List leads",
@@ -653,7 +1064,7 @@
                 "leads"
               ]
             },
-            "description": "Default sort is a worklist: overdue followups first, then by when the next action is due.\n\nFilters: `q`, `status`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`, `budget_max`, `possession_from`, `possession_to`, `source_id`, `assigned_user_id`, `sort`, `page`, `per_page` (max 50).\n\nSaves the first lead's id for the requests below."
+            "description": "Default sort is NCD: `next_action_at ASC NULLS FIRST` (no date sits above overdue). `sort=worklist` is overdue-first.\n\nFilters: `q` (dropped if any drawer param is set), `status` (`new` · `hot_negotiation` · codes, or `status[]=`), `visited`, `missed_followup`, drawer `name`/`mobile`/`email`/`ncd_from`/`ncd_upto`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`/`budget_max` (window on stored amount), `possession_from`/`possession_to`, `source_id`, `assigned_user_id`, `sort` (`ncd` default · `worklist` · `recent` · `updated`), `page`, `per_page` (max 50).\n\nResponse includes `counts`. Saves the first lead's id for the requests below."
           },
           "event": [
             {
@@ -669,6 +1080,21 @@
                   "pm.test(\"paginated\", () => {",
                   "  pm.expect(body.meta).to.have.property(\"total_count\");",
                   "  pm.expect(body.meta.per_page).to.eql(25);",
+                  "});",
+                  "",
+                  "pm.test(\"card counts\", () => {",
+                  "  pm.expect(body.counts).to.include.keys(\"new\", \"missed_followup\", \"visit_planned\", \"visited\", \"hot_negotiation\", \"booked\");",
+                  "});",
+                  "",
+                  "pm.test(\"list card fields\", () => {",
+                  "  if (!body.leads.length) return;",
+                  "  const l = body.leads[0];",
+                  "  pm.expect(l).to.have.property(\"source\");",
+                  "  pm.expect(l.visit_count).to.be.a(\"number\");",
+                  "  pm.expect(l).to.have.property(\"last_followup_comment\");",
+                  "  pm.expect(l.created_at).to.be.a(\"string\");",
+                  "  pm.expect(l).to.have.property(\"budget\");",
+                  "  pm.expect(l).to.have.property(\"transaction_type\");",
                   "});"
                 ]
               }
@@ -681,12 +1107,18 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/leads?status=missed_followup",
+              "raw": "{{api_base}}/leads?missed_followup=true",
               "host": [
                 "{{api_base}}"
               ],
               "path": [
-                "leads?status=missed_followup"
+                "leads"
+              ],
+              "query": [
+                {
+                  "key": "missed_followup",
+                  "value": "true"
+                }
               ]
             },
             "description": "The design's \"Missed f/u\" tab. Not a status — `LEAD_STATUSES` has no such entry — but an overdue next action on a lead that isn't already dead or booked."
@@ -713,7 +1145,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/leads?q=a&status=new&transaction_type=sale&property_type_id={{property_type_id}}&source_id={{lead_source_id}}&assigned_user_id={{user_id}}&budget_min=8000000&budget_max=25000000&possession_from=2026-01-01&possession_to=2028-12-31&typology_ids[]={{typology_id}}&sort=recent&per_page=5&page=1",
+              "raw": "{{api_base}}/leads?status=new&transaction_type=sale&property_type_id={{property_type_id}}&source_id={{lead_source_id}}&assigned_user_id={{user_id}}&budget_min=8000000&budget_max=25000000&possession_from=2026-01-01&possession_to=2028-12-31&typology_ids[]={{typology_id}}&ncd_from=2026-01-01&ncd_upto=2026-12-31&created_from=2026-01-01&created_upto=2026-12-31&died_from=2026-01-01&died_upto=2026-12-31&sort=ncd&per_page=5&page=1",
               "host": [
                 "{{api_base}}"
               ],
@@ -721,10 +1153,6 @@
                 "leads"
               ],
               "query": [
-                {
-                  "key": "q",
-                  "value": "a"
-                },
                 {
                   "key": "status",
                   "value": "new"
@@ -766,8 +1194,32 @@
                   "value": "{{typology_id}}"
                 },
                 {
+                  "key": "ncd_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "ncd_upto",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "created_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "created_upto",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "died_from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "died_upto",
+                  "value": "2026-12-31"
+                },
+                {
                   "key": "sort",
-                  "value": "recent"
+                  "value": "ncd"
                 },
                 {
                   "key": "per_page",
@@ -779,7 +1231,7 @@
                 }
               ]
             },
-            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\n**Budget filtering is overlap, not containment.** A window of 80L–2.5Cr returns the lead whose own range is 1.2–1.8 Cr *and* the one that straddles an edge. Containment would hide exactly the lead a broker widening the filter is looking for.\n\n**`status=missed_followup` is not a real status** — it means `next_action_at` in the past on a non-terminal lead.\n\n`sort` is `worklist` (default), `recent` or `updated`. `typology_ids` is an array, so it repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25."
+            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\nDrawer params are sent without `q` because a drawer field drops `q`. GET `budget_min`/`budget_max` are a window on the stored amount (`budget`), not range overlap. `ncd_from`/`ncd_upto`, `created_from`/`created_upto` and `died_from`/`died_upto` are inclusive IST days. `died_*` matches a change into a dead status, including a lead later revived.\n\n`property_type_id`, `source_id` and `assigned_user_id` repeat or take commas. `source_missing=true` with `source_id` is those sources plus leads with no source. A backwards date pair is 422.\n\n`missed_followup=true` is not a real status — `next_action_at <= now` on a non-terminal lead. `status=hot_negotiation` is hot+negotiation.\n\n`sort` is `ncd` (default, NULLS FIRST), `worklist`, `recent` or `updated`. `typology_ids` repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25. Response includes `counts` (unfiltered pipeline totals)."
           },
           "event": [
             {
@@ -804,6 +1256,43 @@
           ]
         },
         {
+          "name": "Download lead import sample",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/import_template",
+              "host": [ "{{api_base}}" ],
+              "path": [ "leads", "import_template" ]
+            },
+            "description": "CSV the broker fills in. The example row (Example lead / 9000000000) is skipped if left unchanged. Save the upload as CSV UTF-8, not an Excel workbook."
+          }
+        },
+        {
+          "name": "Import leads",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "The filled sample. At most 1 MB and 200 data rows."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{api_base}}/leads/import",
+              "host": [ "{{api_base}}" ],
+              "path": [ "leads", "import" ]
+            },
+            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. Property type is still required for sale (Under construction or Ready possession). Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. Leads are assigned to the signed-in user and start as New."
+          }
+        },
+        {
           "name": "Create a lead",
           "request": {
             "method": "POST",
@@ -822,10 +1311,10 @@
                 "leads"
               ]
             },
-            "description": "Every field the endpoint accepts, in one body.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.",
+            "description": "Every field the endpoint accepts, in one body.\n\n**One lead per (firm, mobile, transaction_type).** A second sale on the same number is `422 duplicate_lead` with `details.lead_id`. Sale + rent on one number is allowed.\n\n`notes` is Client's requirements. Optional `project_id` copies blank budget/possession/notes from that project and maps it.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 12000000,\n  \"budget_max\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"next_action_note\": \"Call back after site visit\",\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"followup\": {\n    \"comment\": \"Call back after site visit\",\n    \"next_action_at\": \"2026-09-02T10:30:00+05:30\"\n  },\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"locality_ids\": [\n    \"{{locality_id}}\"\n  ]\n}"
             }
           },
           "event": [
@@ -854,6 +1343,9 @@
                   "  const underConstruction = ref.property_types.find((p) => /construction/i.test(p.name));",
                   "  pm.collectionVariables.set(\"property_type_id\", (underConstruction || ref.property_types[0]).id);",
                   "  pm.collectionVariables.set(\"typology_id\", ref.typologies[0].id);",
+                  "  if (ref.localities && ref.localities.length) {",
+                  "    pm.collectionVariables.set(\"locality_id\", ref.localities[0].id);",
+                  "  }",
                   "});"
                 ]
               }
@@ -899,7 +1391,7 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Detail payload: the lead, its typologies, its recent timeline and its full status history.\n\nNote the lead **detail screen was never designed** — this shape is inferred from the list card and the new-lead form, and will likely change when that screen exists."
+            "description": "Detail payload: the lead, mappings (`mapped_projects`, `mapped_properties`), its recent timeline and its full status history.\n\nJoin ids on `mapped_*[].id` are what DELETE /leads/:id/projects/:id and /properties/:id take. A mapped project includes `starting_budget`. A mapped property includes `price`, `listing_for`, and `building.name`. A mapped project includes `starting_budget`. A mapped property includes `price`, `listing_for`, and `building.name`."
           },
           "event": [
             {
@@ -909,11 +1401,186 @@
                 "exec": [
                   "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
                   "",
-                  "pm.test(\"carries the timeline and history\", () => {",
+                  "pm.test(\"carries the timeline, history and mappings\", () => {",
                   "  const lead = pm.response.json().lead;",
                   "  pm.expect(lead.activities).to.be.an(\"array\");",
                   "  pm.expect(lead.status_history).to.be.an(\"array\");",
+                  "  pm.expect(lead.mapped_projects).to.be.an(\"array\");",
+                  "  pm.expect(lead.mapped_properties).to.be.an(\"array\");",
                   "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Map a project onto a lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/projects",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "projects"
+              ]
+            },
+            "description": "Anyone who can see the lead. Body is `{ project_id }` — own, a catalog row this firm owns, or a global marketplace row. A marketplace row is linked as itself and is not copied. Returns the refreshed lead. Join id is `lead.mapped_projects[].id`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{project_id}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn(\"{{api_base}}/projects?per_page=1\"),",
+                  "  method: \"GET\",",
+                  "  header: { Authorization: \"Bearer \" + pm.variables.replaceIn(\"{{access_token}}\") }",
+                  "}, (err, res) => {",
+                  "  if (!err && res.code === 200 && res.json().projects.length) {",
+                  "    pm.collectionVariables.set(\"project_id\", res.json().projects[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const lead = pm.response.json().lead;",
+                  "if (lead.mapped_projects.length) {",
+                  "  pm.collectionVariables.set(\"lead_project_id\", lead.mapped_projects[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Show new matches",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/matches",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "matches"
+              ]
+            },
+            "description": "Unmapped inventory that shares a preferred locality and clears the score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. Optional JSON body { q } searches the full set and returns every hit. Without q, the top 50 are returned and truncated is true when more exist. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"matches is an array\", () => {",
+                  "  pm.expect(pm.response.json().matches).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a visit pass",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/visit_passes",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "visit_passes"
+              ]
+            },
+            "description": "The lead must already be mapped to a marketplace copy (external_ref is the turbo PR code). 201 on a new pass, 200 if an unused pass already exists. 422 rera_required when neither the broker nor the firm has a RERA number.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{project_id}}\",\n  \"tentative_visit_planned\": \"2026-10-02T05:30:00Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh a visit pass",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/visit_passes/{{visit_pass_id}}/refresh",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "visit_passes",
+                "{{visit_pass_id}}",
+                "refresh"
+              ]
+            },
+            "description": "Once every 6 hours. 429 refresh_too_soon before that, with details.next_refresh_at. A scanned pass writes a follow-up and does not change the lead status."
+          }
+        },
+        {
+          "name": "Unmap a project",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/projects/{{lead_project_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "projects",
+                "{{lead_project_id}}"
+              ]
+            },
+            "description": "`:id` is the join id from mapped_projects[], not the project id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -939,10 +1606,10 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.",
+            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget_min\": 13000000,\n  \"budget_max\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"next_action_at\": \"2026-09-10T16:00:00+05:30\",\n  \"next_action_note\": \"Share Aurum Vista brochure\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"emi\": {\n    \"loan_amount\": 8000000,\n    \"annual_rate\": \"8.50\",\n    \"tenure_years\": 20\n  }\n}"
             }
           },
           "event": [
@@ -960,7 +1627,7 @@
         {
           "name": "Reassign a lead",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -968,17 +1635,16 @@
               }
             ],
             "url": {
-              "raw": "{{api_base}}/leads/{{lead_id}}/assign",
+              "raw": "{{api_base}}/leads/{{lead_id}}",
               "host": [
                 "{{api_base}}"
               ],
               "path": [
                 "leads",
-                "{{lead_id}}",
-                "assign"
+                "{{lead_id}}"
               ]
             },
-            "description": "Managers and the super admin only — an agent gets `forbidden_role`.\n\nReassigning matters more than it looks: agents can only see leads assigned to them, so moving a lead is what makes it appear in — or vanish from — someone's worklist. Send `assigned_user_id: null` to unassign, which hides it from every agent.\n\nThe pre-request script reads the signed-in user's own id, so the body hardcodes nothing.",
+            "description": "There is no `/assign` path. Send `assigned_user_id` on `PATCH /leads/:id`.\n\nThe super admin can assign anyone active in the firm. Anyone else is limited to their **active manageables** (themselves plus reports). `null` unassigns — manager-role+ only — and hides the lead from every agent.\n\nThe pre-request script reads the signed-in user's own id, so the body hardcodes nothing.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"assigned_user_id\": \"{{user_id}}\"\n}"
@@ -1018,6 +1684,191 @@
           ]
         },
         {
+          "name": "Add a followup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/followups",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "followups"
+              ]
+            },
+            "description": "The only write path for a follow-up comment and for moving NCD. Optional `status` runs TransitionStatus in the same transaction — do not also POST /leads/:id/status.\n\n`comment` is required. Omit `next_action_at` to leave the lead's current NCD. Dead needs `reason`; booked needs `booked_on` (application date on leads.booked_at, no booking row). Terminal statuses clear NCD.\n\nTop-level next_action_at on POST/PATCH /leads is ignored.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Call back after site visit\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"status\": \"followup\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"returns the followup and a lead card\", () => {",
+                  "  pm.expect(body.followup.comment).to.eql(\"Call back after site visit\");",
+                  "  pm.expect(body.lead.last_followup_comment).to.eql(\"Call back after site visit\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List followups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/followups",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "followups"
+              ]
+            },
+            "description": "Newest first. `meta` is the usual page / per_page / total_count / total_pages. Default 25."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"newest first array\", () => {",
+                  "  pm.expect(pm.response.json().followups).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log a visit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/visits",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "visits"
+              ]
+            },
+            "description": "A completed outing. visited_on is YYYY-MM-DD (IST). Sites are optional and must already be mapped. Does not change status or NCD. Returns { visit } only.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"visited_on\": \"2026-09-20\",\n  \"notes\": \"Walked the site\",\n  \"project_ids\": [],\n  \"property_ids\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const visit = pm.response.json().visit;",
+                  "pm.test(\"returns the visit date\", () => {",
+                  "  pm.expect(visit.visited_on).to.eql(\"2026-09-20\");",
+                  "});",
+                  "if (visit && visit.id) pm.collectionVariables.set(\"visit_id\", visit.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List visits",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/visits",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "visits"
+              ]
+            },
+            "description": "Newest first. visit_count on the lead is the number of these rows."
+          }
+        },
+        {
+          "name": "Edit a visit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/leads/{{lead_id}}/visits/{{visit_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "leads",
+                "{{lead_id}}",
+                "visits",
+                "{{visit_id}}"
+              ]
+            },
+            "description": "Date, notes, and sites. New site ids must be mapped. Ids already on this visit may stay after the lead unmaps them. user_id does not change.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"visited_on\": \"2026-09-18\",\n  \"notes\": \"Corrected the date\",\n  \"project_ids\": [],\n  \"property_ids\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const visit = pm.response.json().visit;",
+                  "pm.test(\"updates notes\", () => {",
+                  "  pm.expect(visit.notes).to.eql(\"Corrected the date\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Log a call",
           "request": {
             "method": "POST",
@@ -1038,7 +1889,7 @@
                 "activities"
               ]
             },
-            "description": "Kinds: `call`, `whatsapp`, `visit`, `note`. `status_change` is system-only and refused here — pipeline movement goes through the status endpoint, which also writes the reporting record.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
+            "description": "Kinds: `call`, `whatsapp`, `note`. `visit` and `status_change` are refused here. A site visit is POST /leads/:id/visits.\n\n`occurred_at` is optional and defaults to now, so a broker can log this evening the call they made this morning.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"kind\": \"call\",\n  \"body\": \"Discussed the 3 BHK at Aurum Vista. Wants a higher floor.\",\n  \"occurred_at\": \"2026-09-01T11:15:00+05:30\",\n  \"outcome\": \"interested\"\n}"
@@ -1057,7 +1908,7 @@
           ]
         },
         {
-          "name": "Log a visit — sets the visited badge",
+          "name": "kind=visit is rejected",
           "request": {
             "method": "POST",
             "header": [
@@ -1077,7 +1928,7 @@
                 "activities"
               ]
             },
-            "description": "A visit is what makes the design's \"visited\" badge true. It's derived from the timeline rather than set separately, so the two can't disagree. The response returns the updated lead so the client can refresh without a second request.",
+            "description": "Site visits are lead_visits, not activities. kind=visit is 422.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"kind\": \"visit\",\n  \"body\": \"Site visit to Aurum Vista\"\n}"
@@ -1089,11 +1940,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
-                  "",
-                  "pm.test(\"the lead now reads as visited\", () => {",
-                  "  pm.expect(pm.response.json().lead.visited).to.be.true;",
-                  "});"
+                  "pm.test(\"422 kind=visit rejected\", () => pm.response.to.have.status(422));"
                 ]
               }
             }
@@ -1623,7 +2470,7 @@
                 "projects"
               ]
             },
-            "description": "Filters: `q`, `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `typology_ids[]`, `status`.\n\n**Budget filtering matches a project if *any* of its typologies starts in the window** — a broker wants the project that has something sellable at that price, not one whose every configuration fits."
+            "description": "My Projects only (`source: own`). Marketplace is an empty client pill — do not list catalog here.\n\nFilters: `q` (project name, builder, city, locality, or RERA — not the street address; dropped if any drawer param is set; `status` does not drop `q`), `name` (project name only, AND-ed with the other drawer filters), `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `brokerage_min`, `brokerage_max` (NULL brokerage drops out), `typology_ids[]`, `status` (`active` default · `archived` · `all`).\n\nList/detail include `avg_psf` (unweighted mean of config rates). **Budget filtering matches a project if *any* of its typologies starts in the window.**"
           },
           "event": [
             {
@@ -1654,7 +2501,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/projects?q=Aurum&status=active&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1",
+              "raw": "{{api_base}}/projects?status=active&name=Aurum&builder_id={{builder_id}}&city_id={{city_id}}&locality_id={{locality_id}}&budget_min=5000000&budget_max=50000000&brokerage_min=1&brokerage_max=10&possession_before=2029-12-31&typology_ids[]={{typology_id}}&per_page=5&page=1&sort=recent",
               "host": [
                 "{{api_base}}"
               ],
@@ -1663,12 +2510,12 @@
               ],
               "query": [
                 {
-                  "key": "q",
-                  "value": "Aurum"
-                },
-                {
                   "key": "status",
                   "value": "active"
+                },
+                {
+                  "key": "name",
+                  "value": "Aurum"
                 },
                 {
                   "key": "builder_id",
@@ -1691,6 +2538,14 @@
                   "value": "50000000"
                 },
                 {
+                  "key": "brokerage_min",
+                  "value": "1"
+                },
+                {
+                  "key": "brokerage_max",
+                  "value": "10"
+                },
+                {
                   "key": "possession_before",
                   "value": "2029-12-31"
                 },
@@ -1705,10 +2560,14 @@
                 {
                   "key": "page",
                   "value": "1"
+                },
+                {
+                  "key": "sort",
+                  "value": "recent"
                 }
               ]
             },
-            "description": "Every filter on the projects index. `status` is `active` or `archived` — there is no destroy anywhere in inventory, archiving is the status change."
+            "description": "Every filter on the projects index. `status` is `active` or `archived` — there is no destroy anywhere in inventory, archiving is the status change. `name` is the project name and is AND-ed with the other drawer filters. Drawer params drop `q`; the Active pill does not. `brokerage_min`/`brokerage_max` skip projects with NULL brokerage. List rows include `avg_psf`."
           },
           "event": [
             {
@@ -1751,7 +2610,7 @@
                 "projects"
               ]
             },
-            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`.",
+            "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`. `brokerage_percent` is the starting brokerage. Attach the ladder image with `brokerage_ladder_signed_id` from `/uploads` using purpose `project_brokerage_ladder`. `promo_text` has no length limit.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
@@ -1861,6 +2720,101 @@
           ]
         },
         {
+          "name": "Matching leads for a project",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/lead_matches",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "lead_matches"
+              ]
+            },
+            "description": "Live sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project or a project with no locality returns matches: []. Each match includes mobile, the lead's primary number."
+          }
+        },
+        {
+          "name": "Mapped customers for a project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/mapped_customers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "mapped_customers"
+              ]
+            },
+            "description": "Leads already mapped to this project, newest first, 25 per page. An agent sees only assigned leads. Withdrawn mappings are left out. A marketplace row and the firm's booking copy list the same customers."
+          }
+        },
+        {
+          "name": "Mapped customers for a project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/mapped_customers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "mapped_customers"
+              ]
+            },
+            "description": "Leads already mapped to this project, newest first, 25 per page. An agent sees only assigned leads. Withdrawn mappings are left out. A marketplace row and the firm's booking copy list the same customers."
+          }
+        },
+        {
+          "name": "Marketplace leads for a project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/marketplace_leads",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "marketplace_leads"
+              ]
+            },
+            "description": "Leads mapped to the marketplace project, 25 per page, newest first. Works from the catalog row or the firm's booking copy. meta.page, meta.per_page, meta.total_count, meta.total_pages. Pass page for the next page."
+          }
+        },
+        {
+          "name": "Marketplace client link",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/share_link",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "{{project_id}}",
+                "share_link"
+              ]
+            },
+            "description": "Marketplace projects, and a firm's copy of one (external_ref PR + hex). The link is for the marketplace row. Returns { share_link: { url, token } }. The same broker and project reuse the token. 422 not_marketplace, 503 turbo_origin_missing."
+          }
+        },
+        {
           "name": "Update a project",
           "request": {
             "method": "PATCH",
@@ -1935,6 +2889,226 @@
                   "});",
                   "",
                   "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List projects — newest first",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects?sort=recent",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "recent"
+                }
+              ]
+            },
+            "description": "`sort=recent` puts a just-created project on page 1. The default, `sort=name`, is A–Z — which is why a new project can land on page 2 and look missing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const list = pm.response.json().projects;",
+                  "pm.test(\"the project created above is first\", () => {",
+                  "  pm.expect(list[0].id).to.eql(pm.collectionVariables.get(\"project_id\"));",
+                  "});",
+                  "pm.test(\"and the rest are newest first\", () => {",
+                  "  const times = list.map(p => Date.parse(p.created_at));",
+                  "  pm.expect(times).to.eql([...times].sort((a, b) => b - a));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search projects — typeahead",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=aurum",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "aurum"
+                }
+              ]
+            },
+            "description": "Typeahead for a search box: call once **3+ characters** are typed, debounced.\n\nLiteral match on project name, builder, city, locality, or RERA. Typo-tolerant on the project name only, and only when nothing matched as typed. Ranked exact → prefix → contains, capped at 10. `meta.more` is true when there are more than 10. Optional `status`: `active` (default) · `archived` · `all`.\n\nMy Projects only, unless `include_marketplace=true` (see the next request).\n\nA hit carries only what a row shows — tap through to `GET /projects/:id` for the rest."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"finds the project created above\", () => {",
+                  "  pm.expect(body.projects.map(p => p.id)).to.include(pm.collectionVariables.get(\"project_id\"));",
+                  "});",
+                  "pm.test(\"literal matches, so not a did-you-mean\", () => pm.expect(body.meta.fuzzy).to.eql(false));",
+                  "pm.test(\"at most ten, with the rules in meta\", () => {",
+                  "  pm.expect(body.projects.length).to.be.at.most(10);",
+                  "  pm.expect(body.meta).to.include({ limit: 10, min_length: 3, query: \"aurum\" });",
+                  "  pm.expect(body.meta.more).to.be.a(\"boolean\");",
+                  "});",
+                  "pm.test(\"a hit is slim — no price bands, photos or brokerage\", () => {",
+                  "  pm.expect(Object.keys(body.projects[0]).sort())",
+                  "    .to.eql([\"builder\", \"city\", \"city_id\", \"id\", \"locality\", \"locality_id\", \"match_label\", \"name\", \"rera_number\", \"source\"]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search projects — include marketplace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=aurum&include_marketplace=true",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "aurum"
+                },
+                {
+                  "key": "include_marketplace",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Same typeahead as above, plus active marketplace projects (`source: catalog`). A firm's booking copy of that project is omitted — the marketplace row is the hit. Mapping a `catalog` id links that row and does not copy it. `status=archived` does not add marketplace rows."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test(\"each hit is own or marketplace\", () => {",
+                  "  body.projects.forEach((project) => {",
+                  "    pm.expect([\"own\", \"catalog\"]).to.include(project.source);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search tolerates a typo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=aurm",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "aurm"
+                }
+              ]
+            },
+            "description": "`aurm` matches nothing as typed, so the search falls back to close spellings and finds *Aurum Vista*. `meta.fuzzy` is `true` so the app can label it \"did you mean\"."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the misspelling still finds Aurum\", () => {",
+                  "  pm.expect(body.projects.map(p => p.name).some(n => /^Aurum/.test(n))).to.eql(true);",
+                  "});",
+                  "pm.test(\"and says these are close spellings\", () => pm.expect(body.meta.fuzzy).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search needs three characters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/search?q=au",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "projects",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "au"
+                }
+              ]
+            },
+            "description": "Fewer than three characters is a `422 query_too_short`, with the minimum in `details` so the app never hardcodes it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422 query_too_short\", () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"query_too_short\");",
+                  "});",
+                  "pm.test(\"says how many it needs\", () => {",
+                  "  pm.expect(pm.response.json().error.details).to.eql({ min_length: 3, length: 2 });",
+                  "});"
                 ]
               }
             }
@@ -2079,7 +3253,7 @@
                 "properties"
               ]
             },
-            "description": "Filters: `q`, `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `status`.\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
+            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description — not the city; dropped if any drawer param is set; `status` does not drop `q`; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default · `booked` · `sold_out` · `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
           },
           "event": [
             {
@@ -2106,7 +3280,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/properties?q=Aurum&status=available&listing_for=sale&floor_band=higher&building_id={{building_id}}&typology_id={{typology_id}}&city_id={{city_id}}&locality_id={{locality_id}}&price_min=5000000&price_max=50000000&per_page=5&page=1",
+              "raw": "{{api_base}}/properties?status=available&listing_for=sale&floor_band=higher&building_id={{building_id}}&typology_id={{typology_id}}&city_id={{city_id}}&locality_id={{locality_id}}&price_min=5000000&price_max=50000000&carpet_min=400&carpet_max=2000&per_page=5&page=1",
               "host": [
                 "{{api_base}}"
               ],
@@ -2114,10 +3288,6 @@
                 "properties"
               ],
               "query": [
-                {
-                  "key": "q",
-                  "value": "Aurum"
-                },
                 {
                   "key": "status",
                   "value": "available"
@@ -2155,6 +3325,14 @@
                   "value": "50000000"
                 },
                 {
+                  "key": "carpet_min",
+                  "value": "400"
+                },
+                {
+                  "key": "carpet_max",
+                  "value": "2000"
+                },
+                {
                   "key": "per_page",
                   "value": "5"
                 },
@@ -2164,7 +3342,7 @@
                 }
               ]
             },
-            "description": "Every filter on the properties index. `status` is `available` / `under_offer` / `closed`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`.\n\nNo list payload carries `confidential_note`, whatever the filter."
+            "description": "Every filter on the properties index. `q` matches the card title, the building name, or the description — not the city. `status` is `available` / `booked` / `sold_out`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`. Drawer params drop `q`. `carpet_min`/`carpet_max` skip listings with no carpet.\n\nNo list payload carries `confidential_note`, whatever the filter."
           },
           "event": [
             {
@@ -2210,7 +3388,7 @@
                 "properties"
               ]
             },
-            "description": "Every accepted field. `status` is `available` / `under_offer` / `closed`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`.\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
+            "description": "Every accepted field. `status` is `available` / `booked` / `sold_out`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`. Mark sold = PATCH `sold_out` (reversible).\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
@@ -2276,6 +3454,90 @@
           ]
         },
         {
+          "name": "Matching leads for a property",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/lead_matches",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}",
+                "lead_matches"
+              ]
+            },
+            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
+          }
+        },
+        {
+          "name": "Marketplace properties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/marketplace?q=2bhk",
+              "host": ["{{api_base}}"],
+              "path": ["properties", "marketplace"],
+              "query": [{ "key": "q", "value": "2bhk" }]
+            },
+            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card: no carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
+          }
+        },
+        {
+          "name": "Marketplace property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/marketplace",
+              "host": ["{{api_base}}"],
+              "path": ["properties", "{{property_id}}", "marketplace"]
+            },
+            "description": "Another firm's safe view of a shared available listing: title, configuration, locality, city, price, carpet, and the firm's phone lines. No address, building name, or confidential note. The owning firm receives 404."
+          }
+        },
+        {
+          "name": "Mapped customers for a property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/mapped_customers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}",
+                "mapped_customers"
+              ]
+            },
+            "description": "Leads already mapped to this property, newest first, 25 per page. An agent sees only assigned leads."
+          }
+        },
+        {
+          "name": "Mapped customers for a property",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/properties/{{property_id}}/mapped_customers",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "properties",
+                "{{property_id}}",
+                "mapped_customers"
+              ]
+            },
+            "description": "Leads already mapped to this property, newest first, 25 per page. An agent sees only assigned leads."
+          }
+        },
+        {
           "name": "Update a property",
           "request": {
             "method": "PATCH",
@@ -2298,7 +3560,7 @@
             "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"under_offer\"\n}"
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\"\n}"
             }
           },
           "event": [
@@ -2343,7 +3605,7 @@
                 "photos"
               ]
             },
-            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`.\n\nThe pre-request script does the first two steps, so this request works on its own.",
+            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`. A ticket from another firm, or issued for a different purpose, is `invalid_upload`.\n\nThe same attach check applies to brochures, booking documents and collection proofs.\n\nThe pre-request script does the first two steps, so this request works on its own.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
@@ -2476,7 +3738,7 @@
                 "bookings"
               ]
             },
-            "description": "Every accepted field.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
+            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` — retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
@@ -2536,7 +3798,7 @@
                 "bookings"
               ]
             },
-            "description": "Cancelled bookings are excluded unless you ask for them — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q`, `client_phone`, `project_id`, `booked_from`, `booked_to`, `status`.\n\n`totals` carries the firm's live agreement value and net income for the header."
+            "description": "Cancelled bookings are excluded unless you ask for them — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q` (customer, unit, code, builder ref, project name), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default · `cancelled`).\n\n`totals` carries the firm's live agreement value and net income for the header."
           },
           "event": [
             {
@@ -2678,7 +3940,7 @@
                 "{{booking_id}}"
               ]
             },
-            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.",
+            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.\n\nA catalog or marketplace `project_id` is copied into My Projects the same way as create. The booking stores the firm's row, never the shared listing.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184-R1\",\n  \"unit_no\": \"B-1204\",\n  \"carpet_area_sqft\": 1360,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 5.0,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings · corner unit\",\n  \"registration_done_on\": \"2026-08-25\",\n  \"client_paid_percent\": 20\n}"
@@ -3171,6 +4433,61 @@
       ]
     },
     {
+      "name": "Trainings",
+      "description": "Skills & Trainings. Platform content: ops publish from /admin and every firm sees the same list. Visible while active and not past valid_upto; anything else is 404. All roles may read. The list request stores the first training's id in {{training_id}}.",
+      "item": [
+        {
+          "name": "List trainings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/trainings",
+            "description": "Active, unexpired, newest first, 25 a page. valid_upto is null when a training never expires."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const first = pm.response.json().trainings[0];",
+                  "if (first) { pm.collectionVariables.set(\"training_id\", first.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Training detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/trainings/{{training_id}}",
+            "description": "Adds intro_text, document_url, podcast_url, created_by_name and this broker's own note. instructions_text is null when ops left it blank — the client shows its default steps. File URLs are permanent, unlike booking documents."
+          }
+        },
+        {
+          "name": "Save my note",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_base}}/trainings/{{training_id}}/note",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Saturday: bank pre-approval slot\"\n}"
+            },
+            "description": "One running note per broker per training, saved in place. An empty body clears it and returns {\"note\": null}. Over 20,000 characters is 422 note_too_long; a body that is not text is 400."
+          }
+        }
+      ]
+    },
+    {
       "name": "Error states",
       "description": "The blocked states the React app has to render. Each returns a typed `error.code`; two more — `account_suspended` and `subscription_lapsed` — are produced by suspending the firm or lapsing its subscription in the admin panel, then calling `Who am I`.",
       "item": [
@@ -3495,6 +4812,360 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Turbo marketplace",
+      "description": "Server-to-server. Not the broker JWT. Sign the raw body with HMAC-SHA256 and send X-RealtorIQ-Signature: sha256=<hex>. The secret is realtoriq.webhook_secret. Failures are { error: string }.",
+      "item": [
+        {
+          "name": "Upsert project",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-RealtorIQ-Signature",
+                "value": "sha256={{turbo_signature}}"
+              }
+            ],
+            "url": "{{base_url}}/turbo/events",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"upsert\",\n  \"pushed_at\": \"2026-09-28T12:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"project_name\": \"Harbour One\",\n  \"developer_name\": \"Lodha\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Worli\",\n  \"rera_number\": \"P51800000001\",\n  \"possession_on\": \"2027-12-31\",\n  \"rm_name\": \"Asha Rao\",\n  \"rm_contact\": \"9876543210\",\n  \"unit_types\": [{ \"label\": \"2 BHK\", \"typology_name\": \"2BHK\", \"price_min\": 15000000, \"area_min\": 650, \"area_unit\": \"sqft\" }],\n  \"images\": [{ \"url\": \"https://launch.example/photo.jpg\", \"checksum\": \"abc\", \"filename\": \"photo.jpg\" }],\n  \"brochure\": { \"url\": \"https://launch.example/brochure.pdf\", \"checksum\": \"def\", \"filename\": \"brochure.pdf\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Hide project",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-RealtorIQ-Signature",
+                "value": "sha256={{turbo_signature}}"
+              }
+            ],
+            "url": "{{base_url}}/turbo/events",
+            "description": "Archives the catalog row only. Does not delete leads or firm copies. Sign the raw body.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"hide\",\n  \"pushed_at\": \"2026-09-28T13:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"share\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Withdraw project",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-RealtorIQ-Signature",
+                "value": "sha256={{turbo_signature}}"
+              }
+            ],
+            "url": "{{base_url}}/turbo/events",
+            "description": "Archives the catalog row and every firm copy, and marks lead mappings withdrawn. Sign the raw body.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"withdraw\",\n  \"pushed_at\": \"2026-09-28T14:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"reason\": \"project_deleted\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Enquiry",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-RealtorIQ-Signature",
+                "value": "sha256={{turbo_signature}}"
+              }
+            ],
+            "url": "{{base_url}}/turbo/events",
+            "description": "From the public microsite. A live lead is not duplicated (200 and an email to the owner). Errors are { error: string }.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"enquiry\",\n  \"pushed_at\": \"2026-09-28T12:20:00Z\",\n  \"submitted_at\": \"2026-09-28T12:19:40Z\",\n  \"enquiry_id\": \"6f1c3c3e-1b2a-4c5d-9e8f-0a1b2c3d4e5f\",\n  \"project_code\": \"PR4F2A9C\",\n  \"share_token\": \"{{share_token}}\",\n  \"name\": \"Meera Shah\",\n  \"phone\": \"9876543210\",\n  \"message\": \"Saturday morning\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inbound enquiries",
+      "description": "Websites post leads with the firm's key. Sign in as the super admin first, then Get inbound key, which saves inbound_token. Portal calls use that key, not the broker JWT. The note in the GET response is what the owner copies to a vendor. A body over 8 KB is 413. More than 20 bad keys a minute from one address, 300 calls a minute from one address, or 30 calls a minute for one key is 429.",
+      "item": [
+        {
+          "name": "Get inbound key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json().inbound_credential;",
+                  "pm.collectionVariables.set(\"inbound_token\", body.token);",
+                  "pm.test(\"four portals\", () => pm.expect(body.portals).to.have.lengthOf(4));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/inbound_credentials",
+            "description": "Super admin only. Creates the key on first read. The token is inside each portal message and is not in the URL."
+          }
+        },
+        {
+          "name": "Rotate inbound key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"inbound_token\", pm.response.json().inbound_credential.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{api_base}}/inbound_credentials/rotate",
+            "description": "Super admin only. The previous key stops working for every portal."
+          }
+        },
+        {
+          "name": "99acres project enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/99acres/projects",
+            "description": "listing is the 99acres code saved on the project, the P- code, or the exact project name. Budget and location are copied. 200 { status: created } or { status: already_in_pipeline }.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"{{project_id}}\",\n  \"enquiry_id\": \"99acres-1001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Magicbricks property enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/magicbricks/properties",
+            "description": "listing is required. Sale or rent is taken from the property. The body must not decide it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"MB-9\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Housing project enquiry",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/housing/projects",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"listing\": \"Lodha Palava\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Website enquiry with no project",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/general/projects",
+            "description": "Without a listing, budget, city, locality and configuration are required. The lead is a sale under construction.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543210\",\n  \"budget\": \"12000000\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Kharghar\",\n  \"configuration\": \"2 BHK\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Website enquiry with no property",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{inbound_token}}" }
+            ],
+            "url": "{{api_base}}/inbound/general/properties",
+            "description": "transaction_type is sale or rent. A sale is saved as Ready possession.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"9876543211\",\n  \"budget\": \"45000\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Kharghar\",\n  \"configuration\": \"2 BHK\",\n  \"transaction_type\": \"rent\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Save project portal codes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{api_base}}/projects/{{project_id}}/portal_codes",
+            "description": "Super admin only. Not accepted on the main project form. Blank clears a code.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"99acres\": \"ACME-22\",\n  \"magicbricks\": \"\",\n  \"housing\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Save property portal codes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{api_base}}/properties/{{property_id}}/portal_codes",
+            "description": "Any user in the firm. The same code cannot be saved on two properties.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"magicbricks\": \"MB-9\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Facebook Lead Ads",
+      "description": "Super admin only. Tokens are never in the responses. Connect starts in the browser: POST /connect, open authorization_url, then POST /connections with the same nonce.",
+      "item": [
+        {
+          "name": "Integration",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/facebook/integration"
+          }
+        },
+        {
+          "name": "Start connect",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/connect",
+            "body": { "mode": "raw", "raw": "{\n  \"nonce\": \"0123456789abcdef0123456789abcdef\"\n}" }
+          }
+        },
+        {
+          "name": "Confirm connect",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/connections",
+            "body": { "mode": "raw", "raw": "{\n  \"attempt_id\": \"{{facebook_attempt_id}}\",\n  \"nonce\": \"0123456789abcdef0123456789abcdef\"\n}" }
+          }
+        },
+        {
+          "name": "Health check",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/connection/health_check" }
+        },
+        {
+          "name": "Disconnect",
+          "request": { "method": "DELETE", "url": "{{api_base}}/facebook/connection" }
+        },
+        {
+          "name": "Subscribe page",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/subscribe" }
+        },
+        {
+          "name": "Unsubscribe page",
+          "request": { "method": "DELETE", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/subscribe" }
+        },
+        {
+          "name": "Sync forms",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/sync_forms" }
+        },
+        {
+          "name": "Map form",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/pages/{{facebook_page_id}}/forms",
+            "body": { "mode": "raw", "raw": "{\n  \"meta_form_id\": \"123\"\n}" }
+          }
+        },
+        {
+          "name": "Get form",
+          "request": { "method": "GET", "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}" }
+        },
+        {
+          "name": "Update form",
+          "request": {
+            "method": "PATCH",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
+            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Imports",
+          "request": { "method": "GET", "url": "{{api_base}}/facebook/imports?page=1" }
+        },
+        {
+          "name": "Retry import",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/imports/{{facebook_import_id}}/retry" }
+        },
+        {
+          "name": "Retry all failed",
+          "request": { "method": "POST", "url": "{{api_base}}/facebook/imports/retry_failed" }
         }
       ]
     }

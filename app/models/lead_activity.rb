@@ -9,7 +9,10 @@ class LeadActivity < ApplicationRecord
   include FirmScoped
 
   KINDS = %w[call whatsapp visit note status_change].freeze
-  LOGGABLE_KINDS = (KINDS - %w[status_change]).freeze
+  # `visit` stays in KINDS so historical rows still load. New site visits are
+  # LeadVisit rows; the activities API rejects kind=visit the same way it
+  # rejects a hand-written status_change.
+  LOGGABLE_KINDS = (KINDS - %w[status_change visit]).freeze
 
   enum :kind, KINDS.index_by(&:itself), validate: true
 

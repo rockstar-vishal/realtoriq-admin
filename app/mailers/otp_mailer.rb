@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Carries verification codes to the firm's email channel. SMS and WhatsApp go
-# through MSG91 instead — see Notifications::Msg91Deliverer.
+# Carries verification codes to the firm's email channel. SMS goes through
+# MSG91 and WhatsApp through Twilio — see Notifications::OutboundDeliverer.
 class OtpMailer < ApplicationMailer
   def code(destination:, code:, purpose:)
     @code = code

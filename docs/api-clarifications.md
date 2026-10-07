@@ -7,6 +7,13 @@ answer was checked against the routing table, not from memory.
 **Full parameter-level reference: [docs/api.md](api.md).** Most of section 3–6
 is answered there in more detail than this document repeats.
 
+> **18 Sep 2026 — lead / project / property list contract moved.** Write a
+> single `budget` (not `budget_min`/`budget_max`). GET budget params are a
+> filter window, not overlap. Default lead sort is NCD, not worklist. Property
+> statuses are `available` · `booked` · `sold_out`. Drawer filters drop `q`.
+> The broker-app screen guide is [`frontend/YASH.md`](../../frontend/YASH.md).
+> Treat `api.md` as current; several tables below are the 10 Sep snapshot.
+
 ## Summary
 
 | | Count | |
@@ -23,12 +30,47 @@ is answered there in more detail than this document repeats.
 > properties strip — in one request. Shape and definitions in
 > [docs/api.md](api.md#dashboard). Ships with the CORS fix.
 
+> **Update — project search is built, and can be used for the Projects search box.**
+>
+> ```
+> GET /api/v1/projects/search?q=<text>
+> ```
+>
+> - **Call it once the user has typed at least 3 letters or numbers**, debounced
+>   (~250 ms). Fewer returns `422 query_too_short`, with the minimum in
+>   `details.min_length`.
+> - **Matches what was typed first** — the project name or RERA number containing
+>   the text, ranked exact → starts with → contains. Typing `lod` gives Lodha, not
+>   every project starting "Lo".
+> - **Offers close spellings only when nothing matches as typed** (4+ characters):
+>   `aurm` finds *Aurum Vista*. `meta.fuzzy` is `true` then — label them "did you mean".
+> - **Capped at 10.** `meta.more` is `true` when there are more — show "keep typing".
+> - **Each result is slim** — `id`, `name`, `rera_number`, `source`, `builder`,
+>   `locality`, `city`. Tap through to `GET /projects/:id` for the full project.
+> - Built to stay fast as the project pool grows: it is answered from a search
+>   index, not by scanning every project.
+>
+> Full shape in [docs/api.md](api.md#get-projectssearch). **Ships with the next
+> deploy**, which needs a database migration.
+
+> **Update — a project you just created is not missing, it is on page 2.**
+> `GET /projects` is sorted A–Z by default, 25 per page. Pass **`sort=recent`** to
+> get newest first, or — simplest after a create — show the project the `POST`
+> returned instead of re-fetching the list. `GET /properties` was already newest
+> first and also accepts `sort=name` (by building). Ships with the same deploy.
+
 Two of your items were flagged blocking. **One is fixed** and one is a real gap
 I can close quickly.
 
 ---
 
 ## 🔧 #14 — Uploads: step 2 (PUT to the pre-signed URL) — **fixed**
+
+> **Update — files over 1 MB still fail, with `413 Request Entity Too Large`.**
+> That one is the web server in front of the app, not the API: nginx's default
+> request size is 1 MB while the app accepts up to 5 MB. It needs a one-line change
+> on the staging server. Until then, test with files under 1 MB — the API itself
+> handles the full 5 MB (verified with a 4.9 MB brochure).
 
 **You were right, and the cause was a CORS rule of mine.**
 
@@ -97,32 +139,17 @@ This unblocks §3.4, §4.3 and §5.3 together — they were all the same bug.
 
 ## 🔨 #12 — "List users" endpoint for the reassignment picker
 
-**Correct, it does not exist.** There is no `/api/v1/users` route of any kind —
-`GET /api/v1/users` is a 404 today.
+**Built.** `GET /api/v1/users` returns `{ users: [ { id, name, role, mobile, email, status, active, managers } ] }`.
 
-`/me` returns only the signed-in user, so there is genuinely no way to populate
-that dropdown. This needs building; it's small. Proposed:
+- Super admin: the whole firm, including disabled.
+- Anyone else: active manageables (themselves plus reports).
+- No `avatar` — users have no image field.
 
-```
-GET /api/v1/users        → { users: [ { id, name, role, mobile, active } ] }
-```
+Reassignment is `PATCH /api/v1/leads/:id` with `assigned_user_id`. There is no
+`POST /leads/:id/assign`. `assigned_user_id: null` unassigns (manager-role+
+only) and hides the lead from every agent.
 
-Firm-scoped implicitly (the JWT carries the firm), manager+ only, matching the
-role guard already on `assign`. **Confirm you want `avatar`** — users have no
-image field today, so that's a migration rather than a serializer line.
-
-### Also: your reassign example uses the wrong verb
-
-Your document shows `PATCH /api/v1/leads/{lead_id}/assign`. The route is **POST**:
-
-```
-PATCH → 404
-POST  → 200
-```
-
-Body and behaviour are as you have them. `assigned_user_id: null` unassigns —
-which hides the lead from every agent, since agents only see leads assigned to
-them.
+See `docs/api.md` § Users.
 
 ---
 
@@ -148,11 +175,11 @@ Mapping your proposed filters to what actually exists:
 | Project/Property | ❌ not filterable — leads have no project link yet. See §4.2 |
 | Budget range | `budget_min` / `budget_max` — **overlap, not containment** |
 | Configuration/BHK | `typology_ids[]`, repeated |
-| Today's follow-ups only | Use `status=missed_followup` for overdue. A "today" window is not built — say if you need it |
+| Today's follow-ups only | `ncd_from` / `ncd_upto` for today (IST). Overdue is `missed_followup=true` |
 | Missed calls only | ❌ not built — there is no call log |
 
-**`status=missed_followup` is not a real status.** It means `next_action_at` in
-the past on a non-terminal lead, and it will never appear in `lead_statuses`.
+**`missed_followup=true` is not a real status.** It means `next_action_at <= now` on
+a non-terminal lead, and it will never appear in `lead_statuses`.
 
 **Budget filtering is overlap.** A ₹1–1.3 Cr window returns the lead whose own
 range is ₹80L–1.2 Cr — deliberately, so widening the filter doesn't hide the lead
@@ -165,14 +192,14 @@ you're looking for.
 
 `POST /api/v1/leads/{id}/activities` — your two examples are correct.
 
-- **`kind`** is `call` · `whatsapp` · `visit` · `note`. (`status_change` exists in
-  the enum but is written by the server on a status transition — don't send it.)
+- **`kind`** is `call` · `whatsapp` · `note`. (`status_change` and historical
+  `visit` rows exist; don't send either. A site visit is `POST /leads/:id/visits`.)
 - **`outcome` is free text, not an enum.** A plain string column, no validation.
   If you want a fixed vocabulary, tell us the list and we'll constrain it —
   otherwise it stays open and reporting on it later will be messy.
 - **`body` is required** for every kind you can send.
-- Logging **`kind: "visit"`** sets `first_visit_at`, and the response returns the
-  refreshed lead so you can update the "visited" badge without a second call.
+- A lead is **visited** when it has at least one `lead_visits` row. There is
+  no `first_visit_at`.
 
 **3.3.a — which screens should call it:** Log Call, Log Site Visit, and any
 WhatsApp/Note action. All four map to `kind`. Email is **not** a valid kind
@@ -246,8 +273,7 @@ inventing contracts:
 | --- | --- | --- |
 | 1 | Notification bell — badge + inbox | `notifications` table is **designed** in `docs/schema.md`, not migrated. No endpoint |
 | 2 | Real-time toast / push | Nothing. No push infrastructure, no FCM, no socket topic. This is a project, not an endpoint |
-| 3 | Featured / Live Projects | **Deliberately out of scope** — it was always meant to come from the turbo-rails8 API. `projects.source` + `external_ref` are the seam |
-
+| 3 | Featured / Live Projects | The home screen loads the 3 most recent marketplace projects (`GET /projects?source=catalog&sort=recent`). Never the firm's own projects. `GET /dashboard` still has no featured list; `inventory.projects` there is a count |
 | 6 | Knowledge Center articles | `news_articles` is **designed**, not migrated. No CMS |
 | 7 | EMI calculator | See note below |
 | 8 | Reports — 4 kinds | **Designed in `docs/schema.md`** with the exact grouping for each, not built. This is the largest single item |
@@ -283,7 +309,7 @@ page (§3.1) is blocked on the same work.
 ## Suggested order
 
 1. **Deploy** — the CORS fix and `GET /dashboard` are both waiting on it
-2. **`GET /users`** — half a day, unblocks the reassign picker
+2. **`GET /users`** — built; see `docs/api.md` § Users
 3. **Reports** — designed, sizeable, the biggest remaining chunk
 4. **Map Lead / New Matches** — needs a scoring-rules design pass first
 5. **Notifications / push** — its own project
@@ -296,7 +322,8 @@ Items 4, 5, 6.c, 11, 13, 15, 17, 19, 20 and 21 need no work — they're answered
 
 Three things in the document would have cost the team time:
 
-1. `PATCH /leads/{id}/assign` → **POST**
+1. Reassignment is `PATCH /leads/:id` with `assigned_user_id`. There is no
+   `/assign` path.
 2. Booking documents take **`signed_id`** (singular), not `signed_ids: [...]`
 3. Lead statuses are `new/hot/followup/visit_planned/negotiation/booked/dead` —
    **no Warm or Cold**. Drive the filter chips from `GET /reference`

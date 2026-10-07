@@ -110,4 +110,59 @@ RSpec.describe User do
       expect(build(:user, role: :agent).can_manage_firm_settings?).to be(false)
     end
   end
+
+  describe "manageables" do
+    let(:root) { create(:user, :manager, firm:) }
+
+    def connect(manager:, user:)
+      create(:user_manager, manager:, user:, firm: user.firm)
+    end
+
+    it "includes self when the person has no reports" do
+      expect(root.manageables).to contain_exactly(root)
+    end
+
+    it "walks a line of reports, including a disabled one" do
+      mid = create(:user, :manager, firm:)
+      leaf = create(:user, :disabled, firm:, role: :agent)
+      connect(manager: root, user: mid)
+      connect(manager: mid, user: leaf)
+
+      expect(root.manageables).to contain_exactly(root, mid, leaf)
+      expect(root.assignable_users).to contain_exactly(root, mid)
+    end
+
+    it "includes a person only once when they sit under two managers" do
+      left = create(:user, :manager, firm:)
+      right = create(:user, :manager, firm:)
+      leaf = create(:user, firm:, role: :agent)
+      connect(manager: root, user: left)
+      connect(manager: root, user: right)
+      connect(manager: left, user: leaf)
+      connect(manager: right, user: leaf)
+
+      expect(root.manageables).to contain_exactly(root, left, right, leaf)
+    end
+
+    it "does not leak another firm's reporting line" do
+      other = create(:firm)
+      stranger = create(:user, :manager, firm: other)
+      their_report = create(:user, firm: other)
+      connect(manager: stranger, user: their_report)
+
+      expect(root.manageables).to contain_exactly(root)
+    end
+
+    it "loads a deep line in a constant number of queries" do
+      manager = root
+      12.times do
+        report = create(:user, firm:)
+        connect(manager:, user: report)
+        manager = report
+      end
+
+      queries = count_sql_queries { expect(root.manageables.count).to eq(13) }
+      expect(queries).to be <= 3
+    end
+  end
 end

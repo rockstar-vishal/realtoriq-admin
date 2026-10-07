@@ -5,10 +5,10 @@ class Lead < ApplicationRecord
   include FirmScoped
 
   TRANSACTION_TYPES = %w[sale rent].freeze
-  # The design's tab strip carries "Missed f/u" alongside the real statuses,
-  # but it is not one — it is next_action_at running late. Kept here so the
-  # controller and the client agree on the spelling.
-  DERIVED_STATUS_MISSED_FOLLOWUP = "missed_followup"
+  # Convenience for the Hot / Negotiation card. Same as status[]=hot&status[]=negotiation.
+  DERIVED_STATUS_HOT_NEGOTIATION = "hot_negotiation"
+  HOT_NEGOTIATION_CODES = %w[hot negotiation].freeze
+  NCD_ZONE = "Asia/Kolkata"
 
   enum :transaction_type, TRANSACTION_TYPES.index_by(&:itself), validate: true
 
@@ -23,36 +23,57 @@ class Lead < ApplicationRecord
   # to nil or empty whenever Current.firm isn't set, silently.
   belongs_to :assigned_user, -> { unscope(where: :firm_id) },
     class_name: "User", optional: true
-  # Create takes assigned_user_id from the client. #assign checks the firm
-  # itself; this covers the other door.
+  # Create and PATCH both resolve assigned_user_id through User.assignable_scope_for.
+  # This covers console / future write paths that skip that resolver.
   belongs_to_same_firm :assigned_user
 
   has_many :lead_typologies, dependent: :destroy
   has_many :typologies, through: :lead_typologies
+  has_many :lead_localities, dependent: :destroy
+  has_many :localities, through: :lead_localities
+  has_many :lead_projects, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
   # A booking requires a lead (NOT NULL), so the lead cannot outlive it. Declared
   # here rather than relying on Firm's association order, which would make firm
   # deletion depend on where a line happens to sit.
   has_many :bookings, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_activities, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_followups, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visit_passes, -> { unscope(where: :firm_id) }, dependent: :destroy
+  has_many :lead_visits, -> { unscope(where: :firm_id) }, dependent: :destroy
   # delete_all, not destroy: LeadStatusChange is readonly at the application
   # layer, and readonly blocks destroy as well as update — so instantiating
   # these to cascade would raise. A direct DELETE is also what we want, since
   # they have no dependents and no callbacks worth running.
   has_many :lead_status_changes, -> { unscope(where: :firm_id) }, dependent: :delete_all
 
+  MOBILE_FORMAT = /\A\+\d{10,15}\z/
+
   validates :mobile, presence: true, format: {
-    with: /\A\+\d{10,15}\z/,
+    with: MOBILE_FORMAT,
     message: "must be in international format, e.g. +919820144210"
   }
   validates :email, allow_blank: true, format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :budget_min, :budget_max,
     numericality: { greater_than: 0, only_integer: true }, allow_nil: true
+  # Slider bounds. A stored calculation outside them cannot be shown on the control.
+  validates :emi_loan_amount,
+    numericality: { only_integer: true, greater_than_or_equal_to: 500_000, less_than_or_equal_to: 50_000_000 },
+    allow_nil: true
+  validates :emi_annual_rate,
+    numericality: { greater_than_or_equal_to: 6, less_than_or_equal_to: 14 },
+    allow_nil: true
+  validates :emi_tenure_years,
+    numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 30 },
+    allow_nil: true
   validates :dead_reason, presence: true, if: -> { lead_status&.is_dead? }
 
   validate :budget_range_is_ordered
   validate :property_type_matches_transaction_type
+  validate :mobile_unique_per_transaction_type
 
   before_validation :normalise_contact_details
+  before_validation :sync_open_identity
   before_validation :assign_code, on: :create
 
   # — visibility —
@@ -72,25 +93,97 @@ class Lead < ApplicationRecord
     where("leads.name ILIKE :q OR leads.mobile ILIKE :q OR leads.email ILIKE :q", q: pattern)
   }
 
+  # Overdue NCD on a lead that is still in play. Not a status — the tab
+  # strip shows it next to real pipeline stages, but the filter is
+  # next_action_at <= now on a non-terminal lead. Subquery rather than a
+  # join so it composes with `with_status` (which already joins lead_statuses).
   scope :missed_followup, -> {
-    joins(:lead_status)
-      .where(lead_statuses: { is_terminal: false })
-      .where(next_action_at: ...Time.current)
+    where(next_action_at: ..Time.current)
+      .where(lead_status_id: LeadStatus.where(is_terminal: false).select(:id))
+  }
+
+  # Card / drawer boolean, same shape as `visited`. `true` is the missed
+  # strip; `false` is everything that is not overdue.
+  scope :with_missed_followup, ->(flag) {
+    next all if flag.nil? || flag.to_s.strip == ""
+
+    if ActiveModel::Type::Boolean.new.cast(flag)
+      missed_followup
+    else
+      where.not(id: missed_followup.select(:id))
+    end
   }
 
   scope :with_status, ->(code) {
-    next all if code.blank?
-    next missed_followup if code == DERIVED_STATUS_MISSED_FOLLOWUP
+    codes = Array(code).flatten.map { |value| value.to_s.strip }.compact_blank
+    next all if codes.empty?
 
-    joins(:lead_status).where(lead_statuses: { code: })
+    codes.concat(HOT_NEGOTIATION_CODES) if codes.delete(DERIVED_STATUS_HOT_NEGOTIATION)
+    codes.uniq!
+
+    joins(:lead_status).where(lead_statuses: { code: codes })
   }
 
-  # Overlap, not containment: a broker widening the budget filter expects to see
-  # the lead whose range straddles the edge, not to have it hidden.
+  # A single stored amount (budget_max, falling back to leftover budget_min)
+  # inside the filter window. Query params keep the names budget_min / budget_max
+  # because that is the window, not a range overlap on the lead.
   scope :budget_between, ->(min, max) {
+    next all if min.blank? && max.blank?
+
+    amount = "COALESCE(leads.budget_max, leads.budget_min)"
     scope = all
-    scope = scope.where("leads.budget_max IS NULL OR leads.budget_max >= ?", min) if min.present?
-    scope = scope.where("leads.budget_min IS NULL OR leads.budget_min <= ?", max) if max.present?
+    scope = scope.where("#{amount} >= ?", min) if min.present?
+    scope = scope.where("#{amount} <= ?", max) if max.present?
+    scope
+  }
+
+  scope :named_like, ->(term) {
+    next all if term.blank?
+
+    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
+    where("leads.name ILIKE ?", pattern)
+  }
+
+  scope :email_like, ->(term) {
+    next all if term.blank?
+
+    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
+    where("leads.email ILIKE ?", pattern)
+  }
+
+  # Digits only, so "98201 44210" matches the stored E.164 +919820144210.
+  scope :mobile_like, ->(term) {
+    next all if term.blank?
+
+    digits = term.to_s.gsub(/\D/, "")
+    next all if digits.blank?
+
+    where("leads.mobile LIKE ?", "%#{sanitize_sql_like(digits)}%")
+  }
+
+  scope :with_visited, ->(flag) {
+    next all if flag.nil? || flag.to_s.strip == ""
+
+    visited_leads = LeadVisit.select(:lead_id)
+    if ActiveModel::Type::Boolean.new.cast(flag)
+      where(id: visited_leads)
+    else
+      where.not(id: visited_leads)
+    end
+  }
+
+  # Inclusive IST calendar days: ncd_from at 00:00 through ncd_upto at 23:59:59.
+  scope :ncd_between, ->(from, to) {
+    zone = Time.find_zone(NCD_ZONE)
+    scope = all
+    if from.present?
+      start_at = zone.parse(from.to_s)&.beginning_of_day
+      scope = scope.where(next_action_at: start_at..) if start_at
+    end
+    if to.present?
+      end_at = zone.parse(to.to_s)&.end_of_day
+      scope = scope.where(next_action_at: ..end_at) if end_at
+    end
     scope
   }
 
@@ -99,6 +192,39 @@ class Lead < ApplicationRecord
     scope = scope.where(possession_by: from..) if from.present?
     scope = scope.where(possession_by: ..to) if to.present?
     scope
+  }
+
+  # Inclusive IST calendar days on created_at. A blank side is open.
+  scope :created_between, ->(from, upto) {
+    range = Reports::Window.time_range(from, upto)
+    next all if range.nil?
+
+    where(created_at: range)
+  }
+
+  # A lead that entered a dead status during the IST range, even if it was
+  # revived afterwards. dead_at is cleared on revive, so it cannot answer this.
+  scope :died_between, ->(from, upto) {
+    range = Reports::Window.time_range(from, upto)
+    next all if range.nil?
+
+    where(id: LeadStatusChange.into_dead.where(changed_at: range).select(:lead_id))
+  }
+
+  # ids and missing are OR'd: "these sources, or no source at all".
+  # `where(column: [id, nil])` is the IN-or-NULL form, so the ids stay typed
+  # as uuids instead of being interpolated into SQL.
+  scope :with_sources, ->(ids, missing: false) {
+    list = Array(ids).flatten.flat_map { |value| value.to_s.split(",") }.map(&:strip).compact_blank
+    if list.any? && missing
+      where(lead_source_id: list + [ nil ])
+    elsif missing
+      where(lead_source_id: nil)
+    elsif list.any?
+      where(lead_source_id: list)
+    else
+      all
+    end
   }
 
   # No `.distinct`: the subquery filters on the primary key, so a lead can match
@@ -112,28 +238,117 @@ class Lead < ApplicationRecord
     where(id: LeadTypology.where(typology_id: ids).select(:lead_id))
   }
 
-  # The list is a worklist, so what needs doing sorts to the top: overdue
-  # followups first, then by when the next action is due, then newest.
+  # Default GET /leads: next action soonest, with no date at all sitting above
+  # overdue — a new lead with nothing scheduled is the thing to pick up first.
+  scope :as_ncd, -> {
+    order(Arel.sql("leads.next_action_at ASC NULLS FIRST, leads.created_at DESC"))
+  }
+
+  # GET /leads?sort=worklist: overdue followups first, then by when the next
+  # action is due, then newest. The home strip no longer uses this — it is
+  # missed followups only.
   scope :as_worklist, -> {
     order(Arel.sql(<<~SQL.squish))
-      CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at < NOW() THEN 0 ELSE 1 END,
+      CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at <= NOW() THEN 0 ELSE 1 END,
       leads.next_action_at ASC NULLS LAST,
       leads.created_at DESC
     SQL
   }
 
-  def overdue? = next_action_at.present? && next_action_at.past? && !lead_status.is_terminal?
+  def overdue? = next_action_at.present? && next_action_at <= Time.current && !lead_status.is_terminal?
 
-  def visited? = first_visit_at.present?
+  def visited? = visit_count.positive?
+
+  # One query per side for the detail screen's visited / not visited flags.
+  def project_visit_stats
+    @project_visit_stats ||= site_visit_stats(LeadVisitProject, :project_id)
+  end
+
+  def property_visit_stats
+    @property_visit_stats ||= site_visit_stats(LeadVisitProperty, :property_id)
+  end
+
+  # List-card extras. `visit_count` is LeadVisit rows. `visited` is the same
+  # fact (count > 0), not a stored timestamp. `last_followup_comment` is the
+  # latest followup row — not an activity body and not Detailed Client
+  # Requirements (`notes`).
+  def visit_count
+    return @visit_count if defined?(@visit_count)
+
+    @visit_count = lead_visits.count
+  end
+
+  def last_followup_comment
+    return @last_followup_comment if defined?(@last_followup_comment)
+
+    @last_followup_comment = lead_followups.recent_first.pick(:comment)
+  end
+
+  def assign_card_extras(visit_count:, last_followup_comment:)
+    @visit_count = visit_count
+    @last_followup_comment = last_followup_comment
+    self
+  end
+
+  # Two queries for a page of leads, so the list card does not N+1.
+  def self.preload_card_extras(leads)
+    records = Array(leads)
+    ids = records.map(&:id)
+    return records if ids.empty?
+
+    visit_counts = LeadVisit.where(lead_id: ids).group(:lead_id).count
+    comments = LeadFollowup
+      .where(lead_id: ids)
+      .select("DISTINCT ON (lead_followups.lead_id) lead_followups.lead_id, lead_followups.comment")
+      .order(Arel.sql("lead_followups.lead_id, lead_followups.created_at DESC, lead_followups.id DESC"))
+      .each_with_object({}) { |row, hash| hash[row.lead_id] = row.comment }
+
+    records.each do |lead|
+      lead.assign_card_extras(
+        visit_count: visit_counts.fetch(lead.id, 0),
+        last_followup_comment: comments[lead.id]
+      )
+    end
+  end
+
+  # Display / filter amount. Writes store only budget_max; leftover rows may
+  # still have a min and a null max.
+  def budget_amount = budget_max.presence || budget_min
+
+  # The two seeded codes are the product. Anything else on a sale lead is
+  # treated as under construction by the matchers.
+  def ready_possession?
+    sale? && property_type&.code == "ready_possession"
+  end
+
+  def site_visit_stats(join_model, site_key)
+    join_model
+      .joins(:lead_visit)
+      .where(lead_visits: { lead_id: id })
+      .group(site_key)
+      .pluck(site_key, Arel.sql("COUNT(*)"), Arel.sql("MAX(lead_visits.visited_at)"))
+      .to_h do |site_id, count, last_at|
+        [ site_id.to_s, { visit_count: count.to_i, last_visited_at: last_at } ]
+      end
+  end
+  private :site_visit_stats
 
   def display_name = name.presence || Phone.format_for_display(mobile)
 
-  # Duplicates are allowed — the design's booking flow shows several leads on
-  # one number — so this informs rather than blocks.
+  # Same number, the other transaction type — sale and rent may coexist. Same
+  # type is refused (see #duplicate_on_mobile_and_type); this is informational.
   def possible_duplicates
     return self.class.none if mobile.blank?
 
     self.class.where(mobile:).where.not(id:).order(created_at: :desc)
+  end
+
+  # The other live lead that occupies (firm, mobile, transaction_type). A dead
+  # lead does not count: the same number can enter the pipeline again.
+  def duplicate_on_mobile_and_type
+    return if mobile.blank? || transaction_type.blank? || firm_id.blank?
+
+    self.class.unscoped.where(firm_id:, transaction_type:, open_identity: mobile).where.not(id:).first
   end
 
   private
@@ -142,6 +357,13 @@ class Lead < ApplicationRecord
     self.mobile = Phone.normalise(mobile)
     self.alt_mobile = Phone.normalise(alt_mobile) if alt_mobile.present?
     self.email = email.to_s.downcase.strip.presence
+  end
+
+  # One live sale (or rent) lead per mobile per firm. Dead leads leave the
+  # slot so a later enquiry can create a fresh lead. The partial unique index
+  # is the real guarantee; this column is what it indexes.
+  def sync_open_identity
+    self.open_identity = lead_status&.is_dead? ? nil : mobile
   end
 
   # Sequential per firm. Two concurrent creates can pick the same number, so the
@@ -162,6 +384,12 @@ class Lead < ApplicationRecord
     return if budget_min.blank? || budget_max.blank? || budget_max >= budget_min
 
     errors.add(:budget_max, "must be greater than or equal to the minimum budget")
+  end
+
+  def mobile_unique_per_transaction_type
+    return if duplicate_on_mobile_and_type.nil?
+
+    errors.add(:mobile, "already has a #{transaction_type} lead")
   end
 
   # The design asks for a property type on sale leads and drops the question

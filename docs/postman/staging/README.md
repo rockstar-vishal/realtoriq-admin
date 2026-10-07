@@ -12,7 +12,7 @@ npx newman run docs/postman/staging/RealtorIQ.postman_collection.json \
 | File | What | Size |
 | --- | --- | --- |
 | `RealtorIQ.postman_collection.json` → `../` | **Every API.** Run this one | 64 requests, 154 assertions |
-| `RealtorIQ.staging-checks.postman_collection.json` | Post-deploy health check only | 11 requests, 30 assertions |
+| `RealtorIQ.staging-checks.postman_collection.json` | Post-deploy health check only | 12 requests, 31 assertions |
 | `RealtorIQ.staging.postman_environment.json` | The environment both use | — |
 
 The *checks* collection is deliberately small and deliberately not the API: it

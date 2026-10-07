@@ -20,6 +20,12 @@ RSpec.describe OneTimeCode do
       expect(code).to eq("000042")
     end
 
+    it "raises when a fixed code is passed for anything but login" do
+      expect {
+        described_class.issue!(purpose: "verify_email", destination: "ops@example.com", code: "111111")
+      }.to raise_error(ArgumentError)
+    end
+
     it "expires in ten minutes by default" do
       record, _ = described_class.issue!(purpose: "login", destination: "+919820144210")
 

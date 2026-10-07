@@ -8,6 +8,7 @@ module Api
     # blocked mid-form by a missing builder. What they add is theirs alone — it
     # does not reach the global list or any other firm.
     class BuildersController < AuthenticatedController
+      before_action :require_super_admin, only: :create
       def index
         builders = Builder.available_to(current_firm).active.alphabetical
 

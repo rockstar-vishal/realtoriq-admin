@@ -1,0 +1,7 @@
+<%= @count %> Facebook <%= "lead".pluralize(@count) %> could not be imported.
+
+<% @reasons.each do |reason| %>
+<%= reason[:count] %> — <%= reason[:message] %>
+<% end %>
+
+Open Connect Facebook: <%= @settings_url %>

@@ -10,9 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_07_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "pg_trgm"
 
   create_table "active_storage_attachments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
@@ -149,6 +150,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["firm_id", "status"], name: "index_bookings_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_bookings_on_firm_id"
     t.index ["lead_id"], name: "index_bookings_on_lead_id"
+    t.index ["project_id", "unit_no"], name: "index_bookings_on_live_project_unit", unique: true, where: "(((status)::text = 'live'::text) AND (project_id IS NOT NULL) AND (unit_no IS NOT NULL))"
     t.index ["project_id"], name: "index_bookings_on_project_id"
     t.check_constraint "agreement_value >= 0", name: "bookings_agreement_value_check"
     t.check_constraint "client_paid_percent IS NULL OR client_paid_percent >= 0 AND client_paid_percent <= 100", name: "bookings_client_paid_percent_check"
@@ -240,6 +242,129 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.check_constraint "verification_state::text = ANY (ARRAY['unverified'::character varying::text, 'pending'::character varying::text, 'verified'::character varying::text, 'failed'::character varying::text])", name: "contact_channels_verification_state_check"
   end
 
+  create_table "facebook_connections", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "connected_by_user_id", null: false
+    t.string "fb_user_id", null: false
+    t.string "fb_user_name"
+    t.string "token_kind", default: "user_access", null: false
+    t.string "client_business_id"
+    t.text "access_token"
+    t.datetime "token_expires_at"
+    t.datetime "token_obtained_at"
+    t.datetime "last_health_check_at"
+    t.string "status", default: "active", null: false
+    t.string "error_code"
+    t.jsonb "error_details", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["connected_by_user_id"], name: "index_facebook_connections_on_connected_by_user_id"
+    t.index ["firm_id", "status"], name: "index_facebook_connections_on_firm_id_and_status"
+    t.index ["firm_id"], name: "index_facebook_connections_on_firm_id"
+    t.index ["firm_id"], name: "index_facebook_connections_one_active_per_firm", unique: true, where: "((status)::text = 'active'::text)"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'invalid'::character varying, 'disconnected'::character varying]::text[])", name: "facebook_connections_status_check"
+    t.check_constraint "token_kind::text = ANY (ARRAY['user_access'::character varying, 'system_access'::character varying]::text[])", name: "facebook_connections_token_kind_check"
+  end
+
+  create_table "facebook_import_alert_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.datetime "last_failure_emailed_at"
+    t.datetime "last_duplicate_notified_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_facebook_import_alert_states_on_firm_id", unique: true
+  end
+
+  create_table "facebook_lead_forms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_page_id", null: false
+    t.string "form_id", null: false
+    t.string "form_name", null: false
+    t.string "meta_status"
+    t.boolean "active", default: true, null: false
+    t.jsonb "questions", default: [], null: false
+    t.jsonb "field_mappings", default: {}, null: false
+    t.uuid "project_id"
+    t.uuid "property_id"
+    t.uuid "assigned_user_id"
+    t.uuid "lead_source_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_user_id"], name: "index_facebook_lead_forms_on_assigned_user_id"
+    t.index ["facebook_page_id"], name: "index_facebook_lead_forms_on_facebook_page_id"
+    t.index ["firm_id"], name: "index_facebook_lead_forms_on_firm_id"
+    t.index ["form_id"], name: "index_facebook_lead_forms_on_form_id", unique: true
+    t.index ["lead_source_id"], name: "index_facebook_lead_forms_on_lead_source_id"
+    t.index ["project_id"], name: "index_facebook_lead_forms_on_project_id"
+    t.index ["property_id"], name: "index_facebook_lead_forms_on_property_id"
+    t.check_constraint "project_id IS NULL OR property_id IS NULL", name: "facebook_lead_forms_one_listing"
+  end
+
+  create_table "facebook_lead_imports", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_page_id", null: false
+    t.uuid "facebook_lead_form_id"
+    t.uuid "lead_id"
+    t.string "leadgen_id", null: false
+    t.string "status", default: "pending", null: false
+    t.jsonb "raw_payload", default: {}, null: false
+    t.jsonb "fetched_payload", default: {}, null: false
+    t.text "error_message"
+    t.jsonb "error_details", default: {}, null: false
+    t.integer "retry_count", default: 0, null: false
+    t.datetime "next_attempt_at"
+    t.datetime "processing_started_at"
+    t.datetime "processed_at"
+    t.datetime "failure_alert_pending_at"
+    t.datetime "failure_alerted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["facebook_lead_form_id"], name: "index_facebook_lead_imports_on_facebook_lead_form_id"
+    t.index ["facebook_page_id"], name: "index_facebook_lead_imports_on_facebook_page_id"
+    t.index ["failure_alert_pending_at"], name: "index_facebook_lead_imports_on_failure_alert_pending", where: "(failure_alert_pending_at IS NOT NULL)"
+    t.index ["firm_id", "created_at"], name: "index_facebook_lead_imports_on_firm_id_and_created_at"
+    t.index ["firm_id", "status"], name: "index_facebook_lead_imports_on_firm_id_and_status"
+    t.index ["firm_id"], name: "index_facebook_lead_imports_on_firm_id"
+    t.index ["lead_id"], name: "index_facebook_lead_imports_on_lead_id"
+    t.index ["leadgen_id"], name: "index_facebook_lead_imports_on_leadgen_id", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'created'::character varying, 'failed'::character varying, 'dead'::character varying, 'duplicate'::character varying]::text[])", name: "facebook_lead_imports_status_check"
+  end
+
+  create_table "facebook_oauth_attempts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.string "nonce_digest", null: false
+    t.string "status", default: "started", null: false
+    t.text "result"
+    t.string "error_code"
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_facebook_oauth_attempts_on_firm_id"
+    t.index ["user_id"], name: "index_facebook_oauth_attempts_on_user_id"
+    t.check_constraint "status::text = ANY (ARRAY['started'::character varying, 'completed'::character varying, 'failed'::character varying, 'consumed'::character varying]::text[])", name: "facebook_oauth_attempts_status_check"
+  end
+
+  create_table "facebook_pages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "facebook_connection_id", null: false
+    t.string "page_id", null: false
+    t.string "page_name", null: false
+    t.text "page_access_token"
+    t.boolean "subscribed", default: false, null: false
+    t.datetime "subscribed_at"
+    t.string "status", default: "unsubscribed", null: false
+    t.string "status_message"
+    t.jsonb "form_catalog", default: [], null: false
+    t.datetime "forms_synced_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["facebook_connection_id"], name: "index_facebook_pages_on_facebook_connection_id"
+    t.index ["firm_id"], name: "index_facebook_pages_on_firm_id"
+    t.index ["page_id"], name: "index_facebook_pages_on_page_id", unique: true
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'unsubscribed'::character varying, 'error'::character varying]::text[])", name: "facebook_pages_status_check"
+  end
+
   create_table "firm_bank_accounts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.string "account_number", null: false
@@ -278,12 +403,37 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.text "suspension_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "review_demo", default: false, null: false
     t.index ["city_id"], name: "index_firms_on_city_id"
     t.index ["code"], name: "index_firms_on_code", unique: true
     t.index ["locality_id"], name: "index_firms_on_locality_id"
+    t.index ["review_demo"], name: "index_firms_one_review_demo", unique: true, where: "review_demo"
     t.index ["slug"], name: "index_firms_on_slug", unique: true
     t.index ["status"], name: "index_firms_on_status"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'active'::character varying::text, 'suspended'::character varying::text, 'churned'::character varying::text])", name: "firms_status_check"
+  end
+
+  create_table "inbound_credentials", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "token_digest", null: false
+    t.text "token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_inbound_credentials_on_firm_id", unique: true
+    t.index ["token_digest"], name: "index_inbound_credentials_on_token_digest", unique: true
+  end
+
+  create_table "inbound_enquiries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "channel", null: false
+    t.string "external_id", null: false
+    t.uuid "lead_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "channel", "external_id"], name: "index_inbound_enquiries_on_firm_channel_and_external_id", unique: true
+    t.index ["firm_id"], name: "index_inbound_enquiries_on_firm_id"
+    t.index ["lead_id"], name: "index_inbound_enquiries_on_lead_id"
+    t.check_constraint "channel::text = ANY (ARRAY['99acres'::character varying, 'magicbricks'::character varying, 'housing'::character varying, 'general'::character varying]::text[])", name: "inbound_enquiries_channel_check"
   end
 
   create_table "invoices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -319,6 +469,55 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["lead_id"], name: "index_lead_activities_on_lead_id"
     t.index ["user_id"], name: "index_lead_activities_on_user_id"
     t.check_constraint "kind::text = ANY (ARRAY['call'::character varying::text, 'whatsapp'::character varying::text, 'visit'::character varying::text, 'note'::character varying::text, 'status_change'::character varying::text])", name: "lead_activities_kind_check"
+  end
+
+  create_table "lead_followups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "user_id"
+    t.text "comment", null: false
+    t.datetime "next_action_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_followups_on_firm_id"
+    t.index ["lead_id", "created_at"], name: "index_lead_followups_on_lead_id_and_created_at"
+    t.index ["lead_id"], name: "index_lead_followups_on_lead_id"
+    t.index ["user_id"], name: "index_lead_followups_on_user_id"
+  end
+
+  create_table "lead_localities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "lead_id", null: false
+    t.uuid "locality_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["lead_id", "locality_id"], name: "index_lead_localities_on_lead_id_and_locality_id", unique: true
+    t.index ["lead_id"], name: "index_lead_localities_on_lead_id"
+    t.index ["locality_id"], name: "index_lead_localities_on_locality_id"
+  end
+
+  create_table "lead_projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "project_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "withdrawn_at"
+    t.index ["firm_id"], name: "index_lead_projects_on_firm_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_projects_on_lead_id_and_project_id", unique: true
+    t.index ["lead_id"], name: "index_lead_projects_on_lead_id"
+    t.index ["project_id"], name: "index_lead_projects_on_project_id"
+  end
+
+  create_table "lead_properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "property_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_properties_on_firm_id"
+    t.index ["lead_id", "property_id"], name: "index_lead_properties_on_lead_id_and_property_id", unique: true
+    t.index ["lead_id"], name: "index_lead_properties_on_lead_id"
+    t.index ["property_id"], name: "index_lead_properties_on_property_id"
   end
 
   create_table "lead_sources", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -373,6 +572,76 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.index ["typology_id"], name: "index_lead_typologies_on_typology_id"
   end
 
+  create_table "lead_visit_passes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "project_id", null: false
+    t.uuid "user_id", null: false
+    t.string "pass_code"
+    t.string "phone_suffix", null: false
+    t.datetime "tentative_visit_planned", null: false
+    t.string "turbo_status", default: "unused", null: false
+    t.string "turbo_lead_code"
+    t.string "turbo_status_name"
+    t.jsonb "status_detail", default: {}, null: false
+    t.datetime "last_followup_at"
+    t.text "last_followup_comment"
+    t.datetime "next_followup_at"
+    t.datetime "last_fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "pass_url"
+    t.string "address"
+    t.string "rm_name"
+    t.string "rm_contact"
+    t.text "status_message"
+    t.index ["firm_id"], name: "index_lead_visit_passes_on_firm_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_lead_id_and_project_id"
+    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_open_lead_and_project", unique: true, where: "((turbo_status)::text = ANY ((ARRAY['pending'::character varying, 'unused'::character varying, 'used'::character varying])::text[]))"
+    t.index ["lead_id"], name: "index_lead_visit_passes_on_lead_id"
+    t.index ["pass_code"], name: "index_lead_visit_passes_on_pass_code", unique: true, where: "(pass_code IS NOT NULL)"
+    t.index ["project_id"], name: "index_lead_visit_passes_on_project_id"
+    t.index ["user_id"], name: "index_lead_visit_passes_on_user_id"
+  end
+
+  create_table "lead_visit_projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_visit_id", null: false
+    t.uuid "project_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_visit_projects_on_firm_id"
+    t.index ["lead_visit_id", "project_id"], name: "index_lead_visit_projects_on_lead_visit_id_and_project_id", unique: true
+    t.index ["lead_visit_id"], name: "index_lead_visit_projects_on_lead_visit_id"
+    t.index ["project_id"], name: "index_lead_visit_projects_on_project_id"
+  end
+
+  create_table "lead_visit_properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_visit_id", null: false
+    t.uuid "property_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_visit_properties_on_firm_id"
+    t.index ["lead_visit_id", "property_id"], name: "index_lead_visit_properties_on_lead_visit_id_and_property_id", unique: true
+    t.index ["lead_visit_id"], name: "index_lead_visit_properties_on_lead_visit_id"
+    t.index ["property_id"], name: "index_lead_visit_properties_on_property_id"
+  end
+
+  create_table "lead_visits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "lead_id", null: false
+    t.uuid "user_id"
+    t.datetime "visited_at", null: false
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_lead_visits_on_firm_id"
+    t.index ["lead_id", "visited_at"], name: "index_lead_visits_on_lead_id_and_visited_at"
+    t.index ["lead_id"], name: "index_lead_visits_on_lead_id"
+    t.index ["user_id"], name: "index_lead_visits_on_user_id"
+  end
+
   create_table "leads", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.string "code", null: false
@@ -390,25 +659,33 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.uuid "lead_status_id", null: false
     t.uuid "assigned_user_id"
     t.datetime "next_action_at"
-    t.string "next_action_note"
-    t.datetime "first_visit_at"
     t.string "dead_reason"
     t.datetime "dead_at"
     t.datetime "booked_at"
     t.text "notes"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "emi_loan_amount"
+    t.decimal "emi_annual_rate", precision: 5, scale: 2
+    t.integer "emi_tenure_years"
+    t.datetime "emi_saved_at"
+    t.string "open_identity"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
     t.index ["firm_id", "lead_status_id"], name: "index_leads_on_firm_id_and_lead_status_id"
-    t.index ["firm_id", "mobile"], name: "index_leads_on_firm_id_and_mobile"
     t.index ["firm_id", "next_action_at"], name: "index_leads_on_firm_id_and_next_action_at"
+    t.index ["firm_id", "transaction_type", "open_identity"], name: "index_leads_on_firm_type_and_open_identity", unique: true, where: "(open_identity IS NOT NULL)"
     t.index ["firm_id"], name: "index_leads_on_firm_id"
     t.index ["lead_source_id"], name: "index_leads_on_lead_source_id"
     t.index ["lead_status_id"], name: "index_leads_on_lead_status_id"
+    t.index ["next_action_at"], name: "index_leads_on_next_action_at"
     t.index ["property_type_id"], name: "index_leads_on_property_type_id"
     t.check_constraint "budget_max IS NULL OR budget_min IS NULL OR budget_max >= budget_min", name: "leads_budget_range_check"
+    t.check_constraint "emi_annual_rate IS NULL OR emi_annual_rate >= 6::numeric AND emi_annual_rate <= 14::numeric", name: "leads_emi_annual_rate_check"
+    t.check_constraint "emi_loan_amount IS NULL AND emi_annual_rate IS NULL AND emi_tenure_years IS NULL AND emi_saved_at IS NULL OR emi_loan_amount IS NOT NULL AND emi_annual_rate IS NOT NULL AND emi_tenure_years IS NOT NULL AND emi_saved_at IS NOT NULL", name: "leads_emi_all_or_nothing_check"
+    t.check_constraint "emi_loan_amount IS NULL OR emi_loan_amount >= 500000 AND emi_loan_amount <= 50000000", name: "leads_emi_loan_amount_check"
+    t.check_constraint "emi_tenure_years IS NULL OR emi_tenure_years >= 1 AND emi_tenure_years <= 30", name: "leads_emi_tenure_years_check"
     t.check_constraint "transaction_type::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "leads_transaction_type_check"
   end
 
@@ -421,6 +698,47 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.datetime "updated_at", null: false
     t.index ["city_id", "name"], name: "index_localities_on_city_id_and_name", unique: true
     t.index ["city_id"], name: "index_localities_on_city_id"
+  end
+
+  create_table "marketplace_enquiries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "project_share_link_id", null: false
+    t.uuid "lead_id"
+    t.string "enquiry_id", null: false
+    t.string "outcome"
+    t.datetime "submitted_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["enquiry_id"], name: "index_marketplace_enquiries_on_enquiry_id", unique: true
+    t.index ["firm_id"], name: "index_marketplace_enquiries_on_firm_id"
+    t.index ["lead_id"], name: "index_marketplace_enquiries_on_lead_id"
+    t.index ["project_share_link_id"], name: "index_marketplace_enquiries_on_project_share_link_id"
+  end
+
+  create_table "notification_dispatch_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "key", null: false
+    t.datetime "last_dispatched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_notification_dispatch_states_on_key", unique: true
+  end
+
+  create_table "notifications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.string "kind", null: false
+    t.string "title", null: false
+    t.text "body", null: false
+    t.datetime "read_at"
+    t.jsonb "data", default: {}, null: false
+    t.string "dedupe_key", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_notifications_on_firm_id"
+    t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
+    t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
+    t.index ["user_id"], name: "index_notifications_on_user_id"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying]::text[])", name: "notifications_kind_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -460,6 +778,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.check_constraint "price >= 0", name: "plans_price_check"
   end
 
+  create_table "project_share_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "project_id", null: false
+    t.string "token", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "user_id", "project_id"], name: "index_project_share_links_on_firm_user_and_project", unique: true
+    t.index ["firm_id"], name: "index_project_share_links_on_firm_id"
+    t.index ["project_id"], name: "index_project_share_links_on_project_id"
+    t.index ["token"], name: "index_project_share_links_on_token", unique: true
+    t.index ["user_id"], name: "index_project_share_links_on_user_id"
+  end
+
   create_table "project_typologies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "project_id", null: false
     t.uuid "typology_id", null: false
@@ -473,7 +805,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
   end
 
   create_table "projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "firm_id", null: false
+    t.uuid "firm_id"
     t.string "name", null: false
     t.uuid "builder_id", null: false
     t.uuid "city_id", null: false
@@ -494,14 +826,34 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.string "external_ref"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "rm_name"
+    t.string "rm_contact"
+    t.string "company_code"
+    t.datetime "turbo_pushed_at"
+    t.text "brochure_source_url"
+    t.string "code", null: false
+    t.string "portal_99acres_code"
+    t.string "portal_magicbricks_code"
+    t.string "portal_housing_code"
+    t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
+    t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
+    t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_projects_firm_portal_99acres_code", unique: true, where: "((portal_99acres_code IS NOT NULL) AND (firm_id IS NOT NULL))"
+    t.index "firm_id, lower((portal_housing_code)::text)", name: "index_projects_firm_portal_housing_code", unique: true, where: "((portal_housing_code IS NOT NULL) AND (firm_id IS NOT NULL))"
+    t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_projects_firm_portal_magicbricks_code", unique: true, where: "((portal_magicbricks_code IS NOT NULL) AND (firm_id IS NOT NULL))"
     t.index ["builder_id"], name: "index_projects_on_builder_id"
     t.index ["city_id"], name: "index_projects_on_city_id"
+    t.index ["code"], name: "index_projects_on_code", unique: true
+    t.index ["external_ref"], name: "index_projects_on_global_catalog_external_ref", unique: true, where: "(((source)::text = 'catalog'::text) AND (firm_id IS NULL) AND (external_ref IS NOT NULL))"
     t.index ["firm_id", "builder_id"], name: "index_projects_on_firm_id_and_builder_id"
     t.index ["firm_id", "city_id"], name: "index_projects_on_firm_id_and_city_id"
+    t.index ["firm_id", "source", "external_ref"], name: "index_projects_on_firm_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
     t.index ["firm_id", "status"], name: "index_projects_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_projects_on_firm_id"
     t.index ["locality_id"], name: "index_projects_on_locality_id"
-    t.index ["source", "external_ref"], name: "index_projects_on_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
+    t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.check_constraint "code::text ~ '^P-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "projects_code_format"
+    t.check_constraint "firm_id IS NOT NULL OR source::text = 'catalog'::text", name: "projects_firm_required_unless_catalog"
     t.check_constraint "source::text = ANY (ARRAY['own'::character varying::text, 'catalog'::character varying::text])", name: "projects_source_check"
     t.check_constraint "starting_budget >= 0", name: "projects_starting_budget_check"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'archived'::character varying::text])", name: "projects_status_check"
@@ -521,16 +873,29 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.string "status", default: "available", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "created_by_user_id"
+    t.boolean "listed_on_marketplace", default: true, null: false
+    t.string "code", null: false
+    t.string "portal_99acres_code"
+    t.string "portal_magicbricks_code"
+    t.string "portal_housing_code"
+    t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_properties_firm_portal_99acres_code", unique: true, where: "(portal_99acres_code IS NOT NULL)"
+    t.index "firm_id, lower((portal_housing_code)::text)", name: "index_properties_firm_portal_housing_code", unique: true, where: "(portal_housing_code IS NOT NULL)"
+    t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_properties_firm_portal_magicbricks_code", unique: true, where: "(portal_magicbricks_code IS NOT NULL)"
     t.index ["building_id"], name: "index_properties_on_building_id"
+    t.index ["code"], name: "index_properties_on_code", unique: true
+    t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
     t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
     t.index ["firm_id", "status"], name: "index_properties_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_properties_on_firm_id"
+    t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
     t.index ["typology_id"], name: "index_properties_on_typology_id"
+    t.check_constraint "code::text ~ '^H-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "properties_code_format"
     t.check_constraint "floor_band IS NULL OR (floor_band::text = ANY (ARRAY['lower'::character varying::text, 'middle'::character varying::text, 'higher'::character varying::text]))", name: "properties_floor_band_check"
     t.check_constraint "listing_for::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "properties_listing_for_check"
     t.check_constraint "price >= 0", name: "properties_price_check"
-    t.check_constraint "status::text = ANY (ARRAY['available'::character varying::text, 'under_offer'::character varying::text, 'closed'::character varying::text])", name: "properties_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['available'::character varying::text, 'booked'::character varying::text, 'sold_out'::character varying::text])", name: "properties_status_check"
   end
 
   create_table "property_types", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -541,6 +906,25 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["code"], name: "index_property_types_on_code", unique: true
+  end
+
+  create_table "push_subscriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "auth_session_id", null: false
+    t.text "endpoint", null: false
+    t.text "p256dh", null: false
+    t.text "auth_key", null: false
+    t.string "content_encoding", default: "aes128gcm", null: false
+    t.string "user_agent"
+    t.datetime "last_success_at"
+    t.integer "failure_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["auth_session_id"], name: "index_push_subscriptions_on_auth_session_id"
+    t.index ["endpoint"], name: "index_push_subscriptions_on_endpoint", unique: true
+    t.index ["firm_id"], name: "index_push_subscriptions_on_firm_id"
+    t.index ["user_id"], name: "index_push_subscriptions_on_user_id"
   end
 
   create_table "subscriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -565,6 +949,41 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.check_constraint "status::text = ANY (ARRAY['trialing'::character varying::text, 'active'::character varying::text, 'past_due'::character varying::text, 'lapsed'::character varying::text, 'cancelled'::character varying::text])", name: "subscriptions_status_check"
   end
 
+  create_table "training_notes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "training_id", null: false
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_training_notes_on_firm_id"
+    t.index ["training_id"], name: "index_training_notes_on_training_id"
+    t.index ["user_id", "training_id"], name: "index_training_notes_on_user_id_and_training_id", unique: true
+    t.index ["user_id"], name: "index_training_notes_on_user_id"
+  end
+
+  create_table "trainings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "title", null: false
+    t.text "description", null: false
+    t.text "intro_text", null: false
+    t.text "instructions_text"
+    t.string "language", default: "hinglish", null: false
+    t.string "status", default: "draft", null: false
+    t.date "valid_upto"
+    t.string "podcast_url"
+    t.integer "podcast_duration_seconds"
+    t.uuid "created_by_admin_user_id"
+    t.datetime "published_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_admin_user_id"], name: "index_trainings_on_created_by_admin_user_id"
+    t.index ["language"], name: "index_trainings_on_language"
+    t.index ["status", "published_at"], name: "index_trainings_on_status_and_published_at", order: { published_at: :desc }
+    t.check_constraint "language::text = ANY (ARRAY['hinglish'::character varying, 'en'::character varying, 'mr'::character varying]::text[])", name: "trainings_language_check"
+    t.check_constraint "podcast_duration_seconds IS NULL OR podcast_duration_seconds > 0", name: "trainings_podcast_duration_check"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "trainings_status_check"
+  end
+
   create_table "typologies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.string "code", null: false
@@ -574,6 +993,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["code"], name: "index_typologies_on_code", unique: true
+  end
+
+  create_table "user_managers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "user_id", null: false
+    t.uuid "manager_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "manager_id"], name: "index_user_managers_on_firm_and_manager"
+    t.index ["firm_id"], name: "index_user_managers_on_firm_id"
+    t.index ["manager_id"], name: "index_user_managers_on_manager_id"
+    t.index ["user_id", "manager_id"], name: "index_user_managers_on_user_and_manager", unique: true
+    t.index ["user_id"], name: "index_user_managers_on_user_id"
+    t.check_constraint "user_id <> manager_id", name: "user_managers_no_self"
   end
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -621,14 +1054,45 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
   add_foreign_key "collections", "invoices"
   add_foreign_key "contact_channels", "firms"
   add_foreign_key "contact_channels", "users", column: "verified_by_user_id"
+  add_foreign_key "facebook_connections", "firms"
+  add_foreign_key "facebook_connections", "users", column: "connected_by_user_id", on_delete: :cascade
+  add_foreign_key "facebook_import_alert_states", "firms"
+  add_foreign_key "facebook_lead_forms", "facebook_pages", on_delete: :cascade
+  add_foreign_key "facebook_lead_forms", "firms"
+  add_foreign_key "facebook_lead_forms", "lead_sources", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "projects", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "properties", on_delete: :nullify
+  add_foreign_key "facebook_lead_forms", "users", column: "assigned_user_id", on_delete: :nullify
+  add_foreign_key "facebook_lead_imports", "facebook_lead_forms", on_delete: :nullify
+  add_foreign_key "facebook_lead_imports", "facebook_pages", on_delete: :cascade
+  add_foreign_key "facebook_lead_imports", "firms"
+  add_foreign_key "facebook_lead_imports", "leads", on_delete: :nullify
+  add_foreign_key "facebook_oauth_attempts", "firms", on_delete: :cascade
+  add_foreign_key "facebook_oauth_attempts", "users", on_delete: :cascade
+  add_foreign_key "facebook_pages", "facebook_connections", on_delete: :cascade
+  add_foreign_key "facebook_pages", "firms"
   add_foreign_key "firm_bank_accounts", "firms"
   add_foreign_key "firms", "cities"
   add_foreign_key "firms", "localities"
+  add_foreign_key "inbound_credentials", "firms"
+  add_foreign_key "inbound_enquiries", "firms"
+  add_foreign_key "inbound_enquiries", "leads"
   add_foreign_key "invoices", "bookings"
   add_foreign_key "invoices", "firms"
   add_foreign_key "lead_activities", "firms"
   add_foreign_key "lead_activities", "leads"
   add_foreign_key "lead_activities", "users", on_delete: :nullify
+  add_foreign_key "lead_followups", "firms"
+  add_foreign_key "lead_followups", "leads"
+  add_foreign_key "lead_followups", "users", on_delete: :nullify
+  add_foreign_key "lead_localities", "leads"
+  add_foreign_key "lead_localities", "localities"
+  add_foreign_key "lead_projects", "firms"
+  add_foreign_key "lead_projects", "leads"
+  add_foreign_key "lead_projects", "projects"
+  add_foreign_key "lead_properties", "firms"
+  add_foreign_key "lead_properties", "leads"
+  add_foreign_key "lead_properties", "properties"
   add_foreign_key "lead_status_changes", "firms"
   add_foreign_key "lead_status_changes", "lead_statuses", column: "from_status_id"
   add_foreign_key "lead_status_changes", "lead_statuses", column: "to_status_id"
@@ -636,14 +1100,35 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
   add_foreign_key "lead_status_changes", "users", on_delete: :nullify
   add_foreign_key "lead_typologies", "leads"
   add_foreign_key "lead_typologies", "typologies"
+  add_foreign_key "lead_visit_passes", "firms"
+  add_foreign_key "lead_visit_passes", "leads"
+  add_foreign_key "lead_visit_passes", "projects"
+  add_foreign_key "lead_visit_passes", "users"
+  add_foreign_key "lead_visit_projects", "firms"
+  add_foreign_key "lead_visit_projects", "lead_visits", on_delete: :restrict
+  add_foreign_key "lead_visit_projects", "projects", on_delete: :restrict
+  add_foreign_key "lead_visit_properties", "firms"
+  add_foreign_key "lead_visit_properties", "lead_visits", on_delete: :restrict
+  add_foreign_key "lead_visit_properties", "properties", on_delete: :restrict
+  add_foreign_key "lead_visits", "firms"
+  add_foreign_key "lead_visits", "leads", on_delete: :restrict
+  add_foreign_key "lead_visits", "users", on_delete: :nullify
   add_foreign_key "leads", "firms"
   add_foreign_key "leads", "lead_sources"
   add_foreign_key "leads", "lead_statuses"
   add_foreign_key "leads", "property_types"
   add_foreign_key "leads", "users", column: "assigned_user_id", on_delete: :nullify
   add_foreign_key "localities", "cities"
+  add_foreign_key "marketplace_enquiries", "firms"
+  add_foreign_key "marketplace_enquiries", "leads"
+  add_foreign_key "marketplace_enquiries", "project_share_links"
+  add_foreign_key "notifications", "firms"
+  add_foreign_key "notifications", "users", on_delete: :cascade
   add_foreign_key "one_time_codes", "contact_channels"
   add_foreign_key "one_time_codes", "users"
+  add_foreign_key "project_share_links", "firms"
+  add_foreign_key "project_share_links", "projects"
+  add_foreign_key "project_share_links", "users"
   add_foreign_key "project_typologies", "projects"
   add_foreign_key "project_typologies", "typologies"
   add_foreign_key "projects", "builders"
@@ -653,8 +1138,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_08_18_160000) do
   add_foreign_key "properties", "buildings"
   add_foreign_key "properties", "firms"
   add_foreign_key "properties", "typologies"
+  add_foreign_key "properties", "users", column: "created_by_user_id", on_delete: :nullify
+  add_foreign_key "push_subscriptions", "auth_sessions", on_delete: :cascade
+  add_foreign_key "push_subscriptions", "firms"
+  add_foreign_key "push_subscriptions", "users", on_delete: :cascade
   add_foreign_key "subscriptions", "admin_users", column: "created_by_admin_id"
   add_foreign_key "subscriptions", "firms"
   add_foreign_key "subscriptions", "plans"
+  add_foreign_key "training_notes", "firms"
+  add_foreign_key "training_notes", "trainings", on_delete: :cascade
+  add_foreign_key "training_notes", "users", on_delete: :cascade
+  add_foreign_key "trainings", "admin_users", column: "created_by_admin_user_id", on_delete: :nullify
+  add_foreign_key "user_managers", "firms", on_delete: :cascade
+  add_foreign_key "user_managers", "users", column: "manager_id", on_delete: :cascade
+  add_foreign_key "user_managers", "users", on_delete: :cascade
   add_foreign_key "users", "firms"
 end

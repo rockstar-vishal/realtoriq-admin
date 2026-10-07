@@ -73,6 +73,16 @@ RSpec.describe "API v1 auth" do
       expect(response).to have_http_status(:service_unavailable)
       expect(response.parsed_body.dig("error", "code")).to eq("delivery_failed")
     end
+
+    it "records the client IP from X-Forwarded-For when the hop is trusted" do
+      post "/api/v1/auth/otp",
+        params: { mobile: "9820144210" },
+        as: :json,
+        headers: { "X-Forwarded-For" => "203.0.113.50" }
+
+      expect(response).to have_http_status(:ok)
+      expect(OneTimeCode.where(user:).order(:created_at).last.request_ip).to eq("203.0.113.50")
+    end
   end
 
   describe "POST /auth/verify" do
@@ -146,6 +156,21 @@ RSpec.describe "API v1 auth" do
       expect(session.device_id).to eq("abc-123")
     end
 
+    it "stores the forwarded User-Agent on the session" do
+      body = request_code
+      post "/api/v1/auth/verify",
+        params: {
+          request_id: body["request_id"],
+          code: deliverer.last.code,
+          device: { device_id: "web-1" }
+        },
+        as: :json,
+        headers: { "User-Agent" => "RealtorIQ-Web/1.0" }
+
+      expect(response).to have_http_status(:ok)
+      expect(user.auth_sessions.sole.user_agent).to eq("RealtorIQ-Web/1.0")
+    end
+
     it "reclaims the slot when the same device signs in again" do
       2.times { sign_in(device: { device_id: "abc-123" }) }
 
@@ -162,6 +187,18 @@ RSpec.describe "API v1 auth" do
       expect(live.count).to eq(plan.max_devices)
       expect(live.pluck(:device_id)).not_to include("device-0")
       expect(user.auth_sessions.find_by(device_id: "device-0").revoked_reason).to eq("device_limit")
+    end
+
+    it "signs in again on a device whose previous session has expired" do
+      sign_in(device: { device_id: "abc-123" })
+      user.auth_sessions.live.sole.update_columns(expires_at: 1.hour.ago)
+
+      expect {
+        sign_in(device: { device_id: "abc-123" })
+      }.not_to raise_error
+
+      expect(response).to have_http_status(:ok)
+      expect(user.auth_sessions.live.count).to eq(1)
     end
   end
 

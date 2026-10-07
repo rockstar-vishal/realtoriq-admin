@@ -10,7 +10,7 @@ module Notifications
   class Deliverer
     class DeliveryError < StandardError; end
 
-    # Transports: :sms and :whatsapp go to MSG91, :email through Action Mailer.
+    # Transports: :sms goes to MSG91, :whatsapp to Twilio, :email through Action Mailer.
     def self.current
       @current ||= build
     end
@@ -22,7 +22,7 @@ module Notifications
 
     def self.build
       case Rails.configuration.x.otp_delivery.to_s
-      when "msg91" then Msg91Deliverer.new
+      when "msg91" then OutboundDeliverer.new
       else LogDeliverer.new
       end
     end

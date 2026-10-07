@@ -66,22 +66,26 @@ RSpec.describe Lead do
   end
 
   describe "budget filtering" do
-    it "matches ranges that overlap the window, not only those inside it" do
-      straddling = create(:lead, firm:, budget_min: 8_000_000, budget_max: 12_000_000)
-      inside = create(:lead, firm:, budget_min: 10_500_000, budget_max: 11_000_000)
-      below = create(:lead, firm:, budget_min: 1_000_000, budget_max: 2_000_000)
+    it "matches the stored amount inside the window, not a range overlap" do
+      in_window = create(:lead, firm:, budget_min: nil, budget_max: 12_000_000)
+      leftover_min = create(:lead, firm:, budget_min: 12_000_000, budget_max: nil)
+      # Old overlap semantics would include this; the stored max is below the window.
+      outside_max = create(:lead, firm:, budget_min: 8_000_000, budget_max: 9_000_000)
+      below = create(:lead, firm:, budget_min: nil, budget_max: 2_000_000)
 
       found = described_class.budget_between(10_000_000, 13_000_000).pluck(:id)
 
-      expect(found).to include(straddling.id, inside.id)
-      expect(found).not_to include(below.id)
+      expect(found).to include(in_window.id, leftover_min.id)
+      expect(found).not_to include(outside_max.id, below.id)
     end
 
-    it "treats an open-ended budget as matching" do
-      open_ended = create(:lead, firm:, budget_min: 9_000_000, budget_max: nil)
+    it "treats a leftover open-ended min as the stored amount" do
+      leftover = create(:lead, firm:, budget_min: 9_000_000, budget_max: nil)
 
+      expect(described_class.budget_between(8_000_000, 10_000_000).pluck(:id))
+        .to include(leftover.id)
       expect(described_class.budget_between(20_000_000, 30_000_000).pluck(:id))
-        .to include(open_ended.id)
+        .not_to include(leftover.id)
     end
   end
 
@@ -93,16 +97,40 @@ RSpec.describe Lead do
       expect(described_class.missed_followup.pluck(:id)).to eq([ overdue.id ])
     end
 
+    it "includes a followup due exactly now" do
+      due_now = create(:lead, firm:, next_action_at: Time.current)
+      create(:lead, :upcoming, firm:)
+
+      expect(described_class.missed_followup.pluck(:id)).to eq([ due_now.id ])
+    end
+
     it "excludes leads in a terminal status, which need no chasing" do
       create(:lead, :overdue, firm:, lead_status: create(:lead_status, :dead), dead_reason: "Gone")
 
       expect(described_class.missed_followup.count).to eq(0)
     end
 
-    it "is reachable through with_status by its documented name" do
-      overdue = create(:lead, :overdue, firm:)
+    it "is not reachable as a status code" do
+      create(:lead, :overdue, firm:)
 
-      expect(described_class.with_status("missed_followup").pluck(:id)).to eq([ overdue.id ])
+      expect(described_class.with_status("missed_followup")).to be_empty
+    end
+
+    it "filters through with_missed_followup" do
+      overdue = create(:lead, :overdue, firm:)
+      upcoming = create(:lead, :upcoming, firm:)
+
+      expect(described_class.with_missed_followup(true).pluck(:id)).to eq([ overdue.id ])
+      expect(described_class.with_missed_followup(false).pluck(:id)).to eq([ upcoming.id ])
+    end
+
+    it "expands hot_negotiation to the hot and negotiation codes" do
+      hot = create(:lead, firm:, lead_status: create(:lead_status, :hot))
+      negotiation = create(:lead, firm:, lead_status: create(:lead_status, :negotiation))
+      create(:lead, firm:)
+
+      expect(described_class.with_status("hot_negotiation").pluck(:id))
+        .to contain_exactly(hot.id, negotiation.id)
     end
   end
 
@@ -127,11 +155,25 @@ RSpec.describe Lead do
   end
 
   describe "#possible_duplicates" do
-    it "finds other leads on the same number, excluding itself" do
+    it "finds the other transaction type on the same number, excluding itself" do
       first = create(:lead, firm:, mobile: "9820144210")
-      second = create(:lead, firm:, mobile: "+919820144210")
+      second = create(:lead, :rent, firm:, mobile: "+919820144210")
 
       expect(second.possible_duplicates.pluck(:id)).to eq([ first.id ])
+    end
+  end
+
+  describe "uniqueness" do
+    it "refuses a second sale lead on the same number" do
+      create(:lead, firm:, mobile: "9820144210")
+
+      expect(build(:lead, firm:, mobile: "+919820144210")).not_to be_valid
+    end
+
+    it "allows sale and rent on the same number" do
+      create(:lead, firm:, mobile: "9820144210")
+
+      expect(build(:lead, :rent, firm:, mobile: "+919820144210")).to be_valid
     end
   end
 

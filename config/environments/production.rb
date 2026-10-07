@@ -72,21 +72,41 @@ Rails.application.configure do
   config.active_job.queue_adapter = :solid_queue
   config.solid_queue.connects_to = { database: { writing: :queue } }
 
-  # Ignore bad email addresses and do not raise email delivery errors.
-  # Set this to true and configure the email server for immediate delivery to raise delivery errors.
-  # config.action_mailer.raise_delivery_errors = false
+  # SES over SMTP. These are the SMTP credentials from the SES console, not the
+  # AWS access key and not the instance role. The From address
+  # (ApplicationMailer) must be a verified identity in this region.
+  region = ENV.fetch("AWS_REGION", "ap-south-1")
+  smtp_user_name = ENV["SMTP_USERNAME"].presence || Rails.application.credentials.dig(:smtp, :user_name)
+  smtp_password = ENV["SMTP_PASSWORD"].presence || Rails.application.credentials.dig(:smtp, :password)
+  if smtp_user_name.blank? || smtp_password.blank?
+    raise <<~ABORT
+      Refusing to boot: production mail is SES over SMTP, but the SMTP username or password is missing.
 
-  # Set host to be used by links generated in mailer templates.
-  config.action_mailer.default_url_options = { host: "example.com" }
+      In the SES console open SMTP settings and create SMTP credentials. Then add them
+      with `bin/rails credentials:edit`:
 
-  # Specify outgoing SMTP server. Remember to add smtp/* credentials via rails credentials:edit.
-  # config.action_mailer.smtp_settings = {
-  #   user_name: Rails.application.credentials.dig(:smtp, :user_name),
-  #   password: Rails.application.credentials.dig(:smtp, :password),
-  #   address: "smtp.example.com",
-  #   port: 587,
-  #   authentication: :plain
-  # }
+        smtp:
+          user_name: <SES SMTP username>
+          password: <SES SMTP password>
+
+      Or set SMTP_USERNAME and SMTP_PASSWORD.
+    ABORT
+  end
+
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = true
+  config.action_mailer.smtp_settings = {
+    address: "email-smtp.#{region}.amazonaws.com",
+    port: 587,
+    user_name: smtp_user_name,
+    password: smtp_password,
+    authentication: :plain,
+    enable_starttls_auto: true
+  }
+
+  # Link host comes from APP_HOST. config/initializers/default_url_options.rb
+  # applies it; without that variable, mail that builds a URL has no host.
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).

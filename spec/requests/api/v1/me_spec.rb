@@ -29,6 +29,8 @@ RSpec.describe "API v1 authenticated endpoints" do
       expect(body.dig("firm", "code")).to eq(firm.code)
       expect(body.dig("subscription", "entitled")).to be(true)
       expect(body.dig("permissions", "verify_contact_channels")).to be(true)
+      expect(body.dig("permissions", "manage_users")).to be(true)
+      expect(body.dig("permissions", "manage_projects")).to be(true)
       expect(body.dig("limits", "devices")).to eq(3)
     end
 
@@ -38,6 +40,8 @@ RSpec.describe "API v1 authenticated endpoints" do
       get "/api/v1/me", headers: auth_headers(agent)
 
       expect(response.parsed_body.dig("permissions", "verify_contact_channels")).to be(false)
+      expect(response.parsed_body.dig("permissions", "manage_users")).to be(false)
+      expect(response.parsed_body.dig("permissions", "manage_projects")).to be(false)
     end
 
     it "rejects a request with no token" do
@@ -96,7 +100,10 @@ RSpec.describe "API v1 authenticated endpoints" do
   describe "GET /reference" do
     before do
       create(:city, name: "Navi Mumbai", state: "Maharashtra")
-      LeadStatus.find_or_create_by!(name: "Dead") { |s| s.is_dead = true }
+      LeadStatus.find_or_create_by!(name: "Dead") { |s|
+        s.is_dead = true
+        s.is_terminal = true
+      }
       Typology.find_or_create_by!(name: "2.5 BHK") { |t| t.bedrooms = 2.5 }
     end
 
@@ -107,6 +114,7 @@ RSpec.describe "API v1 authenticated endpoints" do
       expect(response).to have_http_status(:ok)
       expect(body["cities"].first).to include("name" => "Navi Mumbai", "state_code" => "MH")
       expect(body["lead_statuses"].find { |s| s["name"] == "Dead" }["is_dead"]).to be(true)
+      expect(body["lead_statuses"].find { |s| s["name"] == "Dead" }["is_terminal"]).to be(true)
       expect(body["typologies"].find { |t| t["name"] == "2.5 BHK" }["bedrooms"]).to eq(2.5)
       expect(body["transaction_types"].map { |t| t["code"] }).to eq(%w[sale rent])
     end

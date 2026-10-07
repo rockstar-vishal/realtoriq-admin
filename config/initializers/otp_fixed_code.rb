@@ -4,6 +4,7 @@
 # broker". It exists so testing doesn't mean grepping a log for six digits, and
 # it must never survive to production. Development and staging may use one;
 # production may not, and refuses to boot rather than warn.
+# The only production exception is Auth::ReviewLogin, and it does not use OTP_FIXED_CODE.
 #
 # The check is a failed boot rather than a warning: a warning scrolls past in a
 # deploy log, and the failure mode here is silent and total.

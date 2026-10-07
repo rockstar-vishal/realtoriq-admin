@@ -23,7 +23,9 @@ model includes `FirmScoped`. The default scope is fail-closed: with no
 `Current.firm` set it becomes `firm_id IS NULL`, which matches nothing. A
 request that forgets to establish a tenant sees an empty result, never another
 firm's rows. `spec/models/tenancy_isolation_spec.rb` fails the build if a model
-with a `firm_id` is missing the concern.
+with a `firm_id` is missing the concern. `projects` is the exception: `firm_id`
+may be null only when `source` is `catalog`, enforced by
+`projects_firm_required_unless_catalog`.
 
 > **Associations are not uniform about this, and getting it wrong produces
 > silent empty results rather than errors.** Three cases, all pinned by spec:
@@ -64,9 +66,10 @@ console session.
 
 | Table | Notes |
 | --- | --- |
-| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. Logo via Active Storage. |
+| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). Logo via Active Storage. |
 | `firm_bank_accounts` | Printed on invoices the broker raises. `account_number` is encrypted (deterministic, so duplicates are still detectable). Partial unique index enforces one primary per firm. |
-| `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. |
+| `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. Disabled users still count toward `plans.max_users`. |
+| `user_managers` | Reporting graph, not a tree: `(user_id, manager_id)` with no cap on how many managers a person has. Superadmins are not stored here — they see the whole firm by default. Agents may be `manager_id`. Cycle-checked in the model; `User#manageables` walks the graph with a recursive CTE that carries a path array so a bad row cannot loop. |
 | `contact_channels` | The **firm's** email / mobile / WhatsApp, one of each. Users have no channels: the login code proves possession at sign-in, which is authentication, not channel verification. WhatsApp is its own row because a firm's WhatsApp Business number is often not its stated contact number. |
 | `one_time_codes` | Login and channel-verification codes, stored as bcrypt digests only. Deliberately **not** firm-scoped — a login code is created before we know who is signing in. |
 | `auth_sessions` | One row per signed-in device. Refresh token stored as a SHA-256 digest. This is what makes a JWT revokable. |
@@ -89,13 +92,37 @@ reports writable without hardcoding names in SQL), `property_types`.
 
 **Buildings are deliberately not here** — see Phase 2.
 
+### Facebook Lead Ads
+
+Statuses are strings with check constraints, like the rest of this app.
+`form_id`, `leadgen_id`, and `page_id` are unique across every firm. A firm
+holds a Page only while that row has a page token or `subscribed` is true.
+A stale row is deleted when another firm connects the Page, or when ops
+release it. Disconnect clears the token and the subscription, so the row
+is no longer a hold. At most one connection per firm has `status = 'active'`.
+
+| Table | Notes |
+| --- | --- |
+| `facebook_connections` | One Facebook login. `access_token` is encrypted. `token_kind`: user_access / system_access. `status`: active / invalid / disconnected. Disconnect keeps the row and clears the token. |
+| `facebook_pages` | A Page granted to this firm. `page_id` is unique across firms. Held only with a page token or `subscribed`. `page_access_token` is encrypted. `status`: active / unsubscribed / error. New pages start unsubscribed. |
+| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. |
+| `facebook_lead_imports` | One `leadgen_id` in the whole database. `status`: pending / processing / created / failed / dead / duplicate. `raw_payload` and `fetched_payload` are jsonb. |
+| `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. |
+| `facebook_import_alert_states` | One row per firm. Clocks for the failure digest and the duplicate notice. |
+
+Deleting a firm deletes these rows before its users. Deleting the user who
+connected Facebook cascades to the connection, its pages, forms and imports.
+A lead, project, property, assignee or lead source that is removed nullifies
+the foreign key. Disconnect does not delete the connection, so the page setup
+stays.
+
 ---
 
 ## Phase 2 — designed, not yet migrated
 
 ### Leads — **built**
 
-`leads`, `lead_typologies`, `lead_activities`, `lead_status_changes`, as
+`leads`, `lead_followups`, `lead_typologies`, `lead_localities`, `lead_activities`, `lead_status_changes`, as
 designed. Columns are in the migrations; the rules that aren't obvious from them:
 
 - **`name` is nullable.** Brokers capture a number off a portal before anything
@@ -110,16 +137,33 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   a retry on collision. Brokers read these numbers to each other, so they are not
   random. The max is computed on the digits, not the string, or `L-9999` would
   outrank `L-10000` and start reissuing.
-- **`project_id` is not there yet** — it arrives with the inventory slice.
+- **One lead per `(firm_id, mobile, transaction_type)`.** Same number may exist
+  once as sale and once as rent. `notes` is the free-text requirements box
+  (labelled “Detailed Client Requirements” in the app). Follow-up comments live
+  only on `lead_followups.comment`.
+- **NCD (`leads.next_action_at`) is a copy** written by `Leads::RecordFollowup`.
+  There is no `leads.next_action_note`. A followup without a datetime leaves the
+  current NCD. Dead and booked clear it. `last_followup_comment` on the API is
+  the latest followup comment, not an activity body.
+- **Quick EMI is one calculation.** `emi_loan_amount` (whole rupees), `emi_annual_rate`
+  (`decimal(5,2)`), `emi_tenure_years`, and `emi_saved_at` are all null or all
+  set. The monthly figure is not a column. Bounds match the sliders: 5 lakh to
+  5 crore, 6–14%, 1–30 years.
+- **Budget is a single amount.** Writes store `budget` in `budget_max` and clear
+  `budget_min`. The `budget_min` column stays for leftover rows; it is not
+  written anymore. `GET /leads` `budget_min` / `budget_max` are a **filter
+  window** on `COALESCE(budget_max, budget_min)`, not a range overlap.
+- **Mappings** live in `lead_projects` and `lead_properties` (many, kept after a
+  booking). There is no `leads.project_id`.
 
 Two behaviours worth knowing before writing a query:
 
 - **"Missed f/u" is not a status.** The design's tab strip carries it but
-  `LEAD_STATUSES` does not. It means `next_action_at` in the past on a
-  non-terminal lead, and is reachable as `status=missed_followup`.
-- **Budget filtering is overlap, not containment.** A window of ₹1–1.3 Cr returns
-  the lead whose own range is ₹80L–1.2 Cr. Containment would hide exactly the
-  lead a broker widening the filter is looking for.
+  `LEAD_STATUSES` does not. It means `next_action_at <= now` on a
+  non-terminal lead, and is reachable as `missed_followup=true`.
+  `hot_negotiation` is the hot + negotiation codes together.
+- **Default GET /leads sort is NCD** (`next_action_at ASC NULLS FIRST`). Home
+  dashboard `recent` is missed followups only (most overdue first).
 
 **Visibility**: agents see only leads assigned to them; managers and the super
 admin see the firm's whole pipeline (`Lead.visible_to`). A lead an agent may not
@@ -129,7 +173,7 @@ lead an agent creates is auto-assigned to them.
 ### Inventory — **built**
 
 `builders` (extended), `projects`, `project_typologies`, `buildings`,
-`properties`. Columns are in the migrations; the rules that aren't obvious:
+`properties`, `lead_projects`, `lead_properties`. Columns are in the migrations; the rules that aren't obvious:
 
 - **`builders` now carries a nullable `firm_id`.** NULL is the platform's
   curated list; a value is one a broker added inline from the project form,
@@ -137,10 +181,38 @@ lead an agent creates is auto-assigned to them.
   fail-closed scope would hide exactly the global rows everyone should see — and
   the guard spec records the exemption. Uniqueness is two partial indexes,
   because Postgres treats NULLs as distinct and a plain `(firm_id, name)` index
-  would let the global list hold a name twice.
+  would let the global list hold a name twice. A firm may not create a name that
+  already sits on the master list.
+- **My Projects names** are unique case-insensitively per firm among `source =
+  own`. Catalog names are unique the same way among `source = catalog`. The same
+  name may exist once in each list. `GET /projects` lists own only. A marketplace
+  row is the one project with no firm (`source` catalog). An own project with no
+  firm is refused by `projects_firm_required_unless_catalog`.
+- **`projects.code` and `properties.code`** are `P-` or `H-` plus 6 characters
+  from an alphabet that skips I, O, 0 and 1. They are random, globally unique,
+  and assigned on create, including catalog rows with no firm. Existing rows
+  were backfilled. A firm's copy of a catalog project gets its own code.
+- **Portal listing codes** (`portal_99acres_code`, `portal_magicbricks_code`,
+  `portal_housing_code`) sit on both `projects` and `properties`. Blank is
+  stored as NULL. Unique per firm, case-insensitively, and only when a code is
+  present. Catalog projects are excluded. Written by `PATCH …/portal_codes`,
+  never by the main project or property form.
+- **`inbound_credentials`** is one row per firm. `token` is encrypted.
+  `token_digest` is the SHA256 used to look the firm up. Rotating replaces
+  both and writes `inbound_credential.rotate` on `audit_events` without the
+  token.
+- **`inbound_enquiries`** stores a portal's `enquiry_id` only after the lead
+  is saved: `firm_id`, `channel` (`99acres`, `magicbricks`, `housing`,
+  `general`), `external_id`, `lead_id`. Unique on firm, channel and external
+  id. A failed call leaves no row, so the same id can be retried.
+- **`properties.created_by_user_id`** is stamped on create (nullable on older
+  rows) and nullified if that user is deleted.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
   broker's typo must not reach every other firm's dropdown. The accepted cost is
   duplication across firms.
+- **`properties.status`** is `available` · `booked` · `sold_out`. Any status may
+  be patched to any other. Default list is `available`; `status=all` returns
+  every row.
 - **`properties.confidential_note`** never appears in a list payload and never
   in the `shareable` subset. It is returned only by the property detail, where
   the design puts it behind a reveal.
@@ -148,9 +220,10 @@ lead an agent creates is auto-assigned to them.
   every flat in it shares the same pool.
 
 **Derived, never stored**: a project's price and area bands (min/max across its
-typologies) and rate per sqft on both properties and project typologies. A
-stored band can end up disagreeing with the rows it came from. Note that on a
-rental, `price` is monthly rent, so `rate_per_sqft` is rent per sqft per month.
+typologies), per-config rate per sqft, and **`avg_psf`** on the project (unweighted
+mean of those rates). A stored band can end up disagreeing with the rows it came
+from. Note that on a rental, `price` is monthly rent, so `rate_per_sqft` is rent
+per sqft per month.
 
 **Deviation from the original design of this table**: `project_typologies`
 carries only `starting_price` and `starting_carpet_sqft`. The `price_to` /
@@ -166,17 +239,30 @@ different record. `shareable` keeps the bare urls only.
 **Share payloads.** The client composes share text, so every project and
 property detail carries a **`shareable`** object holding exactly the fields that
 may go to a client. Building a message from `shareable` cannot reach the
-confidential note, and `shareable` on a project omits `brokerage_percent` —
-what the broker earns is not the client's business.
+confidential note, and `shareable` on a project omits `brokerage_percent` and
+`brokerage_ladder_url` — what the broker earns is not the client's business.
 
 ### Still to build
 
-**`visits`** — `lead_id`, `project_id`/`property_id`, `scheduled_at`, `status`,
-`notes`, `outcome`.
+**`lead_visits`** — built. A completed outing: `firm_id`, `lead_id`, `user_id`
+(the logger), `visited_at` (IST start of the calendar day), optional `notes`.
+Sites are optional joins in `lead_visit_projects` / `lead_visit_properties`
+and must already be mapped when **added** to a visit (create, or new ids on
+PATCH). Ids already on a visit stay after the lead unmaps them until the
+outing is edited. A lead is visited when it has at least one row.
+`leads.first_visit_at` is gone. Scheduling, status, and outcome are not in
+this table.
 
-**Matching** — the design's "Map Lead" and "Show New Matches". The data it needs
-(typology starting prices and areas, lead budgets and preferred configurations)
-is all in place; the scoring rules are their own design pass.
+**Matching** — scored on each `POST`, not stored. A lead lists inventory, and a
+project or property lists leads, only when a preferred locality overlaps and
+the score is above 30 for the firm's own stock, or above 50 for a catalog
+project or another firm's shared property. `properties.listed_on_marketplace`
+(default true) is that share switch. `GET /properties/marketplace` lists
+every other active firm's shared available properties as that safe card. A lead
+maps one of those listings only while that firm is still active. `lead_localities` holds the lead's
+preferred localities (no `firm_id`; the lead is the tenant). Price is one of
+50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
+20. See `docs/api.md`.
 
 ### Bookings and money — **built**
 
@@ -214,6 +300,12 @@ rather than only that it said no.
 - **`customer_name` / `customer_mobile` are snapshots** taken at booking time — correcting a lead
   a year later must not rewrite what was booked.
 - **Managers and super admins only.** Agents get `forbidden_role` on every booking endpoint.
+- **`unit_no` is required when `project_id` is set**, and unique among live rows
+  on `(project_id, unit_no)`. Cancel frees the unit.
+- Booking a **catalog** project copies required fields to an `own` row and stores
+  that id. A lead mapping does not. A global marketplace row is copied by project
+  code, never linked to a same-named project the firm added itself. A firm-owned
+  catalog row still returns `project_name_clash` when the name is taken.
 - Never sum totals over a scope carrying `includes(:invoices, :collections)` — it becomes a LEFT
   JOIN and counts a booking once per associated row, inflating revenue.
   `BookingsController#totals_for` re-selects by id for exactly that reason.
@@ -225,9 +317,31 @@ control for it.
 
 ### Ancillary
 
-**`notifications`** — `user_id`, `kind`, `title`, `body`, `read_at`, `data`.
+**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published`, `marketplace_enquiry` or `inbound_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+
+**`marketplace_enquiries`** — one row per microsite form submission (`enquiry_id` unique). A repeat of that id does not create another lead.
+
+**`lead_projects.withdrawn_at`** — set when LaunchIQ withdraws the marketplace project. The catalog row and the firm's copies are archived. A later upsert clears it.
+
+**`push_subscriptions`** — one browser per row: `user_id`, `auth_session_id`, encrypted `endpoint` / `p256dh` / `auth_key`. Deleted when the session is revoked.
+
+**`notification_dispatch_states`** — global watermark (`key`, `last_dispatched_at`). Not firm-scoped. The follow-up scanner's first run only plants the cursor.
 **`news_articles`** — global, platform-published: `category`, `title`, `body`,
 `read_minutes`, `published_at`, image.
+
+**`trainings`** — **built**, global (no `firm_id`, like `cities`): `title`,
+`description`, `intro_text` (plain text), `instructions_text` (blank = the app's
+default steps), `language` (`hinglish` / `en` / `mr`), `status` (`draft` /
+`active` / `archived`), `valid_upto` (null = never), `podcast_url`,
+`podcast_duration_seconds`, `created_by_admin_user_id`, `published_at`, plus
+`banner`, `document` and `podcast` attachments. Caps live on the model, not in
+`UploadPurpose`: ops upload straight from the admin form. `generating` joins the
+status list when podcast generation is wired. Activation needs the title,
+description, intro text, banner and PDF; **a podcast is not required** — the
+guide is the training, and audio can be attached later without republishing.
+
+**`training_notes`** — **built**, firm-scoped: `user_id`, `training_id`, `body`,
+unique on `(user_id, training_id)`. One running note per broker per training.
 
 ### Reports
 
@@ -235,10 +349,10 @@ No tables. All four report shapes are grouped queries over the above:
 
 | Report | Reads |
 | --- | --- |
-| Source × status matrix | `leads` grouped by `lead_source_id` × `lead_status_id`, date-filtered |
-| Dead leads by FY month | `lead_status_changes` into a status where `is_dead`, plus `leads.created_at` for the generated column |
-| Bookings by FY month | `bookings` counts, `invoices` / `collections` for the followup columns |
-| Revenue by FY month | Same shape, amounts instead of counts |
+| Source × status matrix | `leads` grouped by `lead_source_id` × `lead_status_id` (one row per source, not per category), date-filtered on `created_at` |
+| Dead leads by month | `lead_status_changes` into a status where `is_dead`, plus `leads.created_at` for the generated column. Months come from the selected range |
+| Bookings by month | `bookings` counts on `booked_on`, `invoices` / `collections` for the followup columns. Ignores a lead status filter |
+| Revenue by month | Same bookings, amounts instead of counts. Ignores a lead status filter |
 
 Materialised views are a later optimisation, and only if measurement asks for
 them.
@@ -247,8 +361,6 @@ them.
 
 ## Out of scope in this build
 
-- **Top opportunities** on the dashboard — comes from the turbo-rails8 API.
-  `projects.source` + `external_ref` are the only seam left for it.
 - **Payment gateway** — subscriptions are ops-managed by hand.
 - **Broker user CRUD in the admin panel** — the super admin is created with the
   firm; the detail page lists users read-only.

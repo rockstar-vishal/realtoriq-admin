@@ -6,14 +6,20 @@ environment can be exercised without reaching a real broker or a real rupee:
 | | Staging | Production |
 | --- | --- | --- |
 | Sign-in code | **Always `888888`** | Generated, six random digits |
-| Delivery | Written to the log. MSG91 is never called | MSG91 (SMS/WhatsApp) + Action Mailer |
+| Delivery | Written to the log. MSG91 and Twilio are never called | MSG91 (SMS) + Twilio (WhatsApp) + Action Mailer |
 | OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
-| Email | `delivery_method = :test` — nothing leaves | Real SMTP |
+| Email | `delivery_method = :test` — nothing leaves | SES over SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |
+| Logs | **`log/staging.log` and stdout** | stdout only |
 
 Everything else — eager loading, caching, SSL, Solid Queue/Cache/Cable, the four
 databases — matches production.
+
+The log file rotates at 100 MB, ten files kept. `tail -f log/staging.log` shows
+lines only after the Puma that is listening has been restarted onto this code.
+A `rails runner` picks the new logger up immediately; the long-running server
+does not.
 
 ## Why it is a separate RAILS_ENV
 
@@ -165,11 +171,36 @@ bin/rails assets:precompile
 bin/rails server -e staging
 ```
 
-Background jobs, if you need them (OTP email delivery is the only user today):
+Background jobs. OTP email uses them, and follow-up reminders do not fire unless this process is running (`config/recurring.yml` schedules the scanner every minute on staging):
 
 ```bash
 bin/jobs
 ```
+
+## nginx must allow 5 MB request bodies
+
+**nginx's default `client_max_body_size` is 1 MB. The app allows uploads up to
+5 MB.** Every file between the two is rejected by nginx with a
+`413 Request Entity Too Large` before Rails sees it — and small test files pass,
+which is how this hides. Put this in the server block:
+
+```nginx
+# Largest upload the app accepts is 5 MB (project brochures and photos). Kept
+# just above that rather than wide open, so nginx remains a real ceiling.
+# Raise it with any UploadPurpose max_bytes in app/models/upload_purpose.rb.
+client_max_body_size 6m;
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Direct uploads PUT the raw file with no multipart overhead, so 6 MB leaves room.
+The admin panel's firm-logo form is multipart but capped at 1 MB, so it fits too.
+
+`RealtorIQ — Staging deployment checks` → **nginx accepts a full-size upload**
+sends a 5.1 MB body and fails on a 413, so a rebuilt server that loses this line
+is caught on the next deploy check.
 
 ## Signing in
 
@@ -207,12 +238,43 @@ not in staging, and real messages will be sent.
 bin/rails msg91:check
 ```
 
-Reports what is configured without sending anything.
+Reports SMS (MSG91) and WhatsApp (Twilio) without sending anything.
+
+## Facebook Lead Ads
+
+Credentials live under `facebook` in the Rails credentials: `app_id`,
+`app_secret`, `configuration_id`, `verify_token`, `web_origin`, and optionally
+`access_token_kind` (`system_user` selects the system-user login; omit it for a
+user token). `web_origin` is the Next.js origin, with no trailing slash.
+`APP_HOST` is the Rails origin Meta calls. Locally that default is
+`http://localhost:3000`, so a real Facebook redirect needs `APP_HOST` pointed
+at Rails on port 3001.
+
+Meta's two URLs, both with no broker session:
+
+- `https://<APP_HOST>/facebook/callback`
+- `https://<APP_HOST>/facebook/webhook`
+
+Recurring jobs, staging and production only:
+
+| Job | Schedule |
+| --- | --- |
+| `Facebook::ImportSweeperJob` | every 5 minutes |
+| `Facebook::ImportFailureDigestJob` | every minute |
+| `Facebook::TokenHealthCheckJob` | 2am every Sunday, Asia/Kolkata |
+| `Facebook::CleanupJob` | 3am every day |
+
+Staging email uses `delivery_method = :test`, so the digest and reconnect
+emails do not leave the server. The in-app notices still appear.
+
+A Page connected on public staging can be read by anyone who knows a broker's
+mobile, because the sign-in code there is always `888888`. Do not connect a
+Page that receives real buyer leads until staging is no longer open.
 
 ## Going to production later
 
 Nothing to undo. Deploy the same code with `RAILS_ENV=production` and do **not**
 set `OTP_FIXED_CODE` — production has no default, generates real codes, and
-refuses to boot if a fixed one is supplied. Before real brokers sign in you will
-need the MSG91 `sms_template_id` (DLT-approved) and, for WhatsApp, the business
-number and template name.
+refuses to boot if a fixed one is supplied. Sign-in SMS needs the MSG91 template
+id and sender id. WhatsApp verification needs the Twilio account sid, auth
+token, sender number, and content sid.

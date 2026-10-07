@@ -7,8 +7,8 @@ module Api
     # is the client's job.
     module LeadSerializer
       class << self
-        # The list card in the design: name, meta line, budget · project,
-        # status, next action, visited badge.
+        # The list card: name, status, sale · property type, visit count,
+        # configuration · budget, source, last followup comment, NCD, created.
         def list(lead)
           {
             id: lead.id,
@@ -18,17 +18,21 @@ module Api
             mobile: lead.mobile,
             email: lead.email,
             transaction_type: lead.transaction_type,
+            budget: lead.budget_amount,
             budget_min: lead.budget_min,
             budget_max: lead.budget_max,
             possession_by: lead.possession_by,
             status: status(lead.lead_status),
             property_type: named(lead.property_type),
             typologies: lead.typologies.map { |t| named(t) },
+            localities: lead.localities.map { |locality| locality_payload(locality) },
             assigned_user: named(lead.assigned_user),
+            source: named(lead.lead_source),
             next_action_at: lead.next_action_at,
-            next_action_note: lead.next_action_note,
+            last_followup_comment: lead.last_followup_comment,
             overdue: lead.overdue?,
             visited: lead.visited?,
+            visit_count: lead.visit_count,
             created_at: lead.created_at,
             updated_at: lead.updated_at
           }
@@ -39,19 +43,58 @@ module Api
         def detail(lead, activities: [], status_history: [])
           list(lead).merge(
             alt_mobile: lead.alt_mobile,
-            source: named(lead.lead_source),
             source_detail: lead.source_detail,
-            first_visit_at: lead.first_visit_at,
             dead_reason: lead.dead_reason,
             dead_at: lead.dead_at,
             booked_at: lead.booked_at,
             notes: lead.notes,
+            mapped_projects: lead.lead_projects.map { |mapping| mapped_project(lead, mapping) },
+            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
-            status_history: status_history.map { |change| history_entry(change) }
+            status_history: status_history.map { |change| history_entry(change) },
+            visit_passes: lead.lead_visit_passes.sort_by { |pass| pass.created_at || Time.current }.reverse.map { |pass|
+              LeadVisitPassSerializer.call(pass)
+            },
+            emi: emi(lead)
+          )
+        end
+
+        def full_detail(lead)
+          lead.localities.includes(:city).load
+          lead.lead_visit_passes.includes(:project).load
+          lead.lead_projects.includes(project: %i[builder city locality]).load
+          lead.lead_properties.includes(property: [ :typology, { building: %i[city locality] } ]).load
+
+          detail(
+            lead,
+            activities: lead.lead_activities.includes(:user).recent_first.limit(20),
+            status_history: lead.lead_status_changes.includes(:from_status, :to_status, :user).recent_first
           )
         end
 
         private
+
+        # annual_rate is a decimal. BigDecimal#as_json uses engineering notation
+        # ("0.85e1"), which the slider cannot read. "F" is a plain decimal string.
+        def locality_payload(locality)
+          {
+            id: locality.id,
+            name: locality.name,
+            city_id: locality.city_id,
+            city: locality.city&.name
+          }
+        end
+
+        def emi(lead)
+          return nil if lead.emi_saved_at.nil?
+
+          {
+            loan_amount: lead.emi_loan_amount,
+            annual_rate: lead.emi_annual_rate.to_s("F"),
+            tenure_years: lead.emi_tenure_years,
+            saved_at: lead.emi_saved_at
+          }
+        end
 
         def status(record)
           return nil if record.nil?
@@ -71,6 +114,74 @@ module Api
           return nil if record.nil?
 
           { id: record.id, name: record.name }
+        end
+
+        def mapped_project(lead, mapping)
+          project = mapping.project
+          stats = lead.project_visit_stats[project.id.to_s] || EMPTY_SITE_STATS
+          {
+            id: mapping.id,
+            withdrawn: mapping.withdrawn_at.present?,
+            visited: stats[:visit_count].positive?,
+            visit_count: stats[:visit_count],
+            last_visited_on: ist_date(stats[:last_visited_at]),
+            project: {
+              id: project.id,
+              name: project.name,
+              source: project.source,
+              builder: project.builder && { id: project.builder_id, name: project.builder.name },
+              city: project.city&.name,
+              city_id: project.city_id,
+              locality: project.locality&.name,
+              locality_id: project.locality_id,
+              starting_budget: project.starting_budget,
+              external_ref: project.external_ref
+            }
+          }
+        end
+
+        def mapped_property(lead, mapping)
+          property = mapping.property
+          stats = lead.property_visit_stats[property.id.to_s] || EMPTY_SITE_STATS
+          shared = property.firm_id != lead.firm_id
+          card = shared ? Inventory::PropertyCard.for(property) : nil
+          {
+            id: mapping.id,
+            visited: stats[:visit_count].positive?,
+            visit_count: stats[:visit_count],
+            last_visited_on: ist_date(stats[:last_visited_at]),
+            property: if shared
+                        {
+                          id: property.id,
+                          title: card[:title],
+                          listing_for: property.listing_for,
+                          status: property.status,
+                          price: property.price,
+                          carpet_area_sqft: property.carpet_area_sqft,
+                          locality: card[:locality],
+                          city: card[:city],
+                          marketplace: true,
+                          listed_by: card[:firm_name]
+                        }
+                      else
+                        {
+                          id: property.id,
+                          title: property.title,
+                          listing_for: property.listing_for,
+                          status: property.status,
+                          price: property.price,
+                          building: property.building && { id: property.building_id, name: property.building.name }
+                        }
+                      end
+          }
+        end
+
+        EMPTY_SITE_STATS = { visit_count: 0, last_visited_at: nil }.freeze
+
+        def ist_date(time)
+          return nil if time.nil?
+
+          time.in_time_zone(Lead::NCD_ZONE).to_date.iso8601
         end
 
         def history_entry(change)

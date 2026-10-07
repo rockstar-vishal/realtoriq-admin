@@ -2,6 +2,16 @@ Rails.application.routes.draw do
   # Reveal health status on /up
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # turbo-rails8 pushes marketplace projects and enquiries here. Authenticated
+  # by HMAC, not by a broker JWT. The URL is whatever is stored as
+  # realtoriq.webhook_url on the turbo side.
+  post "turbo/events", to: "turbo/events#create"
+
+  # Meta calls these. No broker JWT. The callback only redirects to web_origin.
+  get "facebook/callback", to: "facebook/callback#show", as: :facebook_callback
+  get "facebook/webhook", to: "facebook/webhooks#verify"
+  post "facebook/webhook", to: "facebook/webhooks#receive"
+
   # Active Storage mounts its own direct-upload endpoint. It sits outside our
   # JWT auth and enforces none of the per-purpose size or type rules, so anyone
   # able to fetch a CSRF token could mint upload tickets against our storage.
@@ -30,6 +40,10 @@ Rails.application.routes.draw do
       end
 
       scope module: :firms do
+        resources :facebook_pages, only: [] do
+          member { delete :release }
+        end
+
         resources :contact_channels, only: %i[update] do
           member do
             post :send_code
@@ -48,6 +62,15 @@ Rails.application.routes.draw do
     end
 
     resources :plans, except: %i[show]
+
+    # Skills & Trainings. No show: the edit screen is the detail screen, and
+    # what a broker sees comes from the API.
+    resources :trainings, except: %i[show] do
+      member do
+        patch :activate
+        patch :archive
+      end
+    end
 
     namespace :masters do
       resources :cities, param: :slug, except: %i[show]
@@ -73,21 +96,90 @@ Rails.application.routes.draw do
 
       get "me",        to: "me#show"
       get "reference", to: "reference#index"
+
+      # Websites post leads here. The key in Authorization picks the firm.
+      # These actions do not use a broker JWT.
+      post "inbound/:channel/projects", to: "inbound_leads#create", defaults: { kind: "projects" }
+      post "inbound/:channel/properties", to: "inbound_leads#create", defaults: { kind: "properties" }
+      get "inbound_credentials", to: "inbound_credentials#show"
+      post "inbound_credentials/rotate", to: "inbound_credentials#rotate"
+
+      namespace :facebook do
+        get "integration", to: "integration#show"
+        post "connect", to: "connect#create"
+        post "connections", to: "connections#create"
+        delete "connection", to: "connection#destroy"
+        post "connection/health_check", to: "connection#health_check"
+        post "pages/:id/subscribe", to: "pages#subscribe"
+        delete "pages/:id/subscribe", to: "pages#unsubscribe"
+        post "pages/:id/sync_forms", to: "pages#sync_forms"
+        post "pages/:id/forms", to: "forms#create"
+        get "forms/:id", to: "forms#show"
+        patch "forms/:id", to: "forms#update"
+        get "imports", to: "imports#index"
+        post "imports/retry_failed", to: "imports#retry_failed"
+        post "imports/:id/retry", to: "imports#retry"
+      end
+
+      resources :notifications, only: %i[index] do
+        collection do
+          get :unread_count
+          post :mark_all_read
+          post :test
+        end
+        member { patch :read }
+      end
+
+      get    "push_subscriptions", to: "push_subscriptions#show"
+      post   "push_subscriptions", to: "push_subscriptions#create"
+      delete "push_subscriptions", to: "push_subscriptions#destroy"
+      get    "push_subscriptions/vapid_public_key", to: "push_subscriptions#vapid_public_key"
+
+      resources :users, only: %i[index create show update] do
+        resources :managers, only: %i[create destroy], controller: "user_managers",
+          param: :manager_id
+      end
       # The home screen. One request rather than six, and scoped to the caller:
       # an agent gets no money block at all.
       get "dashboard", to: "dashboard#show"
 
+      # Grouped reads over leads and bookings. No tables of their own.
+      # Bookings and revenue are manager-only; the lead reports are not.
+      get "reports/source_status", to: "reports#source_status"
+      get "reports/dead_leads", to: "reports#dead_leads"
+      get "reports/bookings", to: "reports#bookings"
+      get "reports/revenue", to: "reports#revenue"
+      get "reports/assignees", to: "reports#assignees"
+
       # No destroy: the design has no delete. `Dead` is the terminal state, and
       # it carries a reason so the dead-leads report can explain itself.
       resources :leads, only: %i[index create show update] do
-        member do
-          post :status
-          post :assign
+        collection do
+          get :import_template, to: "lead_imports#template"
+          post :import, to: "lead_imports#create"
         end
 
-        # Flat controller name on purpose — an Api::V1::Leads module would
+        member do
+          post :status
+          post :matches
+        end
+
+        # Flat controller names on purpose — an Api::V1::Leads module would
         # shadow the top-level Leads:: service namespace.
         resources :activities, only: %i[index create], controller: "lead_activities"
+        resources :followups, only: %i[index create], controller: "lead_followups"
+        resources :visits, only: %i[index create update], controller: "lead_visits"
+        resources :projects, only: %i[create destroy], controller: "lead_projects"
+        resources :properties, only: %i[create destroy], controller: "lead_properties"
+        resources :visit_passes, only: %i[create], controller: "lead_visit_passes" do
+          member { post :refresh }
+        end
+      end
+
+      # Skills & Trainings. Read-only for brokers; ops publish from /admin.
+      # The note is singular: one per broker per training, saved in place.
+      resources :trainings, only: %i[index show] do
+        resource :note, only: %i[update], controller: "training_notes"
       end
 
       resources :uploads, only: %i[create]
@@ -98,7 +190,17 @@ Rails.application.routes.draw do
       resources :buildings, only: %i[index create update]
 
       resources :projects, only: %i[index create show update] do
+        # Typeahead. A collection route, so Rails matches it before :id and
+        # "search" is never looked up as a project.
+        collection { get :search }
+
         member do
+          get :visitors
+          get :marketplace_leads
+          get :mapped_customers
+          post :share_link
+          post :lead_matches
+          patch :portal_codes
           # Photos live on the detail screen, not the create form.
           post   "photos", to: "projects#add_photos"
           delete "photos/:photo_id", to: "projects#remove_photo", as: :photo
@@ -106,7 +208,18 @@ Rails.application.routes.draw do
       end
 
       resources :properties, only: %i[index create show update] do
+        # Directory of other firms' shared listings. A collection route, so
+        # "marketplace" is never looked up as a property id.
+        collection do
+          get :marketplace, action: :marketplace_index, as: :marketplace_index
+        end
+
         member do
+          get :visitors
+          get :mapped_customers
+          get :marketplace
+          post :lead_matches
+          patch :portal_codes
           post   "photos", to: "properties#add_photos"
           delete "photos/:photo_id", to: "properties#remove_photo", as: :photo
         end
