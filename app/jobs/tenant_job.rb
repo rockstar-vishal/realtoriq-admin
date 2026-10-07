@@ -7,6 +7,9 @@ class TenantJob < ApplicationJob
 
   around_perform do |job, block|
     firm = Firm.find(job.arguments.first)
-    Current.set(firm:) { block.call }
+    Current.set(firm:) do
+      Sentry.set_tags(firm_id: firm.id)
+      block.call
+    end
   end
 end

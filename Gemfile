@@ -99,3 +99,8 @@ end
 # on demand — only the environments that actually select the `amazon` service
 # pay for it, and staging deliberately never does.
 gem "aws-sdk-s3", require: false
+
+# Production error reporting. Off unless RAILS_ENV is production and a DSN is
+# set. See config/initializers/sentry.rb.
+gem "sentry-ruby", "~> 7.1"
+gem "sentry-rails", "~> 7.1"
