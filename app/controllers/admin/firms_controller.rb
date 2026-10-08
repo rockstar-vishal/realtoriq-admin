@@ -92,7 +92,8 @@ module Admin
           *FirmForm::CONTACT_FIELDS,
           *FirmForm::OWNER_FIELDS,
           *FirmForm::SUBSCRIPTION_FIELDS,
-          :logo
+          :logo,
+          { extra_locality_ids: [] }
         ]
       )
     end

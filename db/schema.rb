@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_08_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -378,6 +378,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
     t.index ["firm_id"], name: "index_firm_bank_accounts_one_primary_per_firm", unique: true, where: "(\"primary\" = true)"
   end
 
+  create_table "firm_localities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "locality_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "locality_id"], name: "index_firm_localities_on_firm_id_and_locality_id", unique: true
+    t.index ["firm_id"], name: "index_firm_localities_on_firm_id"
+    t.index ["locality_id"], name: "index_firm_localities_on_locality_id"
+  end
+
   create_table "firms", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.string "legal_name"
@@ -671,6 +681,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
     t.integer "emi_tenure_years"
     t.datetime "emi_saved_at"
     t.string "open_identity"
+    t.boolean "unqualified", default: false, null: false
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
@@ -716,6 +727,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
     t.index ["project_share_link_id"], name: "index_marketplace_enquiries_on_project_share_link_id"
   end
 
+  create_table "match_digests", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.datetime "generated_at", null: false
+    t.string "fingerprint", null: false
+    t.jsonb "lead_items", default: [], null: false
+    t.jsonb "listing_items", default: [], null: false
+    t.boolean "notification_pending", default: false, null: false
+    t.string "notified_fingerprint"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_match_digests_on_firm_id", unique: true
+    t.index ["generated_at"], name: "index_match_digests_on_generated_at"
+    t.index ["notification_pending"], name: "index_match_digests_on_notification_pending", where: "notification_pending"
+  end
+
   create_table "notification_dispatch_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "key", null: false
     t.datetime "last_dispatched_at"
@@ -739,7 +765,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
     t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying]::text[])", name: "notifications_kind_check"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying, 'match_digest'::character varying]::text[])", name: "notifications_kind_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1116,6 +1142,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
   add_foreign_key "facebook_pages", "facebook_connections", on_delete: :cascade
   add_foreign_key "facebook_pages", "firms"
   add_foreign_key "firm_bank_accounts", "firms"
+  add_foreign_key "firm_localities", "firms"
+  add_foreign_key "firm_localities", "localities"
   add_foreign_key "firms", "cities"
   add_foreign_key "firms", "localities"
   add_foreign_key "inbound_credentials", "firms"
@@ -1166,6 +1194,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
   add_foreign_key "marketplace_enquiries", "firms"
   add_foreign_key "marketplace_enquiries", "leads"
   add_foreign_key "marketplace_enquiries", "project_share_links"
+  add_foreign_key "match_digests", "firms"
   add_foreign_key "notifications", "firms"
   add_foreign_key "notifications", "users", on_delete: :cascade
   add_foreign_key "one_time_codes", "contact_channels"

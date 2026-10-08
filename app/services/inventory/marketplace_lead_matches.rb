@@ -17,9 +17,10 @@ module Inventory
       return [] if locality_id.blank?
       return [] if Current.firm&.review_demo? || property.firm&.review_demo?
 
-      candidates.filter_map { |lead| row(lead) if score_for(lead) > MatchInventory::MARKETPLACE_FLOOR }
-        .sort_by { |row| row[:firm_name].to_s.downcase }
+      scored.filter_map { |score, lead| [ score, row(lead) ] if score > MatchInventory::MARKETPLACE_FLOOR }
+        .sort_by { |score, row| [ -score, row[:firm_name].to_s.downcase, row[:code].to_s ] }
         .first(LIMIT)
+        .map(&:last)
     end
 
     private
@@ -35,14 +36,17 @@ module Inventory
         .where(firm_id: Firm.marketplace_eligible.select(:id))
         .where.not(firm_id: property.firm_id)
         .where(transaction_type: property.listing_for)
-        .joins(:lead_status)
-        .where(lead_statuses: { is_dead: false })
+        .matchable
         .joins(:lead_localities)
         .where(lead_localities: { locality_id: })
         .includes(:firm, :typologies)
         .distinct
       scope = scope.joins(:property_type).where(property_types: { code: "ready_possession" }) if property.for_sale?
       scope.to_a
+    end
+
+    def scored
+      candidates.map { |lead| [ score_for(lead), lead ] }
     end
 
     def score_for(lead)

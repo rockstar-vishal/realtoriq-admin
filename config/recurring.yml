@@ -13,6 +13,9 @@ staging:
   dispatch_due_followups:
     class: Notifications::DispatchDueFollowupsJob
     schedule: every minute
+  dispatch_match_digests:
+    class: Matches::DispatchSlotJob
+    schedule: every hour
   facebook_import_sweeper:
     class: Facebook::ImportSweeperJob
     schedule: every 5 minutes
@@ -33,6 +36,9 @@ production:
   dispatch_due_followups:
     class: Notifications::DispatchDueFollowupsJob
     schedule: every minute
+  dispatch_match_digests:
+    class: Matches::DispatchSlotJob
+    schedule: every hour
   facebook_import_sweeper:
     class: Facebook::ImportSweeperJob
     schedule: every 5 minutes

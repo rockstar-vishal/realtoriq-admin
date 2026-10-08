@@ -30,9 +30,14 @@ module Admin
     attr_accessor(*FIRM_FIELDS, *CONTACT_FIELDS, *OWNER_FIELDS, *SUBSCRIPTION_FIELDS, :logo)
     attr_reader :firm
 
+    # Not a Firm validation. Specs, demo:seed and the review-demo task create
+    # firms with no locality; only this screen requires one.
     validates :name, presence: true
+    validates :city_id, :locality_id, presence: true
     validates :contact_email, presence: true
     validates :contact_mobile, presence: true
+    validate :locality_belongs_to_city
+    validate :extra_localities_are_active
     with_options if: :creating? do
       validates :owner_name, presence: true
       validates :owner_mobile, presence: true
@@ -66,12 +71,24 @@ module Admin
 
     def to_param = firm.slug
 
+    def extra_locality_ids
+      Array(@extra_locality_ids).compact_blank
+    end
+
+    def extra_locality_ids=(values)
+      @extra_locality_ids = values
+    end
+
     def save
       return false unless valid?
 
+      # Rollback is swallowed by the transaction, so the flag is what tells the
+      # caller the save did not stick.
+      @extra_localities_conflict = false
       Firm.transaction do
         apply_firm_attributes
         firm.save!
+        sync_extra_localities
         sync_contact_channels
 
         if creating?
@@ -81,7 +98,7 @@ module Admin
         end
       end
 
-      true
+      !@extra_localities_conflict
     rescue ActiveRecord::RecordInvalid => e
       absorb_errors(e.record)
       false
@@ -91,6 +108,7 @@ module Admin
 
     def load_from_record
       FIRM_FIELDS.each { |field| public_send("#{field}=", firm.public_send(field)) }
+      self.extra_locality_ids = firm.firm_localities.map(&:locality_id)
 
       if creating?
         # Sensible defaults so the common path is one pass down the form: the
@@ -110,6 +128,51 @@ module Admin
     def apply_firm_attributes
       FIRM_FIELDS.each { |field| firm.public_send("#{field}=", public_send(field)) }
       firm.logo.attach(logo) if logo.present?
+    end
+
+    # The hidden empty field means a cleared multi-select still posts the key,
+    # so "missing" and "none" are the same and extras can actually be removed.
+    # The primary pin lives on the firm, so it is dropped here if it was also ticked.
+    def sync_extra_localities
+      wanted = extra_locality_ids.map(&:to_s).uniq
+      wanted.delete(firm.locality_id.to_s)
+
+      current = firm.firm_localities.to_a
+      current.each { |row| row.destroy! unless wanted.include?(row.locality_id.to_s) }
+      kept = current.map { |row| row.locality_id.to_s } & wanted
+      (wanted - kept).each { |id| firm.firm_localities.create!(locality_id: id) }
+    rescue ActiveRecord::RecordNotUnique
+      errors.add(:base, "Those other localities were just saved. Reload the firm and try again.")
+      @extra_localities_conflict = true
+      raise ActiveRecord::Rollback
+    end
+
+    def locality_belongs_to_city
+      return if city_id.blank? || locality_id.blank?
+
+      locality = Locality.find_by(id: locality_id)
+      if locality.nil?
+        errors.add(:locality_id, "is not a known locality")
+      elsif !locality.active?
+        errors.add(:locality_id, "is not active")
+      elsif locality.city_id.to_s != city_id.to_s
+        errors.add(:locality_id, "is not in the selected city")
+      end
+    end
+
+    def extra_localities_are_active
+      ids = extra_locality_ids.map(&:to_s).uniq
+      ids.delete(locality_id.to_s)
+      return if ids.empty?
+
+      found = Locality.where(id: ids).index_by { |locality| locality.id.to_s }
+      ids.each do |id|
+        locality = found[id]
+        if locality.nil? || !locality.active?
+          errors.add(:base, "Other localities must be active localities")
+          break
+        end
+      end
     end
 
     # Upserts the three channels. Changing a channel's value resets its

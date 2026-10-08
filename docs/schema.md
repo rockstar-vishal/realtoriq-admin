@@ -66,7 +66,8 @@ console session.
 
 | Table | Notes |
 | --- | --- |
-| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). `field_demo` flags Aarav Realty and Deshmukh Properties, whose OTPs are fixed and never sent. Logo via Active Storage. |
+| `firms` | The tenant. `code` is the human-facing `CP-MH-04218`; `slug` addresses it in admin URLs. `status`: pending / active / suspended / churned. `review_demo` flags the one Meta review firm (partial unique index). `field_demo` flags Aarav Realty and Deshmukh Properties, whose OTPs are fixed and never sent. Logo via Active Storage. `city_id` and `locality_id` are the primary pin; both are optional on the row and required on the ops form. |
+| `firm_localities` | Localities the firm works in besides that primary pin. Unique on `(firm_id, locality_id)`. Ops replaces the set from the firm form. Marketplace `sort=relevant` reads them. |
 | `firm_bank_accounts` | Printed on invoices the broker raises. `account_number` is encrypted (deterministic, so duplicates are still detectable). Partial unique index enforces one primary per firm. |
 | `users` | Broker users. **No password** — sign-in is a code to the mobile. `mobile` is globally unique, because the sign-in screen has no subdomain or firm code to scope the lookup by. `role`: super_admin / manager / agent, with a partial unique index enforcing one super_admin per firm. Disabled users still count toward `plans.max_users`. |
 | `user_managers` | Reporting graph, not a tree: `(user_id, manager_id)` with no cap on how many managers a person has. Superadmins are not stored here — they see the whole firm by default. Agents may be `manager_id`. Cycle-checked in the model; `User#manageables` walks the graph with a recursive CTE that carries a path array so a bad row cannot loop. |
@@ -137,6 +138,10 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   a retry on collision. Brokers read these numbers to each other, so they are not
   random. The max is computed on the digits, not the string, or `L-9999` would
   outrank `L-10000` and start reissuing.
+- **`unqualified`** is a boolean, default false. Matching skips a lead when it
+  is true, whether the lead is live or dead. Dead status does not. Reviving a
+  lead does not clear it. A dead lead does not hold the mobile, so a newer live
+  lead on the same number can match beside it.
 - **One lead per `(firm_id, mobile, transaction_type)`.** Same number may exist
   once as sale and once as rent. `notes` is the free-text requirements box
   (labelled “Detailed Client Requirements” in the app). Follow-up comments live
@@ -286,10 +291,20 @@ outing is edited. A lead is visited when it has at least one row.
 `leads.first_visit_at` is gone. Scheduling, status, and outcome are not in
 this table.
 
-**Matching** — scored on each `POST`, not stored. A lead lists inventory, and a
+**Matching** — the live call is scored on each `POST` and is not stored.
+`match_digests` is the firm's current curated copy of that same scoring: one
+row per firm (`firm_id` unique), overwritten about every 12 hours.
+`lead_items` and `listing_items` are JSON. `notification_pending` means a
+night scan found something new and the morning ping has not been sent.
+`fingerprint` is the hash of the ids actually stored, so a change that never
+reaches the capped list does not notify. A lead lists inventory, and a
 project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
-project or another firm's shared property. `properties.listed_on_marketplace`
+project or another firm's shared property. An unqualified lead is left out in
+both directions, including another firm's marketplace lead code. Dead leads
+stay in that list. Booked leads are left out of the live match call and of
+this list. A firm whose subscription has
+lapsed is not scanned. The row is deleted with the firm. `properties.listed_on_marketplace`
 (default true) is that share switch. `GET /properties/marketplace` lists
 every other active firm's shared available properties as that safe card. A lead
 maps one of those listings only while that firm is still active. `lead_localities` holds the lead's

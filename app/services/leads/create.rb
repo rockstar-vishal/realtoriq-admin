@@ -55,6 +55,7 @@ module Leads
           assign_typologies(lead)
           assign_localities(lead)
           ensure_match_fields!(lead)
+          record_unqualified_audit(lead)
           map_source_project(lead)
           open_status_history(lead)
           record_opening_followup(lead)
@@ -188,6 +189,18 @@ module Leads
       # Ids that no longer exist (an app holding a cached list from before localities
       # were merged) are dropped; the require-locality check below still applies.
       Locality.where(id: ids.uniq).pluck(:id).each { |id| lead.lead_localities.create!(locality_id: id) }
+    end
+
+    # The column default is false, and a create always looks like a change from
+    # nil. Audit only when the caller actually marked the lead unqualified.
+    def record_unqualified_audit(lead)
+      return unless lead.unqualified?
+
+      AuditEvent.record!(
+        subject: lead, firm:, actor:,
+        action: "lead.unqualified",
+        metadata: { unqualified: true }
+      )
     end
 
     # A broker create must have a budget, a configuration and a locality.

@@ -142,6 +142,8 @@ Rails.application.routes.draw do
       # The home screen. One request rather than six, and scoped to the caller:
       # an agent gets no money block at all.
       get "dashboard", to: "dashboard#show"
+      # The super admin's curated list. Anyone else gets 404.
+      get "match_digest", to: "match_digests#show"
 
       # Grouped reads over leads and bookings. No tables of their own.
       # Bookings and revenue are manager-only; the lead reports are not.

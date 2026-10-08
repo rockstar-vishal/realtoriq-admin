@@ -26,6 +26,7 @@ RSpec.describe Notifications::Target do
   it "opens a screen with no item and no params" do
     expect(url("page" => "settings")).to eq("/settings")
     expect(url("page" => "home")).to eq("/")
+    expect(url("page" => "matches")).to eq("/matches")
   end
 
   it "opens a training the announcement points at" do

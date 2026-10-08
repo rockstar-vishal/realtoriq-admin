@@ -31,7 +31,7 @@ module Notifications
         return Result.new(ok?: true, created: false, skipped: false, deliveries: [])
       end
 
-      deliveries = DeliverPush.call(notification:, subscriptions: target_subscriptions)
+      deliveries = DeliverPush.call(notification:, subscriptions: target_subscriptions, ttl: push_ttl)
       Result.new(ok?: true, notification:, created: true, skipped: false, deliveries:)
     end
 
@@ -51,6 +51,10 @@ module Notifications
       )
     rescue ActiveRecord::RecordNotUnique
       nil
+    end
+
+    def push_ttl
+      kind == "match_digest" ? 12.hours.to_i : DeliverPush::DEFAULT_TTL
     end
 
     def target_subscriptions

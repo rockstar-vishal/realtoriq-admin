@@ -313,8 +313,8 @@ be assigned a lead until they are active again.
 ### `GET /dashboard`
 
 > **This response has no featured-projects list.** The home screen loads that
-> strip itself: the 3 most recent marketplace projects
-> (`GET /projects?source=catalog&sort=recent`). Those are LaunchIQ listings.
+> strip itself: the first 5 marketplace projects for this firm
+> (`GET /projects?source=catalog&sort=relevant`). Those are LaunchIQ listings.
 > The firm's own projects are not included. `inventory.projects` is a count, not a list.
 
 The whole home screen in one request — pipeline counters, money tiles, the
@@ -530,6 +530,7 @@ disabled. An agent receives only themselves.
 | `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
 | `followup` | object | optional | Opening followup. `{ comment, next_action_at }`. `comment` is required if you send a datetime (otherwise `422 comment_required` and the lead is not created). Top-level `next_action_at` / `next_action_note` are **ignored** — NCD only moves via this nested object or `POST /leads/:id/followups` |
 | `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). Not a follow-up comment. Preferred localities are `locality_ids`, not text in this field |
+| `unqualified` | boolean | optional | Default false. `true` leaves the lead out of matching and records `lead.unqualified`. Only a manager or the super admin may set it; an agent gets `403 forbidden_role` and the lead is not created. Omitting it does not record that event. The same rules as PATCH: an incomplete lead is `422 invalid` and is not created |
 | `typology_ids` | **array** of string | **required** | At least one. Sending the key replaces the whole set. Omit the key on a create-from-project (`project_id` set) to copy the project's configurations. An empty array does not copy |
 | `locality_ids` | **array** of string | **required** | At least one preferred locality. Sending the key replaces the whole set. Omit the key on a create-from-project to copy that project's locality. An empty array does not copy. A microsite enquiry copies the project's locality and still saves when the project has none |
 | `project_id` | string | optional | Create-from-project. Copies a blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
@@ -669,7 +670,7 @@ to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on
   "source": { "id": "…", "name": "99acres" },
   "next_action_at": "2026-08-17T00:35:56.587+05:30",
   "last_followup_comment": "Asked for the floor plan",
-  "overdue": true, "visited": true, "visit_count": 1,
+  "overdue": true, "visited": true, "visit_count": 1, "unqualified": false,
   "created_at": "2026-08-10T11:04:02.114+05:30",
   "updated_at": "2026-08-17T00:35:56.587+05:30"
 }
@@ -696,6 +697,7 @@ List-card fields (also on detail, which extends this shape):
 | Last Followup Comments | **`last_followup_comment`** — `comment` of the latest `lead_followups` row. `null` if none. Truncate + "show more" on the client. **Not** an activity body, and there is no `next_action_note` |
 | Next Action Date | `next_action_at` — copy of the last followup that sent a datetime. Cleared when the lead becomes dead or booked |
 | Created At | `created_at` |
+| Unqualified | `unqualified` — boolean, on the list card and on detail. `true` leaves the lead out of matching. Dead status does not. Reviving the lead does not clear it. Only a manager or the super admin can change it |
 
 The **detail** adds `alt_mobile`, `source_detail`,
 `dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
@@ -727,7 +729,7 @@ price fields on `projects[]` and `properties[]`.
 | | |
 | --- | --- |
 | `GET /leads/:id` | Detail, with timeline, mappings and status history |
-| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` or `locality_ids` replaces that whole set**; omitting a key leaves it alone. The saved lead must still have a budget, at least one configuration and at least one locality — a PATCH that only reassigns an incomplete lead is `422 invalid` and changes nothing. Follow-ups and status changes use their own endpoints and are not blocked by this. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone |
+| `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` or `locality_ids` replaces that whole set**; omitting a key leaves it alone. The saved lead must still have a budget, at least one configuration and at least one locality — a PATCH that only reassigns an incomplete lead is `422 invalid` and changes nothing. Follow-ups and status changes use their own endpoints and are not blocked by this. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone. Optional `unqualified` (boolean) leaves the lead out of matching. Omit the key to leave it. Send `false` to clear it. Status changes do not clear it. An agent who sends a different value gets `403 forbidden_role` and nothing is saved |
 | `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
 | `GET /leads/:id/followups` | Newest first. `{ followups: [{ id, comment, next_action_at, user, created_at }], meta }`. Default 25 |
 | `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
@@ -740,7 +742,8 @@ price fields on `projects[]` and `properties[]`.
 | `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
 | `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
-| `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. A dead lead, or a lead with no locality, returns `[]`. Does not copy anything into My Projects |
+| `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. An unqualified lead, a booked lead, or a lead with no locality, returns `[]`. A dead lead still matches. Does not copy anything into My Projects |
+| `GET /match_digest` | The firm's latest curated list. Super admin only — anyone else is 404. `match_digest` is `null` before the first scan |
 
 **`POST /leads/:id/matches`** lists unmapped rows, highest score first. Optional
 `q` searches the full set (name, builder or firm, locality, city, configuration;
@@ -802,6 +805,54 @@ title), `price`, and `listing_for` instead of `source` and `starting_budget`.
 and `configuration` when those points are above 0. Rows already mapped to the
 lead are omitted. A catalog mapping does not mark the booking copy, and the
 reverse is also separate.
+
+### `GET /match_digest`
+
+The list the firm was shown on its last scan, about every 12 hours. Super
+admin only. A manager or agent gets **404** `not_found`. Before the first
+scan the body is `{ "match_digest": null }`.
+
+Each firm is scanned twice a day, 12 hours apart, on a stable hour of the
+India clock. A firm that already has a list and missed that hour is picked
+up on a later hour once the list is more than 13 hours old. A firm with no
+list yet still waits for its own hour. A firm whose subscription has lapsed
+is not scanned and is not pinged. The first scan treats every current
+unlinked match as new and notifies the super admin. Later scans notify only
+when a lead or listing on the list gained a match that was not stored last
+time. The notification counts those rows and does not name the client. A
+scan that finishes from 21:00 through 07:59 IST saves the list and sends the
+ping between 08:00 and 09:00. The page already shows that list if they open
+the app earlier. A lapsed firm with a ping still waiting has that ping
+dropped.
+
+The live `POST /leads/:id/matches` screen can disagree with a row opened
+hours later. `generated_at` is when this list was built.
+
+```json
+{ "match_digest": {
+  "generated_at": "2026-10-08T11:00:00.000+05:30",
+  "lead_items": [
+    { "lead_id": "…", "code": "L-0004", "name": "Asha", "budget": 10000000,
+      "typologies": ["2 BHK"], "localities": ["Kharghar"], "dead": false,
+      "match_count": 6, "new_count": 3, "top_score": 100 }
+  ],
+  "listing_items": [
+    { "kind": "property", "id": "…", "title": "2 BHK in Kharghar",
+      "listing_for": "sale", "match_count": 4, "new_count": 1, "top_score": 80 }
+  ]
+} }
+```
+
+`match_count` is how many unlinked options cleared the floor (capped at 50,
+same as the live match call). `new_count` is how many of those were not on
+the previous list. The page shows at most 30 leads and 30 listings, highest
+score first. A quiet scan still returns the rows and does not notify.
+`listing_items[].kind` is `project` or `property`. A property row includes
+`listing_for` (`sale` or `rent`) so two listings with the same title can be
+told apart. A project row omits it. Unqualified leads are
+left out. Booked leads are left out. Dead leads stay, with `dead: true`.
+A row already linked to that lead or listing is left out. Sold-out and
+booked properties are left out.
 
 **`POST /leads/:id/followups`** is the only write path for a follow-up comment
 and for moving NCD. One transaction: insert the row, copy `next_action_at` onto
@@ -1112,7 +1163,7 @@ sent with a past date for you to check.
 | `possession_before` | date. Not a drawer field; still applies alongside `q` |
 | `typology_ids[]` | Drawer. Repeat the key |
 | `source` | `catalog` lists the marketplace (active shared projects only). Omit it for My Projects |
-| `sort` | **`name`** (default, A–Z) · `recent` (newest first) |
+| `sort` | **`name`** (default, A–Z) · `recent` (newest first) · `relevant` (marketplace browse; see below) |
 | `page`, `per_page` | 25 per page by default |
 
 **Without `source=catalog` the list is My Projects only** (`source: own`).
@@ -1125,6 +1176,17 @@ Drawer params: `name`, `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
 may not be on page 1.** Either pass `sort=recent`, read `meta.total_pages`, or —
 simplest after a create — show the project the `POST` returned rather than
 re-fetching the list.
+
+**`sort=relevant` applies only to an unfiltered marketplace list**
+(`source=catalog`, no `q`, no drawer param). It orders that firm's projects in
+four bands, newest first inside each band, then `id`: the firm's primary
+locality, its other localities, the rest of the cities those localities belong
+to, then everywhere else. A project with a city and no locality sits in the
+city band. A firm with no primary locality gets newest first. The order is not
+explained to the broker. With `q`, `sort=relevant` is ignored and the list stays
+A–Z. With a drawer param it is ignored and the list stays newest first. On My
+Projects it is ignored and the list stays A–Z (or `sort=recent` when that was
+asked for).
 
 ### `GET /projects/search`
 
@@ -1265,19 +1327,22 @@ not in `shareable`.
 
 ### `POST /projects/:id/lead_matches`
 
-Live sale leads this caller can see that prefer this project's locality and
+Sale leads this caller can see that prefer this project's locality and
 clear the same score floor as `POST /leads/:id/matches` (above 30 for an own
 project, above 50 for a catalog project). An agent sees only leads assigned to
 them. A project outside the ready window matches under-construction leads. A
 project inside it matches both under-construction and ready-possession leads.
-Dead leads, rent leads, and a project that is archived or has no locality
-return `[]`. At most 50, highest score first.
+Unqualified leads, booked leads, rent leads, and a project that is archived or has no locality
+return `[]`. A dead lead still matches, including when a live lead already has
+the same mobile. At most 50, highest score first. A high-scoring dead lead can
+sit above a live one.
 
 ```json
 { "matches": [
   { "kind": "lead", "id": "…", "code": "L-0001", "name": "Meera Shah",
     "mobile": "+919820144210",
     "budget": 16000000, "typologies": ["2 BHK"], "localities": ["Kolshet"],
+    "status": { "code": "dead", "name": "Dead", "is_dead": true, "is_booked": false },
     "score": 100,
     "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
@@ -1287,14 +1352,16 @@ return `[]`. At most 50, highest score first.
 
 `mobile` is that lead's primary number, so the caller can open WhatsApp without
 a second request. It is only present because the caller can already open the
-lead. `mapped` is true when this lead is already linked to this project id.
+lead. `status` is that lead's pipeline stage, so a dead or booked card is
+visible before anyone shares it. `mapped` is true when this lead is already
+linked to this project id.
 
 ### `POST /properties/:id/lead_matches`
 
 Own-firm leads use the same lead payload as the project endpoint, including
-`mobile`, at the above-30 floor. A sale listing matches ready-possession leads. A rental matches
+`mobile` and `status`, at the above-30 floor. A sale listing matches ready-possession leads. A rental matches
 rent leads. The lead must prefer the building's locality. Booked and sold-out
-listings return `[]`.
+listings return `[]`. An unqualified lead is left out. A booked lead is left out. A dead lead still matches.
 
 Another firm may call this for a listing that is still shared and available.
 `matches` is then that caller's own leads, and only those that score above 50.
@@ -1310,14 +1377,19 @@ Match a phone number on that id. Firm names are not unique.
 `code` is that firm's own lead code, so the other broker can find the client.
 `localities` is the shared locality. `configurations` is that lead's
 typology names. There is no lead id, name, phone, budget, or score.
-An under-construction lead is not included on a sale listing. The list is
-empty when `listed_on_marketplace` is false.
+An under-construction lead is not included on a sale listing. An unqualified
+lead is not included. A booked lead is not included. A dead lead still is. At most 50, highest score first,
+then firm name, then lead code. A high-scoring dead lead can sit above a live
+one. The score stays off the row. The list is empty when
+`listed_on_marketplace` is false.
 
 `marketplace_firms` is the other firms to contact, and only the owning firm
 receives them. Each row is `{ id, name, mobile, whatsapp }`. A firm is
 included when one of its leads would score above 50 on this property, or
-when that firm has mapped the property. No lead id, name, phone, budget, or
-score is included. The list is empty when `listed_on_marketplace` is false.
+when that firm has mapped the property. An unqualified lead does not score
+a firm in. A booked lead does not score a firm in. A mapped firm still appears. A dead lead still scores its firm in.
+No lead id, name, phone, budget, or score is included. The list is empty
+when `listed_on_marketplace` is false.
 
 ### `GET /properties/marketplace`
 
@@ -1752,13 +1824,17 @@ A notification looks like:
 }
 ```
 
-`kind` is `followup_due`, `test`, `training_published` or `marketplace_enquiry`.
+`kind` is `followup_due`, `test`, `training_published`, `marketplace_enquiry`,
+`inbound_enquiry`, `facebook`, or `match_digest`. A match digest opens
+`/matches` (`data.page` is `matches`) and is sent only to the firm's super admin.
+Its title is `New matches are ready`. The body counts leads and listings and
+does not name a client.
 A marketplace enquiry points at the lead (`data.page` `leads`, `data.item` the
 lead id). The title is `New marketplace enquiry` for a new lead and
 `Marketplace enquiry on <lead code>` when the mobile already had a live lead.
 
 `data.page` is the screen (`leads`, `projects`, `properties`, `bookings`,
-`settings`, `team`, `reports`, `subscription`, `skills-training`, or `home`). With `data.item` the
+`matches`, `settings`, `team`, `reports`, `subscription`, `skills-training`, or `home`). With `data.item` the
 row opens that record's show page (`/leads/<item>`). With `data.params` and no
 `item`, it opens the list plus that query (`filter=missed_followup`). No
 `page`, or a page the app does not have, means the row is not clickable. An

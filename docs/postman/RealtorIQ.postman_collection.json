@@ -664,6 +664,21 @@
       ]
     },
     {
+      "name": "Match digest",
+      "description": "The super admin's curated list, refreshed about every 12 hours. Anyone else is 404. match_digest is null before the first scan.",
+      "item": [
+        {
+          "name": "Current match list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/match_digest",
+            "description": "Super admin only. lead_items and listing_items are the current unlinked matches. new_count is how many of those were not on the previous list. generated_at is when the list was built, in the response timestamp."
+          }
+        }
+      ]
+    },
+    {
       "name": "Notifications",
       "description": "In-app inbox and browser push for the signed-in session. A test push goes only to this device. Console: Notifications::SendTest.to_user(user) reaches every device that broker registered.",
       "item": [
@@ -1824,7 +1839,7 @@
                 "matches"
               ]
             },
-            "description": "Unmapped inventory that shares a preferred locality and clears the score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. Optional JSON body { q } searches the full set and returns every hit. Without q, the top 50 are returned and truncated is true when more exist. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only."
+            "description": "Unmapped inventory that shares a preferred locality and clears the score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. Optional JSON body { q } searches the full set and returns every hit. Without q, the top 50 are returned and truncated is true when more exist. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches."
           },
           "event": [
             {
@@ -1941,10 +1956,10 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.",
+            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.\n\n`unqualified` leaves the lead out of matching. Omit the key to leave it. Send false to clear it. Status changes do not clear it.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"emi\": {\n    \"loan_amount\": 8000000,\n    \"annual_rate\": \"8.50\",\n    \"tenure_years\": 20\n  }\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"unqualified\": false,\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"emi\": {\n    \"loan_amount\": 8000000,\n    \"annual_rate\": \"8.50\",\n    \"tenure_years\": 20\n  }\n}"
             }
           },
           "event": [
@@ -2805,7 +2820,7 @@
                 "projects"
               ]
             },
-            "description": "My Projects only (`source: own`). Marketplace is an empty client pill — do not list catalog here.\n\nFilters: `q` (project name, builder, city, locality, or RERA — not the street address; dropped if any drawer param is set; `status` does not drop `q`), `name` (project name only, AND-ed with the other drawer filters), `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `brokerage_min`, `brokerage_max` (NULL brokerage drops out), `typology_ids[]`, `status` (`active` default · `archived` · `all`).\n\nList/detail include `avg_psf` (unweighted mean of config rates). **Budget filtering matches a project if *any* of its typologies starts in the window.**"
+            "description": "My Projects only (`source: own`). Marketplace is an empty client pill — do not list catalog here.\n\nFilters: `q` (project name, builder, city, locality, or RERA — not the street address; dropped if any drawer param is set; `status` does not drop `q`), `name` (project name only, AND-ed with the other drawer filters), `builder_id`, `city_id`, `locality_id`, `possession_before`, `budget_min`, `budget_max`, `brokerage_min`, `brokerage_max` (NULL brokerage drops out), `typology_ids[]`, `status` (`active` default · `archived` · `all`).\n\nList/detail include `avg_psf` (unweighted mean of config rates). **Budget filtering matches a project if *any* of its typologies starts in the window.** `sort` is `name` (default, A–Z) or `recent`. With `source=catalog` and no `q` or drawer filter, `sort=relevant` ranks by the firm's primary locality, its other localities, the rest of those cities, then everywhere else. `sort` is `name` (default, A–Z) or `recent`. With `source=catalog` and no `q` or drawer filter, `sort=relevant` ranks by the firm's primary locality, its other localities, the rest of those cities, then everywhere else."
           },
           "event": [
             {
@@ -3070,7 +3085,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Live sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project or a project with no locality returns matches: []. Each match includes mobile, the lead's primary number."
+            "description": "Sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project, a project with no locality, an unqualified lead, or a booked lead returns matches: []. A dead lead still matches. Each match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked)."
           }
         },
         {
@@ -3804,7 +3819,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
+            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked). An unqualified lead is left out. A booked lead is left out. A dead lead still matches. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. A dead lead is included there too. A booked lead is not. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. An unqualified or booked lead does not add its firm unless that firm mapped the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
           }
         },
         {

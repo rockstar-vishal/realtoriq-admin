@@ -6,6 +6,7 @@ RSpec.describe "Admin firms" do
   before { sign_in_admin }
 
   let(:city) { create(:city, name: "Navi Mumbai", state: "Maharashtra", state_code: "MH") }
+  let!(:locality) { create(:locality, city:, name: "Kharghar") }
   let!(:plan) { create(:plan, name: "Growth", price: 2_499, interval: "month") }
 
   def valid_params(overrides = {})
@@ -17,6 +18,7 @@ RSpec.describe "Admin firms" do
         contact_mobile: "98201 44210",
         contact_whatsapp: "99300 71234",
         city_id: city.id,
+        locality_id: locality.id,
         owner_name: "Tanmay Sethi",
         owner_email: "tanmay@sethirealty.in",
         owner_mobile: "9820144210",
@@ -195,11 +197,43 @@ RSpec.describe "Admin firms" do
         expect(response).to have_http_status(:unprocessable_content)
         expect(Firm.count).to eq(0)
       end
+
+      it "requires a locality in the selected city" do
+        post admin_firms_path, params: valid_params(locality_id: "")
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(Firm.count).to eq(0)
+
+        other = create(:locality)
+        post admin_firms_path, params: valid_params(locality_id: other.id)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(Firm.count).to eq(0)
+        expect(response.body).to include("is not in the selected city")
+      end
+
+      it "stores other localities and drops the primary if it was ticked again" do
+        other = create(:locality, name: "Baner")
+
+        post admin_firms_path, params: valid_params(extra_locality_ids: [ "", locality.id, other.id ])
+
+        extras = FirmLocality.across_firms.where(firm: Firm.last).pluck(:locality_id)
+        expect(extras).to eq([ other.id ])
+      end
+
+      it "rejects an inactive other locality" do
+        inactive = create(:locality, active: false)
+
+        post admin_firms_path, params: valid_params(extra_locality_ids: [ inactive.id ])
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(Firm.count).to eq(0)
+      end
     end
   end
 
   describe "PATCH /admin/firms/:slug" do
-    let!(:firm) { create(:firm, :with_channels, name: "Sethi Realty") }
+    let!(:firm) { create(:firm, :with_channels, name: "Sethi Realty", city:, locality:) }
 
     it "saves changes without touching the owner fields" do
       patch admin_firm_path(firm), params: { firm: {
@@ -238,6 +272,57 @@ RSpec.describe "Admin firms" do
       } }
 
       expect(mobile.reload).to be_verified
+    end
+
+    it "asks for a reload when the same other locality is saved twice at once" do
+      other = create(:locality, city:, name: "Vashi")
+      allow_any_instance_of(ActiveRecord::Associations::CollectionProxy)
+        .to receive(:create!).and_raise(ActiveRecord::RecordNotUnique)
+
+      patch admin_firm_path(firm), params: { firm: {
+        name: "Should Not Stick",
+        city_id: city.id,
+        locality_id: locality.id,
+        contact_email: firm.contact_channels.find_by(kind: :email).value,
+        contact_mobile: firm.contact_channels.find_by(kind: :mobile).value,
+        extra_locality_ids: [ "", other.id ]
+      } }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include("Reload the firm and try again.")
+      expect(firm.reload.name).to eq("Sethi Realty")
+      expect(FirmLocality.across_firms.where(firm:).count).to eq(0)
+    end
+
+    it "replaces other localities, including clearing them" do
+      other = create(:locality, name: "Baner")
+      FirmLocality.create!(firm:, locality: other)
+
+      patch admin_firm_path(firm), params: { firm: {
+        name: firm.name,
+        contact_email: firm.contact_channels.find_by(kind: :email).value,
+        contact_mobile: firm.contact_channels.find_by(kind: :mobile).value,
+        extra_locality_ids: [ "" ]
+      } }
+
+      expect(FirmLocality.across_firms.where(firm:).count).to eq(0)
+    end
+
+    it "removes a locality from the extras when it becomes the primary" do
+      other = create(:locality, city:, name: "Vashi")
+      FirmLocality.create!(firm:, locality: other)
+
+      patch admin_firm_path(firm), params: { firm: {
+        name: firm.name,
+        city_id: city.id,
+        locality_id: other.id,
+        contact_email: firm.contact_channels.find_by(kind: :email).value,
+        contact_mobile: firm.contact_channels.find_by(kind: :mobile).value,
+        extra_locality_ids: [ "", other.id, locality.id ]
+      } }
+
+      expect(firm.reload.locality_id).to eq(other.id)
+      expect(FirmLocality.across_firms.where(firm:).pluck(:locality_id)).to eq([ locality.id ])
     end
   end
 

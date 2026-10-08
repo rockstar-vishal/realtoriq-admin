@@ -44,6 +44,11 @@ module Api
       end
 
       def create
+        if mark_unqualified? && !manager_or_super_admin?
+          return render_error("forbidden_role", "Only a manager can mark a lead unqualified.",
+                              status: :forbidden)
+        end
+
         result = ::Leads::Create.new(
           firm: current_firm, actor: current_user,
           attributes: lead_params, typology_ids: params[:typology_ids],
@@ -77,6 +82,8 @@ module Api
       end
 
       def update
+        return if forbid_unqualified_change?
+
         saved = false
         assignment_error = nil
 
@@ -100,6 +107,7 @@ module Api
           raise ActiveRecord::Rollback unless saved
 
           record_reassignment_audit if @assignment_changed
+          record_unqualified_audit if @lead.saved_change_to_unqualified?
         end
 
         return render_assignment_error(assignment_error) if assignment_error
@@ -183,6 +191,31 @@ module Api
         AuditEvent.record!(subject: @lead, firm: current_firm, actor: current_user,
                            action: "lead.reassigned",
                            metadata: { to: @lead.assigned_user_id })
+      end
+
+      def manager_or_super_admin?
+        current_user.super_admin? || current_user.manager?
+      end
+
+      def mark_unqualified?
+        ActiveModel::Type::Boolean.new.cast(params[:unqualified])
+      end
+
+      # An agent may still edit the lead. They may not turn this flag on or off.
+      def forbid_unqualified_change?
+        return false unless params.key?(:unqualified)
+        return false if manager_or_super_admin?
+        return false if mark_unqualified? == @lead.unqualified
+
+        render_error("forbidden_role", "Only a manager can change whether a lead is unqualified.",
+                     status: :forbidden)
+        true
+      end
+
+      def record_unqualified_audit
+        AuditEvent.record!(subject: @lead, firm: current_firm, actor: current_user,
+                           action: "lead.unqualified",
+                           metadata: { unqualified: @lead.unqualified })
       end
 
       # Scoped twice on purpose: FirmScoped keeps other tenants out, visible_to
@@ -369,7 +402,7 @@ module Api
         params.permit(
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
           :budget, :possession_by, :lead_source_id, :source_detail,
-          :assigned_user_id, :notes,
+          :assigned_user_id, :notes, :unqualified,
           emi: %i[loan_amount annual_rate tenure_years]
         )
       end

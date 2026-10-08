@@ -30,6 +30,9 @@ class Firm < ApplicationRecord
   has_many :users, dependent: :destroy
   has_many :contact_channels, dependent: :destroy
   has_many :firm_bank_accounts, dependent: :destroy
+  # Extras only. The primary pin stays on locality_id so firm codes and the
+  # address keep a single city. Destroy these before the firm row goes.
+  has_many :firm_localities, dependent: :destroy
   # Prospects point at leads. Delete the calling list first so firm teardown
   # does not depend on the lead nullify. Follow-ups cascade from the prospect.
   has_many :prospect_followups, dependent: :delete_all
@@ -52,6 +55,8 @@ class Firm < ApplicationRecord
   # readonly blocks destroy too.
   has_many :audit_events, dependent: :delete_all
   has_many :subscriptions, dependent: :destroy
+  # The curated match list. Nothing else points at it, so it can go with the firm.
+  has_many :match_digests, dependent: :delete_all
 
   has_one :super_admin, -> { where(role: :super_admin) }, class_name: "User", inverse_of: :firm
   has_one :primary_bank_account, -> { where(primary: true) },

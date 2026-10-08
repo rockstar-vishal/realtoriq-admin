@@ -605,6 +605,106 @@ RSpec.describe "API v1 leads" do
     end
   end
 
+  describe "PATCH /leads/:id unqualified" do
+    let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status) }
+
+    it "sets the flag and records who did it" do
+      patch "/api/v1/leads/#{lead.id}", params: { unqualified: true },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("lead", "unqualified")).to be(true)
+      expect(lead.reload).to be_unqualified
+      event = AuditEvent.find_by!(action: "lead.unqualified", subject: lead)
+      expect(event.metadata["unqualified"]).to be(true)
+      expect(event.actor_id).to eq(manager.id)
+    end
+
+    it "clears the flag only when false is sent" do
+      lead.update!(unqualified: true)
+
+      patch "/api/v1/leads/#{lead.id}", params: { unqualified: false },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload).not_to be_unqualified
+      expect(AuditEvent.where(action: "lead.unqualified", subject: lead).count).to eq(1)
+
+      lead.update!(unqualified: true)
+      patch "/api/v1/leads/#{lead.id}", params: { notes: "still unqualified" },
+        headers: auth(manager), as: :json
+
+      expect(lead.reload).to be_unqualified
+      expect(lead.notes).to eq("still unqualified")
+    end
+
+    it "does not audit a flag that did not change" do
+      patch "/api/v1/leads/#{lead.id}", params: { unqualified: false },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(AuditEvent.where(action: "lead.unqualified", subject: lead)).to be_empty
+    end
+
+    it "audits unqualified set on create and ignores the default" do
+      post "/api/v1/leads", params: valid_attributes, headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      plain = Lead.across_firms.find(response.parsed_body.dig("lead", "id"))
+      expect(plain).not_to be_unqualified
+      expect(AuditEvent.where(action: "lead.unqualified", subject: plain)).to be_empty
+
+      post "/api/v1/leads", params: valid_attributes(name: "Junk Caller", mobile: "98201 44211", unqualified: true),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      flagged = Lead.across_firms.find(response.parsed_body.dig("lead", "id"))
+      expect(flagged).to be_unqualified
+      event = AuditEvent.find_by!(action: "lead.unqualified", subject: flagged)
+      expect(event.metadata["unqualified"]).to be(true)
+      expect(event.actor_id).to eq(manager.id)
+    end
+
+    it "refuses an agent changing the flag" do
+      own = create(:lead, :matchable, firm:, lead_status: new_status, assigned_user: agent)
+
+      patch "/api/v1/leads/#{own.id}", params: { unqualified: true },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
+      expect(own.reload).not_to be_unqualified
+
+      own.update!(unqualified: true)
+      patch "/api/v1/leads/#{own.id}", params: { unqualified: false, notes: "still there" },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(own.reload).to be_unqualified
+      expect(own.notes).not_to eq("still there")
+    end
+
+    it "refuses an agent creating an unqualified lead" do
+      post "/api/v1/leads", params: valid_attributes(name: "Junk Caller", mobile: "98201 44211", unqualified: true),
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
+      expect(Lead.across_firms.find_by(name: "Junk Caller")).to be_nil
+    end
+
+    it "does not flag an incomplete lead" do
+      bare = create(:lead, firm:, lead_status: new_status)
+
+      patch "/api/v1/leads/#{bare.id}", params: { unqualified: true },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(bare.reload).not_to be_unqualified
+      expect(AuditEvent.where(action: "lead.unqualified", subject: bare)).to be_empty
+    end
+  end
+
   describe "POST /leads/:id/status" do
     let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status) }
 
@@ -660,6 +760,19 @@ RSpec.describe "API v1 leads" do
       lead.reload
       expect(lead.dead_reason).to be_nil
       expect(lead.dead_at).to be_nil
+    end
+
+    it "leaves unqualified set when the lead is revived" do
+      lead.update!(unqualified: true)
+      post "/api/v1/leads/#{lead.id}/status",
+        params: { status: dead_status.code, reason: "Gone quiet" },
+        headers: auth(manager), as: :json
+
+      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+        headers: auth(manager), as: :json
+
+      expect(lead.reload).to be_unqualified
+      expect(lead.dead_reason).to be_nil
     end
 
     it "rejects an unknown status" do

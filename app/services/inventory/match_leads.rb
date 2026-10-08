@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 module Inventory
-  # Live leads in this firm that share a locality with this project or property.
-  # An agent sees only leads assigned to them.
+  # Leads in this firm that share a locality with this project or property.
+  # An agent sees only leads assigned to them. Dead leads stay eligible.
+  # Unqualified leads and booked leads do not.
   class MatchLeads
     LIMIT = 50
     OWN_FLOOR = MatchInventory::OWN_FLOOR
@@ -48,11 +49,10 @@ module Inventory
     def leads
       scope = Lead.visible_to(user)
         .where(transaction_type:)
-        .joins(:lead_status)
-        .where(lead_statuses: { is_dead: false })
+        .matchable
         .joins(:lead_localities)
         .where(lead_localities: { locality_id: })
-        .includes(:typologies, :localities, :lead_projects, :lead_properties, :property_type)
+        .includes(:typologies, :localities, :lead_projects, :lead_properties, :property_type, :lead_status)
         .distinct
       property_type_scope(scope).to_a
     end
@@ -88,6 +88,12 @@ module Inventory
         budget: lead.budget_amount,
         typologies: lead.typologies.map(&:name),
         localities: lead.localities.map(&:name),
+        status: {
+          code: lead.lead_status.code,
+          name: lead.lead_status.name,
+          is_dead: lead.lead_status.is_dead,
+          is_booked: lead.lead_status.is_booked
+        },
         score: breakdown[:score],
         score_breakdown: breakdown.slice(:location, :price, :configuration),
         matched_price: breakdown[:matched_price],

@@ -61,7 +61,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       expect(response.parsed_body["matches"].map { |row| row["id"] }).not_to include(lead.id)
     end
 
-    it "skips a dead lead and a lead tagged to a different locality" do
+    it "keeps a dead lead and skips a lead tagged to a different locality" do
       lead.update!(lead_status: dead_status, dead_reason: "Not buying")
       living = create(:lead, firm:, lead_status: new_status, assigned_user: broker,
         budget_max: 16_000_000, mobile: "+919811110000")
@@ -71,7 +71,10 @@ RSpec.describe "Marketplace visit passes and matches" do
       post "/api/v1/projects/#{catalog.id}/lead_matches", headers: auth(manager), as: :json
 
       ids = response.parsed_body["matches"].map { |row| row["id"] }
-      expect(ids).not_to include(lead.id, living.id)
+      expect(ids).to include(lead.id)
+      expect(ids).not_to include(living.id)
+      row = response.parsed_body["matches"].find { |match| match["id"] == lead.id }
+      expect(row["status"]).to include("is_dead" => true, "is_booked" => false)
     end
   end
 

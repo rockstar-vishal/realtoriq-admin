@@ -8,13 +8,16 @@ module Notifications
   # Never log the endpoint, the keys, or the payload. The endpoint alone is
   # enough to deliver a push.
   class DeliverPush
-    def self.call(notification:, subscriptions:)
-      new(notification:, subscriptions:).call
+    DEFAULT_TTL = 60 * 60
+
+    def self.call(notification:, subscriptions:, ttl: DEFAULT_TTL)
+      new(notification:, subscriptions:, ttl:).call
     end
 
-    def initialize(notification:, subscriptions:)
+    def initialize(notification:, subscriptions:, ttl: DEFAULT_TTL)
       @notification = notification
       @subscriptions = subscriptions
+      @ttl = ttl
     end
 
     def call
@@ -25,7 +28,7 @@ module Notifications
 
     private
 
-    attr_reader :notification, :subscriptions
+    attr_reader :notification, :subscriptions, :ttl
 
     def deliver_one(subscription)
       WebPush.payload_send(
@@ -38,7 +41,7 @@ module Notifications
           public_key: Vapid.public_key,
           private_key: Vapid.private_key
         },
-        ttl: 60 * 60
+        ttl: ttl
       )
       subscription.update!(last_success_at: Time.current, failure_count: 0)
       { status: "accepted" }
