@@ -30,6 +30,10 @@ class Firm < ApplicationRecord
   has_many :users, dependent: :destroy
   has_many :contact_channels, dependent: :destroy
   has_many :firm_bank_accounts, dependent: :destroy
+  # Prospects point at leads. Delete the calling list first so firm teardown
+  # does not depend on the lead nullify. Follow-ups cascade from the prospect.
+  has_many :prospect_followups, dependent: :delete_all
+  has_many :prospects, dependent: :delete_all
   # Join rows before the records they point at, so firm delete does not hit
   # restrict on lead_projects.project_id / lead_properties.property_id.
   has_many :lead_projects, dependent: :destroy

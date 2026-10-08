@@ -86,6 +86,7 @@ module Realtoriq
           end
           outcome, lead = created
         end
+        lead.lock_for_activity!
         MarketplaceEnquiry.find_by!(enquiry_id: payload["enquiry_id"]).update!(lead:, outcome:)
         EnquiryNotifyJob.perform_later(
           link.firm_id, lead.id, notify_user(lead, owner).id, payload["enquiry_id"],

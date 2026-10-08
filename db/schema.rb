@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_07_183000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_08_133000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -909,6 +909,49 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_183000) do
     t.index ["code"], name: "index_property_types_on_code", unique: true
   end
 
+  create_table "prospect_followups", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "prospect_id", null: false
+    t.uuid "user_id"
+    t.boolean "connected", null: false
+    t.text "notes", null: false
+    t.datetime "next_action_at"
+    t.string "outcome", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_prospect_followups_on_firm_id"
+    t.index ["prospect_id", "created_at"], name: "index_prospect_followups_on_prospect_id_and_created_at"
+    t.index ["prospect_id"], name: "index_prospect_followups_on_prospect_id"
+    t.index ["user_id"], name: "index_prospect_followups_on_user_id"
+    t.check_constraint "outcome::text = ANY (ARRAY['retry'::character varying, 'not_sure'::character varying, 'interested'::character varying, 'not_interested'::character varying]::text[])", name: "prospect_followups_outcome_check"
+  end
+
+  create_table "prospects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "name"
+    t.string "mobile", null: false
+    t.text "comment"
+    t.string "status", default: "new", null: false
+    t.uuid "project_id"
+    t.uuid "property_id"
+    t.uuid "lead_id"
+    t.uuid "created_by_id"
+    t.datetime "next_action_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_prospects_on_created_by_id"
+    t.index ["firm_id", "mobile"], name: "index_prospects_on_firm_id_and_mobile", unique: true
+    t.index ["firm_id", "next_action_at"], name: "index_prospects_on_firm_id_and_next_action_at"
+    t.index ["firm_id", "status"], name: "index_prospects_on_firm_id_and_status"
+    t.index ["firm_id"], name: "index_prospects_on_firm_id"
+    t.index ["lead_id"], name: "index_prospects_on_lead_id", unique: true
+    t.index ["project_id"], name: "index_prospects_on_project_id"
+    t.index ["property_id"], name: "index_prospects_on_property_id"
+    t.check_constraint "mobile::text ~ '^\\+91[6-9][0-9]{9}$'::text", name: "prospects_mobile_check"
+    t.check_constraint "project_id IS NULL OR property_id IS NULL", name: "prospects_one_inventory_check"
+    t.check_constraint "status::text = ANY (ARRAY['new'::character varying, 'following'::character varying, 'interested'::character varying, 'not_interested'::character varying]::text[])", name: "prospects_status_check"
+  end
+
   create_table "push_subscriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.uuid "user_id", null: false
@@ -1140,6 +1183,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_07_183000) do
   add_foreign_key "properties", "firms"
   add_foreign_key "properties", "typologies"
   add_foreign_key "properties", "users", column: "created_by_user_id", on_delete: :nullify
+  add_foreign_key "prospect_followups", "firms"
+  add_foreign_key "prospect_followups", "prospects", on_delete: :cascade
+  add_foreign_key "prospect_followups", "users", on_delete: :nullify
+  add_foreign_key "prospects", "firms"
+  add_foreign_key "prospects", "leads", on_delete: :nullify
+  add_foreign_key "prospects", "projects"
+  add_foreign_key "prospects", "properties"
+  add_foreign_key "prospects", "users", column: "created_by_id", on_delete: :nullify
   add_foreign_key "push_subscriptions", "auth_sessions", on_delete: :cascade
   add_foreign_key "push_subscriptions", "firms"
   add_foreign_key "push_subscriptions", "users", on_delete: :cascade

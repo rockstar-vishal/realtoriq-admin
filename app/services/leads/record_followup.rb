@@ -46,7 +46,7 @@ module Leads
       locked = nil
 
       Lead.transaction do
-        locked = Lead.lock.find(lead.id)
+        locked = lead.lock_for_activity!
         followup = locked.lead_followups.create!(
           firm: locked.firm, user: actor, comment:, next_action_at: parsed_ncd
         )

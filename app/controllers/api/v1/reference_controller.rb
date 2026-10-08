@@ -24,7 +24,7 @@ module Api
       # is identical for everyone, so this is the one thing that costs us the
       # shared cache entry.
       def cache_key
-        [ "api/v1/reference", current_firm.id,
+        [ "api/v1/reference/v3", current_firm.id,
           City.maximum(:updated_at), Locality.maximum(:updated_at),
           builders.maximum(:updated_at), Typology.maximum(:updated_at),
           LeadSource.maximum(:updated_at), LeadStatus.maximum(:updated_at),
@@ -59,7 +59,13 @@ module Api
           },
           # Fixed enums the app needs but which aren't worth a table.
           transaction_types: [ { code: "sale", name: "Sale" }, { code: "rent", name: "Rent" } ],
-          floor_bands: %w[lower middle higher].map { |c| { code: c, name: c.humanize } }
+          floor_bands: %w[lower middle higher].map { |c| { code: c, name: c.humanize } },
+          prospect_statuses: [
+            { code: "new", name: "New" },
+            { code: "following", name: "Following" },
+            { code: "interested", name: "Interested" },
+            { code: "not_interested", name: "Not interested" }
+          ]
         }
       end
     end

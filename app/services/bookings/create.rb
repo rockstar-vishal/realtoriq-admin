@@ -35,6 +35,7 @@ module Bookings
             raise ActiveRecord::Rollback
           end
 
+          lead.lock_for_activity!
           booking = build
           booking.project = copy.project if copy
           booking.save!

@@ -160,7 +160,7 @@ failed attempt, so retrying a consumed code eats into the three.
 
 \*Agents can reassign a lead they can see to someone in their **active manageables** (themselves, plus anyone who reports to them). They cannot unassign.
 
-`manage_users` on `GET /me` is the flag to drive the team screen — do not switch on `role` for that. `manage_projects` is the flag for My Projects create/edit/photos and for inline builder create.
+`manage_users` on `GET /me` is the flag to drive the team screen — do not switch on `role` for that. `manage_projects` is the flag for My Projects create/edit/photos and for inline builder create. `manage_prospects` is the flag for deleting one prospect and for clearing the calling list.
 
 Anything an agent may not do is `403 forbidden_role`. **A lead an agent may not
 see is `404`, not `403`** — a 403 would confirm the record exists.
@@ -194,7 +194,7 @@ firm suspended mid-session starts failing on the next call.
   "subscription": { "plan": "Growth", "status": "active", "entitled": true,
                     "renews_on": "2026-09-18", "amount": 2499 },
   "permissions":  { "manage_firm_settings": true, "verify_contact_channels": true,
-                    "manage_users": true, "manage_projects": true },
+                    "manage_users": true, "manage_projects": true, "manage_prospects": true },
   "limits":       { "devices": 3, "users": 5 }
 }
 ```
@@ -216,6 +216,7 @@ lead_statuses[]  id, name, code, is_dead, is_booked, is_terminal
 property_types[] id, name, code
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
+prospect_statuses[]  code, name                  ← fixed: new, following, interested, not_interested
 ```
 
 `localities` is a **flat list carrying `city_id`**, not nested under cities.
@@ -330,6 +331,7 @@ exposes, so the alternative was six round trips for one card.
     "visit_planned": 2, "visited": 8, "bookings": 2,
     "recent": [ /* at most 3 missed followups, most overdue first; same item shape as GET /leads */ ]
   },
+  "prospects": { "new": 12, "following": 4, "interested": 2, "not_interested": 1 },
   "money": {
     "revenue_till_date": 68400000, "brokerage_earned": 413000, "bookings_count": 6,
     "this_month": { "bookings": 1, "revenue": 6900000, "brokerage": 69000 },
@@ -352,6 +354,10 @@ exposes, so the alternative was six round trips for one card.
 `forbidden_role` on every booking endpoint, and a block full of zeroes would
 read as "no revenue", which is a different and wrong statement. Branch on the
 key being present, not on the values.
+
+**`prospects` is four firm-wide counts**, the same numbers for an agent and a
+manager. Prospects are not assigned. The block has no names and no phone
+numbers. Home buttons deep-link to `GET /prospects?status=`.
 
 Everything else is scoped the same way the list endpoints are: an agent's
 counters cover only leads assigned to them.
@@ -845,6 +851,179 @@ does not see another agent's clients in the count.
 
 There is **no delete**. `dead` is the terminal state and it carries a reason, so
 the dead-leads report can explain itself.
+
+---
+
+## Prospects
+
+A calling list, not a lead. Desktop only. Every user of the firm sees every
+prospect. There is no assignee. The cap is **5,000 prospects per firm**, all
+statuses, enforced under a firm row lock during import.
+
+Statuses are only `new`, `following`, `interested`, `not_interested`. There is
+no separate dead status. "Mark dead" on a call sets `not_interested`.
+
+The list does not include phone numbers. Call and Edit load one number with
+`GET /prospects/:id/mobile`. Home and the list must not print numbers.
+`GET /dashboard` returns counts only. Search still matches a phone fragment.
+
+### `GET /prospects`
+
+Query: `status` (`new` when `q` is blank; ignored when `q` is present), `q`,
+`page`, `per_page` (default 25, clamp 1–50).
+
+`q` matches the name, the status label (`not interested` or `not_interested`),
+or a phone fragment of at least 4 digits. One leading `91` is stripped when the
+digit string is longer than 10, and a leading `0` is stripped. Search is
+global: it does not stay inside the status chip. Order while searching is
+`updated_at` desc.
+
+Without `q`, order is New oldest first, Following by `next_action_at` ASC
+NULLS LAST, Interested and Not interested by `updated_at` desc.
+
+```json
+{
+  "prospects": [ {
+    "id": "…", "name": "Asha", "comment": null,
+    "status": "following", "next_action_at": "2026-10-09T11:00:00.000+05:30",
+    "latest_note": "Asked to call after lunch",
+    "project": { "id": "…", "name": "Lodha Park", "code": "P-0004" },
+    "property": null,
+    "can_delete": false, "can_move_back": false,
+    "lead_code": null, "lead_accessible": false,
+    "created_at": "…", "updated_at": "…"
+  } ],
+  "counts": { "new": 12, "following": 4, "interested": 2, "not_interested": 1, "total": 19 },
+  "can_clear": false,
+  "meta": { "page": 1, "per_page": 25, "total_count": 12, "total_pages": 1 }
+}
+```
+
+`counts` are firm-wide and ignore `q` and `status`. `can_clear` is true for a
+manager or super admin (`permissions.manage_prospects`). `lead_code` is present
+for every user once a lead exists. `lead_id` is added only when
+`lead_accessible` is true (super admin, manager, or the lead's assignee).
+Another firm's id is 404. The card has no `mobile`.
+
+### `GET /prospects/:id/mobile`
+
+Any user of the firm. `{ "mobile": "+919876543210" }`. One prospect, for Call
+or Edit. Another firm's id is 404.
+
+### `PATCH /prospects/:id`
+
+`name` (optional), `mobile` (Indian mobile, same extraction as import),
+`comment`, `project_id`, `property_id`. One of project or property, not both.
+Sending a project clears the property, and the reverse. Blank clears that link.
+Unknown keys are ignored.
+
+Once `interested`, a change to name, mobile, project, or property is
+`422 prospect_locked`. The comment can still change. Sending the current value
+of a locked field is not a change.
+
+### `POST /prospects/:id/followups`
+
+Open statuses only (`new`, `following`). A second follow-up on interested or
+not interested is `422 prospect_closed`. The prospect row is locked.
+
+| Field | |
+| --- | --- |
+| `connected` | Required boolean. Missing stays nil and is `422 connected_required`. Do not treat a missing key as false |
+| `notes` | Required. `422 notes_required` |
+| `next_action_at` | Required when the call did not connect and the prospect stays on the list. Asia/Kolkata, same meaning as a lead NCD. A datetime without an offset is read in that zone |
+| `mark_not_interested` | Missed call only. Notes required, next dial time cleared, status `not_interested` |
+| `disposition` | Connected call: `interested`, `not_interested`, or `not_sure` |
+| `lead` | Required when `disposition` is `interested`. See below |
+
+Missed, and not marked not interested: status becomes `following` (a Following
+row stays Following) and `next_action_at` is the next dial time.
+
+Connected and `not_sure`: no next dial time is asked. Status becomes
+`following`. An existing `next_action_at` is left as it is.
+
+Connected and `not_interested`: next dial time is cleared.
+
+Connected and `interested`: the same transaction creates a normal lead through
+`Leads::Create` with **no** opening lead follow-up. The lead source is
+Telecalling. The call notes and the prospect comment are written to `lead.notes`. If lead create fails, including
+`duplicate_lead`, the prospect does not change. `details.lead_code` is the
+existing lead. `details.lead_id` is included only when the caller can open it.
+
+`lead.mode`:
+
+| Mode | What is copied | What the client sends |
+| --- | --- | --- |
+| `project` | Sale. Starting budget, typologies, and locality, when the project has them | `project_id`. `property_type_id` (Under construction or Ready possession — sale leads require it). Budget, `typology_ids`, and `locality_ids` when the project lacks them |
+| `property` | This firm only. Price, typology, building locality, `listing_for` | `property_id`. Sale asks `property_type_id` (default Ready possession). Rent does not. The property is linked with `lead_properties` |
+| `requirements` | Nothing | `transaction_type` (`sale` or `rent`), `budget` (whole rupees), `typology_ids`, `locality_ids`, and `property_type_id` when sale |
+
+An agent is assigned to themselves by the existing create rules. A manager's
+lead stays unassigned. A project may be this firm's or a marketplace listing.
+A property must belong to this firm.
+
+Response `201`: `{ prospect, followup }`. `followup` is `{ id, connected, notes, outcome, next_action_at, created_at }`. Outcomes are `retry`, `not_sure`, `interested`, `not_interested`.
+
+### `POST /prospects/:id/move_to_following`
+
+Not interested: any user. Status becomes `following`. There is no lead to change.
+
+Interested: only the lead's assignee, a manager, or a super admin. An
+unassigned lead can be moved by a manager or super admin. `403 forbidden_role`
+otherwise. The linked lead is deleted only when it has no follow-up, visit,
+visit pass, booking, inbound enquiry, marketplace enquiry, or Facebook import.
+Those writes lock the lead first, in the same transaction as the insert, so a
+row saved in the same moment is visible to this check and is not deleted with
+the lead. A worked lead stays, the prospect stays interested, and the response is
+`422 lead_worked`. A missing lead just sets Following.
+
+### `DELETE /prospects/:id`
+
+Manager or super admin. `204`. The prospect is hard-deleted. The linked lead
+stays in the pipeline. An agent receives `403 forbidden_role`. Do not send a
+body: clients drop DELETE bodies.
+
+### `GET /prospects/import_template`
+
+CSV sample. Headers: Client name, Client number, Comment, Project code,
+Property code. The example row (name `Example caller`, number `9000000000`) is
+skipped on import. A file that contains only that row is `422 invalid`: replace
+it with your own clients.
+
+### `POST /prospects/import`
+
+Multipart `file`. Any user. CSV only, at most 5 MB and 5,000 data rows. An
+`.xlsx` name or an Excel zip signature is `422 invalid` and creates nothing,
+as does a semicolon-separated file.
+
+A bad row is reported and does not undo earlier rows. Imported rows start as
+`new`. A number already in the firm or earlier in the file fails that row and
+does not refresh the existing prospect.
+
+Numbers: spaces, dashes, dots, `+91`, a leading `0`, `0091`, a `wa.me` link, a
+number buried in a sentence, and a trailing Excel `.0` are accepted. Landlines,
+numbers that do not start with 6–9, two different mobiles in one cell, and
+Excel scientific notation are rejected. This extractor is prospect-only.
+`Phone.normalise` for leads is unchanged.
+
+`200`: `{ created_count, failed_count, results }`. Each result is
+`{ row, status, name, mobile, prospect_id, error, cells }`. `cells` uses the
+header names so a failure sheet can be fixed and uploaded again.
+
+### `GET /prospects/backup`
+
+Manager or super admin. `statuses` or `statuses[]` is required.
+`text/csv` attachment `prospects-backup.csv`. Columns are the import columns
+plus Status, Next call, and Lead code. Import ignores the extras, so a clear
+followed by an import restores people as New. A cell that starts with `=`,
+`+`, `-`, or `@` is prefixed with `'` so Excel does not treat it as a formula.
+
+### `POST /prospects/clear`
+
+Manager or super admin. Body `{ "statuses": ["new", "not_interested"] }`.
+Hard-deletes those prospects and their call notes. Linked leads stay.
+`200`: `{ "deleted_count": 3 }`. An audit event is written on the firm
+(`prospects_cleared`, statuses and count, no phone numbers). Deleting one
+prospect writes `prospect_deleted` on that prospect (status, no phone).
 
 ---
 
@@ -1851,7 +2030,14 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
-| `duplicate_lead` | 422 | That mobile already has a live lead of this transaction type. Also when reviving a dead lead, or changing status through a follow-up. `details.lead_id`, `details.transaction_type` |
+| `duplicate_lead` | 422 | That mobile already has a live lead of this transaction type. Also when reviving a dead lead, changing status through a follow-up, or marking a prospect interested. `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
+| `notes_required` | 422 | A prospect follow-up needs a note |
+| `connected_required` | 422 | A prospect follow-up must say whether the call connected. A missing `connected` is not false |
+| `ncd_required` | 422 | A missed prospect call that stays on the list needs a next dial time |
+| `prospect_closed` | 422 | Interested and not interested prospects take no further follow-up |
+| `prospect_locked` | 422 | An interested prospect can change its comment only |
+| `not_movable` | 422 | Only interested or not interested can move back to Following |
+| `lead_worked` | 422 | Move back left the lead in place because it already has a follow-up, visit, visit pass, booking, inbound enquiry, marketplace enquiry, or Facebook import |
 | `comment_required` | 422 | A followup (nested on create, or `POST /leads/:id/followups`) needs “what was discussed” |
 | `unknown_status` | 422 | `status` is not a seeded lead-status code |
 | `application_date_required` | 422 | Marking a lead booked via a followup needs `booked_on` |

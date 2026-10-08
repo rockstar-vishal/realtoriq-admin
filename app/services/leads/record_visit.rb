@@ -36,6 +36,7 @@ module Leads
 
       created = nil
       Lead.transaction do
+        lead.lock_for_activity!
         created = lead.lead_visits.create!(
           firm: lead.firm, user: actor, visited_at:, notes: blank_to_nil(attributes[:notes])
         )

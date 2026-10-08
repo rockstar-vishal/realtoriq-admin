@@ -259,6 +259,21 @@ RSpec.describe "API v1 dashboard" do
       expect(response.parsed_body.dig("inventory", "properties")).to eq(0)
     end
 
+    it "counts prospects for the whole firm and does not list phone numbers" do
+      create(:prospect, firm:, status: "new")
+      create(:prospect, firm:, status: "following")
+      create(:prospect, firm:, status: "interested")
+      other = create(:firm, status: :active)
+      create(:prospect, firm: other, status: "new")
+
+      get "/api/v1/dashboard", headers: auth
+
+      prospects = response.parsed_body["prospects"]
+      expect(prospects).to eq("new" => 1, "following" => 1, "interested" => 1, "not_interested" => 0)
+      expect(prospects.values).to all(be_a(Integer))
+      expect(response.body).not_to include(Prospect.unscoped.where(firm:).first.mobile)
+    end
+
     it "needs a token" do
       get "/api/v1/dashboard"
 

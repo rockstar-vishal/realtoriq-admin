@@ -88,6 +88,7 @@ end
   [ "Walk-in", "walk_in" ],
   [ "Social / Meta", "social" ],
   [ "Cold call", "outbound" ],
+  [ "Telecalling", "outbound" ],
   [ "Builder Microsite", "other" ],
   [ "Website", "other" ]
 ].each_with_index do |(name, category), index|
