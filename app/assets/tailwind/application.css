@@ -4,6 +4,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap");
 @import "tailwindcss";
 
+/* Gems installed inside this tree include the tailwindcss-rails README.
+   Its example class is bg-[url('image.svg')]. Tailwind compiles that into
+   the stylesheet, and Propshaft then warns that image.svg is not an asset. */
+@source not "../../../vendor";
+
 /* ══════════════════════════════════════════════════════════════════════════
    Modernist — the product's design system, expressed as Tailwind v4 theme
    tokens. Flat and architectural: Archivo throughout, a single red accent on a
