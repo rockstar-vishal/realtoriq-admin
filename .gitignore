@@ -4,8 +4,10 @@
 # belong in git's global ignore instead:
 # `$XDG_CONFIG_HOME/git/ignore` or `~/.config/git/ignore`
 FACEBOOK_LEADS_SPEC.md
-# Ignore bundler config.
+# Ignore bundler config and a local gem path. Tailwind scans this tree, and
+# the tailwindcss-rails README's example class otherwise becomes a missing asset.
 /.bundle
+/vendor/bundle
 credentials.yml.enc
 # Ignore all environment files.
 /.env*
