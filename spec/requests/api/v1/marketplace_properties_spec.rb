@@ -135,6 +135,26 @@ RSpec.describe "Shared property marketplace" do
     expect(response.body).not_to include("Secret Client")
   end
 
+  it "orders other firms' lead codes by score, then firm name" do
+    closer = create(:firm, status: :active, name: "Zeta Homes")
+    create(:subscription, firm: closer, plan:)
+    create(:user, :manager, firm: closer)
+    dead = create(:lead_status, :dead)
+    best = create(:lead, firm: closer, lead_status: dead, dead_reason: "Gone quiet",
+      name: "Hidden Best", budget_max: 10_000_000, transaction_type: "sale", property_type: ready_type)
+    best.typologies << typology
+    best.localities << locality
+    weaker = lead_for(ready_type, name: "Hidden Weaker")
+    weaker.update!(budget_max: 9_000_000)
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(owner), as: :json
+
+    rows = response.parsed_body["marketplace_matches"]
+    expect(rows.map { |row| row["code"] }).to eq([ best.code, weaker.code ])
+    expect(rows.first.keys).not_to include("score", "name", "mobile")
+    expect(response.body).not_to include("Hidden Best", "Hidden Weaker")
+  end
+
   it "identifies each firm by id when two firms share a name" do
     lead = lead_for(ready_type, name: "Secret Client")
     twin = create(:firm, status: :active, name: firm.name)

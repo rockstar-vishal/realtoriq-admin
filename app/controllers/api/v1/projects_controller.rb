@@ -5,8 +5,9 @@ module Api
     class ProjectsController < AuthenticatedController
       # `sort=name` (the default, so existing callers see no change) or
       # `sort=recent`, which puts a just-created project on page one instead of
-      # wherever its name falls alphabetically. Unknown values fall back to the
-      # default, in keeping with how the rest of the API treats stray params.
+      # wherever its name falls alphabetically. `sort=relevant` is handled in
+      # `apply_sort` — it is not a static order. Unknown values fall back to
+      # the default, in keeping with how the rest of the API treats stray params.
       #
       # `id` breaks ties in both. Postgres documents that rows with equal sort
       # keys come back in an unspecified order, so under LIMIT/OFFSET a page
@@ -267,8 +268,35 @@ module Api
         DRAWER_KEYS.any? { |key| params[key].present? }
       end
 
+      # `sort=relevant` is the marketplace browse order. It uses the signed-in
+      # firm's localities, never a locality id from the query. Search stays
+      # A–Z, a filtered marketplace list stays newest first, and My Projects
+      # keeps the sort it was given (or A–Z).
       def apply_sort(scope)
-        scope.instance_exec(&SORTS.fetch(params[:sort].to_s, SORTS[DEFAULT_SORT]))
+        return scope.relevant_to(Current.firm) if relevant_catalog_sort?
+
+        scope.instance_exec(&SORTS.fetch(sort_key, SORTS[DEFAULT_SORT]))
+      end
+
+      def relevant_catalog_sort?
+        sort_param == "relevant" &&
+          params[:source].to_s == "catalog" &&
+          params[:q].blank? &&
+          !drawer_filters_present?
+      end
+
+      def sort_key
+        return sort_param unless sort_param == "relevant" && !relevant_catalog_sort?
+
+        if params[:source].to_s == "catalog" && drawer_filters_present? && params[:q].blank?
+          "recent"
+        else
+          DEFAULT_SORT
+        end
+      end
+
+      def sort_param
+        params[:sort].is_a?(String) ? params[:sort] : ""
       end
 
       # The microsite belongs to the global catalog row. A broker opening the

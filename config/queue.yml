@@ -13,6 +13,12 @@ default: &default
       threads: 1
       processes: 1
       polling_interval: 1
+    # Match curation is its own queue so a slow firm cannot sit on the
+    # threads that send follow-up reminders.
+    - queues: matching
+      threads: 5
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 1
 
 development:
   <<: *default

@@ -56,20 +56,52 @@
   <% end %>
 
   <%= render "admin/firms/form_section", title: "Address" do %>
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-2 gap-4" data-controller="firm-areas">
       <%= render "admin/shared/field", f: f, form: form, attribute: :address_line1, label: "Address line 1" %>
       <%= render "admin/shared/field", f: f, form: form, attribute: :address_line2, label: "Address line 2" %>
 
       <div class="field">
-        <%= f.label :city_id, "City" %>
+        <%= f.label :city_id, "City *" %>
         <%= f.collection_select :city_id, City.active.alphabetical, :id, :display_name,
-              { include_blank: "Select a city" }, class: "input" %>
+              { include_blank: "Select a city" },
+              class: "input #{'input-invalid' if form.errors[:city_id].any?}",
+              data: { firm_areas_target: "city", action: "change->firm-areas#filter" } %>
+        <% if form.errors[:city_id].any? %>
+          <p class="field-error"><%= form.errors[:city_id].first %></p>
+        <% end %>
       </div>
 
       <div class="field">
-        <%= f.label :locality_id, "Locality" %>
-        <%= f.collection_select :locality_id, Locality.active.alphabetical.includes(:city), :id, :display_name,
-              { include_blank: "Select a locality" }, class: "input" %>
+        <%= f.label :locality_id, "Locality *" %>
+        <%= f.select :locality_id,
+              Locality.active.alphabetical.map { |locality|
+                [ locality.name, locality.id, { "data-city-id": locality.city_id } ]
+              },
+              { include_blank: "Select a locality", selected: form.locality_id },
+              class: "input #{'input-invalid' if form.errors[:locality_id].any?}",
+              data: { firm_areas_target: "locality", action: "change->firm-areas#filter" } %>
+        <% if form.errors[:locality_id].any? %>
+          <p class="field-error"><%= form.errors[:locality_id].first %></p>
+        <% end %>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">
+          The primary area. Marketplace projects are ordered from here.
+        </p>
+      </div>
+
+      <div class="field col-span-2">
+        <%= f.label :extra_locality_ids, "Also works in" %>
+        <%= hidden_field_tag "firm[extra_locality_ids][]", "" %>
+        <%= f.select :extra_locality_ids,
+              options_for_select(
+                Locality.active.alphabetical.includes(:city).map { |locality| [ locality.display_name, locality.id ] },
+                form.extra_locality_ids
+              ),
+              {},
+              multiple: true, size: 8, class: "input",
+              data: { firm_areas_target: "extra" } %>
+        <p class="text-[12px] text-[var(--color-neutral-600)] mt-1">
+          Other localities, including other cities. Leave this empty to use only the primary.
+        </p>
       </div>
 
       <%= render "admin/shared/field", f: f, form: form, attribute: :pincode, label: "Pincode" %>

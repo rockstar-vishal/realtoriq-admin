@@ -42,8 +42,7 @@ module Inventory
         .where(firm_id: Firm.marketplace_eligible.select(:id))
         .where.not(firm_id: property.firm_id)
         .where(transaction_type: property.listing_for)
-        .joins(:lead_status)
-        .where(lead_statuses: { is_dead: false })
+        .matchable
         .joins(:lead_localities)
         .where(lead_localities: { locality_id: property.building&.locality_id })
         .includes(:typologies, :property_type)

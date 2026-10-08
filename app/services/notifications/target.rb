@@ -7,7 +7,7 @@ module Notifications
   # params is a flat filter for the list, never part of the path, so a row
   # cannot send the browser to another site.
   class Target
-    PAGES = %w[home leads projects properties bookings settings team reports subscription skills-training].freeze
+    PAGES = %w[home leads projects properties bookings matches settings team reports subscription skills-training].freeze
     ITEM = /\A[A-Za-z0-9_-]+\z/
     PARAM_KEY = /\A[A-Za-z0-9_]+\z/
 

@@ -93,6 +93,11 @@ class Lead < ApplicationRecord
     where("leads.name ILIKE :q OR leads.mobile ILIKE :q OR leads.email ILIKE :q", q: pattern)
   }
 
+  # Matching ignores an unqualified lead and a booked lead. Dead stays eligible.
+  scope :matchable, -> {
+    where(unqualified: false).where.not(lead_status_id: LeadStatus.booked.select(:id))
+  }
+
   # Overdue NCD on a lead that is still in play. Not a status — the tab
   # strip shows it next to real pipeline stages, but the filter is
   # next_action_at <= now on a non-terminal lead. Subquery rather than a

@@ -273,7 +273,7 @@ inventing contracts:
 | --- | --- | --- |
 | 1 | Notification bell — badge + inbox | `notifications` table is **designed** in `docs/schema.md`, not migrated. No endpoint |
 | 2 | Real-time toast / push | Nothing. No push infrastructure, no FCM, no socket topic. This is a project, not an endpoint |
-| 3 | Featured / Live Projects | The home screen loads the 3 most recent marketplace projects (`GET /projects?source=catalog&sort=recent`). Never the firm's own projects. `GET /dashboard` still has no featured list; `inventory.projects` there is a count |
+| 3 | Featured / Live Projects | The home screen loads the first 5 marketplace projects for the firm (`GET /projects?source=catalog&sort=relevant`). Never the firm's own projects. `GET /dashboard` still has no featured list; `inventory.projects` there is a count |
 | 6 | Knowledge Center articles | `news_articles` is **designed**, not migrated. No CMS |
 | 7 | EMI calculator | See note below |
 | 8 | Reports — 4 kinds | **Designed in `docs/schema.md`** with the exact grouping for each, not built. This is the largest single item |

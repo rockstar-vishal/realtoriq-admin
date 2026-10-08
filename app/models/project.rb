@@ -133,6 +133,37 @@ class Project < ApplicationRecord
     unscoped.where(firm_id: nil, source: "catalog", status: "active")
   end
 
+  # Marketplace browse order for one firm. Bands, then newest, then id:
+  # primary locality, the firm's other localities, the rest of those cities,
+  # then everywhere else. A project with a city and no locality matches the
+  # city band only — `locality_id =` does not match NULL.
+  #
+  # Chain this on an existing marketplace relation. A fresh Project query hits
+  # FirmScoped and the catalog guard scope and returns no catalog rows.
+  # No locality on the firm means newest first, which is what the home strip
+  # showed before firms had a pin.
+  scope :relevant_to, ->(firm) {
+    primary_id = firm&.locality_id
+    next order(created_at: :desc, id: :desc) if primary_id.blank?
+
+    extra_ids = firm.firm_localities.where.not(locality_id: primary_id).pluck(:locality_id)
+    city_ids = Locality.where(id: [ primary_id, *extra_ids ]).distinct.pluck(:city_id)
+
+    whens = [ "WHEN projects.locality_id = :primary_id THEN 0" ]
+    binds = { primary_id: }
+    if extra_ids.any?
+      whens << "WHEN projects.locality_id IN (:extra_ids) THEN 1"
+      binds[:extra_ids] = extra_ids
+    end
+    if city_ids.any?
+      whens << "WHEN projects.city_id IN (:city_ids) THEN 2"
+      binds[:city_ids] = city_ids
+    end
+
+    rank = sanitize_sql_array([ "CASE #{whens.join(' ')} ELSE 3 END", binds ])
+    order(Arel.sql(rank), created_at: :desc, id: :desc)
+  }
+
   # FirmScoped#across_firms only drops the firm_id clause. The guard scope
   # above is `none` when no tenant is set, and that would make every
   # cross-firm read empty. Unscope both.

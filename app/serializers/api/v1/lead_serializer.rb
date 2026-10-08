@@ -33,6 +33,7 @@ module Api
             overdue: lead.overdue?,
             visited: lead.visited?,
             visit_count: lead.visit_count,
+            unqualified: lead.unqualified,
             created_at: lead.created_at,
             updated_at: lead.updated_at
           }

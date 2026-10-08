@@ -33,7 +33,7 @@ module Inventory
     attr_reader :lead
 
     def visible_rows
-      return [] if lead.lead_status&.is_dead?
+      return [] if lead.unqualified? || lead.lead_status&.is_booked?
       return [] if locality_ids.empty?
 
       (project_rows + property_rows).select { |row| row[:score] > row[:floor] && !row[:mapped] }
