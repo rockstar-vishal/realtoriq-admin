@@ -78,6 +78,7 @@ module Realtoriq
     end
 
     def reserve(project, when_at, suffix)
+      # with_lock is the same row lock as Lead#lock_for_activity!.
       lead.with_lock do
         existing = lead.lead_visit_passes.where(project:).order(created_at: :desc).first
         case existing&.turbo_status

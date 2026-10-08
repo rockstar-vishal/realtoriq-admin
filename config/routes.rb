@@ -151,6 +151,21 @@ Rails.application.routes.draw do
       get "reports/revenue", to: "reports#revenue"
       get "reports/assignees", to: "reports#assignees"
 
+      # A calling list, not a lead. Managers can hard-delete rows; see PROJECT_THEORY §13.
+      resources :prospects, only: %i[index update destroy] do
+        collection do
+          get :import_template, to: "prospect_imports#template"
+          post :import, to: "prospect_imports#create"
+          get :backup
+          post :clear
+        end
+        member do
+          get :mobile
+          post :move_to_following
+        end
+        resources :followups, only: %i[create], controller: "prospect_followups"
+      end
+
       # No destroy: the design has no delete. `Dead` is the terminal state, and
       # it carries a reason so the dead-leads report can explain itself.
       resources :leads, only: %i[index create show update] do

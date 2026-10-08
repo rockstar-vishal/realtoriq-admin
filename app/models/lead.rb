@@ -333,6 +333,14 @@ class Lead < ApplicationRecord
   end
   private :site_visit_stats
 
+  # Shared with Prospects::MoveToFollowing. Call this inside the transaction
+  # that records a follow-up, visit, visit pass, booking, or an enquiry on
+  # this lead. The move takes the same lock before it will delete an unworked
+  # lead, so a row saved in that moment is still there when the move looks.
+  def lock_for_activity!
+    lock!
+  end
+
   def display_name = name.presence || Phone.format_for_display(mobile)
 
   # Same number, the other transaction type — sale and rent may coexist. Same

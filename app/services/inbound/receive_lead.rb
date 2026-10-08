@@ -336,6 +336,7 @@ module Inbound
     def store_enquiry!(lead)
       return if enquiry_id.blank? || lead.nil?
 
+      lead.lock_for_activity!
       InboundEnquiry.create!(firm:, channel:, external_id: enquiry_id, lead:)
     end
 

@@ -25,7 +25,10 @@ module Dashboard
     end
 
     def call
-      payload = { leads: leads_block, inventory: inventory_block, generated_at: Time.current }
+      payload = {
+        leads: leads_block, prospects: prospects_block, inventory: inventory_block,
+        generated_at: Time.current
+      }
       # Agents get `forbidden_role` on every booking endpoint, so the dashboard
       # does not quietly hand them the same numbers by another route.
       payload[:money] = money_block if money_visible?
@@ -88,6 +91,12 @@ module Dashboard
         [ COUNTS_SQL,
           { day_start: today.beginning_of_day, day_end: today.end_of_day, now: Time.current } ]
       )
+    end
+
+    # Firm-wide. Prospects are not assigned, so an agent sees the same counts
+    # as a manager. Counts only — no names and no phone numbers.
+    def prospects_block
+      Prospect.counts.slice(:new, :following, :interested, :not_interested)
     end
 
     # — money —

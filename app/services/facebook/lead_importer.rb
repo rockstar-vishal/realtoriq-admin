@@ -39,6 +39,7 @@ module Facebook
       outcome = nil
       ActiveRecord::Base.transaction(requires_new: true) do
         outcome = form.project_id.present? ? write_project(fields, source, assignee_id) : write_property(fields, source, assignee_id)
+        outcome.lead.lock_for_activity! if outcome.lead && outcome.status.in?(%i[created duplicate])
         case outcome.status
         when :created
           import.mark_created!(lead: outcome.lead, error_details: details.presence)

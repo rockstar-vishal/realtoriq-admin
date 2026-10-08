@@ -1047,6 +1047,341 @@
       ]
     },
     {
+      "name": "Prospects",
+      "description": "A firm-wide calling list, separate from leads. Every user sees every prospect. Managers can delete and clear. The list does not include phone numbers. GET /prospects/:id/mobile returns one number for Call or Edit. Home uses GET /dashboard prospects counts only.\n\nCap is 5,000 per firm. Statuses: new, following, interested, not_interested. Search (q) ignores status. counts ignore both.",
+      "item": [
+        {
+          "name": "List prospects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects?status=new",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "new",
+                  "description": "Ignored when q is set. Default new."
+                }
+              ]
+            },
+            "description": "Firm-wide. Default status is new (oldest first). Following sorts by next_action_at ASC NULLS LAST. Interested and not interested sort by updated_at desc. per_page defaults to 25 and clamps to 50. counts are firm-wide and ignore q and status. The card has no mobile. lead_code is visible to every user. lead_id is present only when lead_accessible is true."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('counts', () => {",
+                  "  pm.expect(body.counts).to.include.keys('new', 'following', 'interested', 'not_interested', 'total');",
+                  "});",
+                  "if (body.prospects.length) {",
+                  "  pm.collectionVariables.set('prospect_id', body.prospects[0].id);",
+                  "  pm.expect(body.prospects[0]).to.not.have.property('mobile');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read one number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}/mobile",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}",
+                "mobile"
+              ]
+            },
+            "description": "One number, for Call or Edit. The list does not include it. Another firm's id is 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('mobile', () => pm.expect(pm.response.json()).to.have.property('mobile'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search prospects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects?q=asha",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "asha",
+                  "description": "Name, status label, or 4+ phone digits. Ignores status."
+                }
+              ]
+            },
+            "description": "Global search. A leading 0 is stripped. A leading 91 is stripped when the digit string is longer than 10."
+          }
+        },
+        {
+          "name": "Update a prospect",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Asked for a 2 BHK\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}"
+              ]
+            },
+            "description": "name, mobile, comment, project_id, property_id. One inventory link, not both. An interested prospect accepts a comment change only (422 prospect_locked otherwise)."
+          }
+        },
+        {
+          "name": "Download import template",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects/import_template",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "import_template"
+              ]
+            },
+            "description": "CSV. The Example caller / 9000000000 row is skipped on import."
+          }
+        },
+        {
+          "name": "Import prospects",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "CSV UTF-8, at most 5 MB and 5,000 data rows. Not an Excel workbook."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/import",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "import"
+              ]
+            },
+            "description": "Any user. A bad row does not undo earlier rows. Duplicate numbers fail the row and do not refresh the existing prospect. New rows start as new."
+          }
+        },
+        {
+          "name": "Log a missed call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"connected\": false,\n  \"notes\": \"No answer\",\n  \"next_action_at\": \"2026-10-09T11:00:00+05:30\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}/followups",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}",
+                "followups"
+              ]
+            },
+            "description": "connected is required and must be a real boolean. Missing is 422 connected_required, not false. A missed call needs notes and a next dial time unless mark_not_interested is true. Status becomes following."
+          }
+        },
+        {
+          "name": "Log an interested call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"connected\": true,\n  \"notes\": \"Wants a 2 BHK in Kharghar\",\n  \"disposition\": \"interested\",\n  \"lead\": {\n    \"mode\": \"requirements\",\n    \"transaction_type\": \"sale\",\n    \"property_type_id\": \"{{property_type_id}}\",\n    \"budget\": 8000000,\n    \"typology_ids\": [\"{{typology_id}}\"],\n    \"locality_ids\": [\"{{locality_id}}\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}/followups",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}",
+                "followups"
+              ]
+            },
+            "description": "Creates a lead in the same transaction, with no opening lead follow-up. lead.mode is project, property, or requirements. A duplicate live lead is 422 duplicate_lead and the prospect does not change. details.lead_code is always set; details.lead_id only when the caller can open the lead. not_sure leaves any existing next dial time. not_interested clears it."
+          }
+        },
+        {
+          "name": "Move back to Following",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}/move_to_following",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}",
+                "move_to_following"
+              ]
+            },
+            "description": "Not interested: any user, status only. Interested: the lead's assignee, a manager, or a super admin. The lead is deleted only if it has no follow-up, visit, visit pass, booking, inbound enquiry, marketplace enquiry, or Facebook import. Otherwise 422 lead_worked and the prospect stays interested."
+          }
+        },
+        {
+          "name": "Download a backup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects/backup?statuses[]=new&statuses[]=following",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "backup"
+              ],
+              "query": [
+                {
+                  "key": "statuses[]",
+                  "value": "new"
+                },
+                {
+                  "key": "statuses[]",
+                  "value": "following"
+                }
+              ]
+            },
+            "description": "Manager or super admin. CSV with the import columns plus Status, Next call, and Lead code. Cells starting with = + - @ are prefixed with a quote."
+          }
+        },
+        {
+          "name": "Clear prospects",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"statuses\": [\"not_interested\"]\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/prospects/clear",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "clear"
+              ]
+            },
+            "description": "Manager or super admin. Hard-deletes prospects in the chosen statuses. Linked leads stay. 200 returns deleted_count. An agent receives 403 forbidden_role."
+          }
+        },
+        {
+          "name": "Delete a prospect",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/prospects/{{prospect_id}}",
+              "host": [
+                "{{api_base}}"
+              ],
+              "path": [
+                "prospects",
+                "{{prospect_id}}"
+              ]
+            },
+            "description": "Manager or super admin. 204. No body. The prospect is removed and the linked lead stays. An agent receives 403 forbidden_role."
+          }
+        }
+      ]
+    },
+    {
       "name": "Leads",
       "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Write `budget` (single amount → `budget_max`).** GET `budget_min`/`budget_max` are a filter *window* on that stored amount, not range overlap.\n\n`missed_followup=true` is an overdue-NCD filter (not a status). `status=hot_negotiation` is hot+negotiation. Drawer params drop `q`; cards (`status`, `visited`, `missed_followup`) do not.\n\nList returns `counts` (pipeline totals, unfiltered). Default sort is NCD NULLS FIRST. Money is raw integer rupees; the client formats lakh/crore. Screen guide: frontend/YASH.md.",
       "item": [

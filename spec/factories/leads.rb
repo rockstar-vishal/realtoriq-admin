@@ -101,6 +101,22 @@ FactoryBot.define do
     visited_at { Time.find_zone("Asia/Kolkata").now.beginning_of_day }
   end
 
+  factory :prospect do
+    firm
+    sequence(:name) { |n| "Prospect #{n}" }
+    sequence(:mobile) { |n| "+9197#{format('%08d', n)}" }
+    status { "new" }
+  end
+
+  factory :prospect_followup do
+    firm { prospect.firm }
+    prospect
+    user { association :user, firm: prospect.firm }
+    connected { false }
+    notes { "No answer" }
+    outcome { "retry" }
+  end
+
   factory :lead_followup do
     firm { lead.firm }
     lead

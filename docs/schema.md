@@ -170,6 +170,39 @@ admin see the firm's whole pipeline (`Lead.visible_to`). A lead an agent may not
 see returns 404, not 403. Because unassigned leads are invisible to agents, a
 lead an agent creates is auto-assigned to them.
 
+### Prospects — **built**
+
+`prospects` and `prospect_followups`. A calling list, separate from `leads`.
+This is the hard-delete exception in PROJECT_THEORY invariant 13. A manager may
+delete a row, or clear a status. The lead created when a caller is interested
+is a normal lead. `Prospects::MoveToFollowing` deletes that lead only while it
+has no follow-up, visit, visit pass, booking, inbound enquiry, marketplace
+enquiry, or Facebook import. `Lead#destroy` cascades bookings, and a booking
+destroys invoices and collections, so that check is what keeps money records.
+
+- **Firm-wide.** No assignee. Every user of the firm sees every row. Cap
+  5,000 per firm, counted under a firm row lock on import.
+- **`status`** is `new`, `following`, `interested`, `not_interested`. String
+  column, Rails enum with `prefix: :status` (a value named `new` would
+  override Active Record's `new`), plus a CHECK.
+- **`mobile`** is `+91` and a 10-digit Indian mobile starting 6–9. Unique on
+  `(firm_id, mobile)`. Extraction accepts broker formatting and rejects
+  landlines, two mobiles in one cell, and Excel scientific notation. Lead
+  normalisation is a different, looser method.
+- **One inventory link.** `project_id` or `property_id`, not both (CHECK).
+  The project association is unscoped and may be a marketplace project.
+  A property must belong to this firm.
+- **`lead_id`** is unique (many NULLs) and `ON DELETE NULLIFY`.
+  `prospect_followups.prospect_id` is `ON DELETE CASCADE`. `created_by` is
+  `ON DELETE NULLIFY`.
+- **`next_action_at`** is the next dial time, Asia/Kolkata, same meaning as a
+  lead NCD. Interested and not interested clear it. A connected "not sure"
+  call leaves an existing value alone.
+- **Follow-up outcomes** are `retry`, `not_sure`, `interested`,
+  `not_interested`. Notes are required. Interested writes the prospect
+  follow-up and the lead in one transaction, with no opening lead follow-up,
+  so an untouched lead can still be deleted by move-back.
+
 ### Inventory — **built**
 
 `builders` (extended), `projects`, `project_typologies`, `buildings`,
