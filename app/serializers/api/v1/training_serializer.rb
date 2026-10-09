@@ -8,6 +8,10 @@ module Api
     # material the app re-renders whenever the broker opens it, and a 20-minute
     # audio element that expires mid-listen would be worse than the risk a
     # forwarded link carries. Decided with the owner, 28 Sep 2026.
+    #
+    # The guide is proxied, not redirected. pdf.js fetches it, and the redirect
+    # to S3 is the response the browser rejects. The banner and the podcast
+    # stay redirects: an image and an audio element never read the body.
     module TrainingSerializer
       def self.card(training)
         {
@@ -29,7 +33,7 @@ module Api
           intro_text: training.intro_text,
           # Null means ops left it blank and the app shows its own default steps.
           instructions_text: training.instructions_text.presence,
-          document_url: BlobUrl.call(training.document),
+          document_url: BlobUrl.proxy(training.document),
           podcast_url: podcast_url(training),
           created_by_name: training.created_by_name,
           note: note && { body: note.body, updated_at: note.updated_at }

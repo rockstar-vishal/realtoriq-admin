@@ -25,7 +25,7 @@ module Api
       # forwarded link is worthless by the time it arrives.
       SENSITIVE_TTL = 15.minutes
 
-      def self.call(attachment, expires_in: nil)
+      def self.call(attachment, expires_in: nil, proxy: false)
         return nil if attachment.blank?
 
         blob = attachment.try(:blob) || attachment
@@ -37,11 +37,23 @@ module Api
         options = ActiveStorage::Current.url_options.presence.to_h.dup
         options[:expires_in] = expires_in if expires_in
 
-        Rails.application.routes.url_helpers.rails_blob_url(blob, **options)
+        helper = proxy ? :rails_storage_proxy_url : :rails_blob_url
+        Rails.application.routes.url_helpers.public_send(helper, blob, **options)
       end
 
       # For anything a client should not be able to keep or forward.
       def self.sensitive(attachment) = call(attachment, expires_in: SENSITIVE_TTL)
+
+      # Same lifetime as .call, but the bytes are streamed by this API instead
+      # of a redirect to storage.
+      #
+      # pdf.js reads the guide with fetch(). The redirect answers 200 from S3
+      # and omits Access-Control-Allow-Origin: the browser's follow-up request
+      # does not present the app origin, and the bucket only adds that header
+      # when the origin matches. A direct request to the bucket does carry it.
+      # /rails/active_storage/* already allows the app, so the reader has to
+      # stay on the API.
+      def self.proxy(attachment) = call(attachment, proxy: true)
     end
   end
 end
