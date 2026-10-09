@@ -20,12 +20,14 @@ module Inventory
     def result(query: nil)
       rows = visible_rows
       rows = filter_query(rows, query) if query.present?
-      ordered = rows.sort_by { |row| [ -row[:score], row[:name].to_s.downcase ] }
-      if query.present?
-        { matches: ordered.map { |row| publish(row) }, truncated: false }
-      else
-        { matches: ordered.first(LIMIT).map { |row| publish(row) }, truncated: ordered.size > LIMIT }
-      end
+      ordered = rows.sort_by { |row| row[:sort] }
+      listed = query.present? ? ordered : ordered.first(LIMIT)
+      {
+        matches: listed.map { |row| publish(row) },
+        truncated: query.blank? && ordered.size > LIMIT,
+        interest_localities: interest_localities,
+        neighbor_localities: neighbor_localities
+      }
     end
 
     private
@@ -40,7 +42,19 @@ module Inventory
     end
 
     def locality_ids
-      @locality_ids ||= lead.locality_ids
+      hooks.search_locality_ids
+    end
+
+    def hooks
+      @hooks ||= LeadHooks.for(lead)
+    end
+
+    def interest_localities
+      hooks.preferred_localities.map { |locality| { id: locality.id, name: locality.name } }
+    end
+
+    def neighbor_localities
+      hooks.neighbor_localities
     end
 
     def lead_keys
@@ -68,11 +82,27 @@ module Inventory
     end
 
     def own_projects
-      load_projects(Project.where(status: "active", source: "own", locality_id: locality_ids))
+      load_projects(projects_in(Project.where(status: "active", source: "own")))
     end
 
     def marketplace_projects
-      load_projects(Project.marketplace.where(locality_id: locality_ids))
+      load_projects(projects_in(Project.marketplace))
+    end
+
+    def projects_in(scope)
+      return scope.none if locality_ids.empty? && hooks.pins.empty?
+
+      scope.where(id: project_ids(scope))
+    end
+
+    def project_ids(scope)
+      ids = locality_ids.empty? ? [] : scope.where(locality_id: locality_ids).pluck(:id)
+      hooks.pins.each do |pin|
+        box = Geo.box(pin[:lat], pin[:lng])
+        ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+        ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
+      end
+      ids
     end
 
     def load_projects(scope)
@@ -82,13 +112,12 @@ module Inventory
     def property_rows
       return [] if lead.sale? && !lead.ready_possession?
 
-      (own_properties + shared_properties).map { |property| serialize_property(property) }
+      (own_properties + shared_properties).filter_map { |property| serialize_property(property) }
     end
 
     def own_properties
-      Property.where(status: "available", listing_for: lead.transaction_type)
-        .joins(:building)
-        .where(buildings: { locality_id: locality_ids })
+      scope = Property.where(status: "available", listing_for: lead.transaction_type)
+      Property.where(id: property_ids(scope))
         .includes(:typology, building: %i[city locality])
         .to_a
     end
@@ -97,25 +126,27 @@ module Inventory
       return [] if Current.firm_id.blank?
       return [] if lead.firm&.review_demo? || Current.firm&.review_demo?
 
-      records = Property.unscoped
+      scope = Property.unscoped
         .where(listed_on_marketplace: true, status: "available", listing_for: lead.transaction_type)
         .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
-        .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
-        .where(buildings: { locality_id: locality_ids })
-        .includes(:typology, :firm)
-        .to_a
-      preload_buildings(records)
+      records = Property.unscoped.where(id: property_ids(scope)).includes(:typology, :firm).to_a
+      Buildings.attach(records)
       records
     end
 
-    def preload_buildings(records)
-      return if records.empty?
+    def property_ids(scope)
+      return [] if locality_ids.empty? && hooks.pins.empty?
 
-      ActiveRecord::Associations::Preloader.new(
-        records:,
-        associations: { building: %i[locality city] },
-        scope: Building.unscoped
-      ).call
+      joined = scope.joins("INNER JOIN buildings ON buildings.id = properties.building_id")
+      ids = locality_ids.empty? ? [] : joined.where(buildings: { locality_id: locality_ids }).pluck(:id)
+      hooks.pins.each do |pin|
+        box = Geo.box(pin[:lat], pin[:lng])
+        ids |= joined.where(buildings: { city_id: pin[:city_id] })
+          .where(buildings: { lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng })
+          .pluck(:id)
+        ids |= joined.where(buildings: { locality_id: center_ids(pin, box) }).pluck(:id)
+      end
+      ids
     end
 
     def serialize_project(project)
@@ -126,9 +157,15 @@ module Inventory
           key: ConfigurationKey.call(row.typology&.name)
         )
       end
-      breakdown = MatchScore.for_offers(
-        budget:, offers:, lead_keys:, fallback_price: project.starting_budget
+      ranked = rank_listing(
+        locality_id: project.locality_id,
+        lat: project.lat, lng: project.lng,
+        locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+        offers:, fallback_price: project.starting_budget, name: project.name
       )
+      return unless ranked
+
+      breakdown = ranked[:breakdown]
       marketplace = project.marketplace?
       {
         kind: "project",
@@ -145,7 +182,11 @@ module Inventory
         matched_price: breakdown[:matched_price],
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped_project_ids.include?(project.id),
-        matched_on: MatchScore.matched_on(breakdown),
+        matched_on: MatchScore.matched_on(breakdown, nearby: ranked[:nearby]),
+        distance_m: ranked[:distance_m],
+        group: ranked[:group],
+        near_shortlist: ranked[:near_shortlist],
+        sort: ranked[:sort],
         floor: marketplace ? MARKETPLACE_FLOOR : OWN_FLOOR,
         configuration_names: project.project_typologies.filter_map { |row| row.typology&.name }
       }
@@ -159,7 +200,16 @@ module Inventory
           key: ConfigurationKey.call(property.typology&.name)
         )
       ]
-      breakdown = MatchScore.for_offers(budget:, offers:, lead_keys:)
+      building = property.building
+      ranked = rank_listing(
+        locality_id: building&.locality_id,
+        lat: building&.lat, lng: building&.lng,
+        locality_lat: building&.locality&.lat, locality_lng: building&.locality&.lng,
+        offers:, name: property.title
+      )
+      return unless ranked
+
+      breakdown = ranked[:breakdown]
       shared = property.firm_id != Current.firm_id
       card = shared ? PropertyCard.for(property) : nil
       {
@@ -178,7 +228,11 @@ module Inventory
         matched_price: breakdown[:matched_price],
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped_property_ids.include?(property.id),
-        matched_on: MatchScore.matched_on(breakdown),
+        matched_on: MatchScore.matched_on(breakdown, nearby: ranked[:nearby]),
+        distance_m: ranked[:distance_m],
+        group: ranked[:group],
+        near_shortlist: ranked[:near_shortlist],
+        sort: ranked[:sort],
         floor: shared ? MARKETPLACE_FLOOR : OWN_FLOOR,
         configuration_names: [ property.typology&.name ]
       }
@@ -202,8 +256,32 @@ module Inventory
       value.to_s.downcase.gsub(/[^a-z0-9.]/, "")
     end
 
+    def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, fallback_price: nil)
+      decision = CandidateRank.decide(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:)
+      return unless decision
+
+      breakdown = MatchScore.for_offers(
+        budget:, offers:, lead_keys:, fallback_price:, location_points: decision.location_points
+      )
+      {
+        breakdown:,
+        nearby: decision.nearby,
+        distance_m: decision.distance_m,
+        group: decision.group,
+        near_shortlist: decision.near_shortlist,
+        sort: CandidateRank.sort_key(ranking: hooks.ranking?, decision:, score: breakdown[:score], name:)
+      }
+    end
+
+    def center_ids(pin, box)
+      Geo.center_locality_ids(
+        city_id: pin[:city_id], min_lat: box.min_lat, max_lat: box.max_lat,
+        min_lng: box.min_lng, max_lng: box.max_lng
+      )
+    end
+
     def publish(row)
-      row.except(:floor, :configuration_names)
+      row.except(:floor, :configuration_names, :sort)
     end
 
     def mapped_project_ids

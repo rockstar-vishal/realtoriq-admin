@@ -133,9 +133,12 @@ class Project < ApplicationRecord
     unscoped.where(firm_id: nil, source: "catalog", status: "active")
   end
 
-  # Marketplace browse order for one firm. Bands, then newest, then id:
-  # primary locality, the firm's other localities, the rest of those cities,
-  # then everywhere else. A project with a city and no locality matches the
+  # Marketplace browse order for one firm. Until nearby matching is on, bands
+  # are the primary locality, the firm's other localities, the rest of those
+  # cities, then everywhere else, newest first inside a band. Once it is on
+  # and a tagged locality has a center, neighbor localities sit between the
+  # tagged ones and the rest of the city, and each band is nearest to a
+  # tagged center first. A project with a city and no locality matches the
   # city band only — `locality_id =` does not match NULL.
   #
   # Chain this on an existing marketplace relation. A fresh Project query hits
@@ -147,22 +150,74 @@ class Project < ApplicationRecord
     next order(created_at: :desc, id: :desc) if primary_id.blank?
 
     extra_ids = firm.firm_localities.where.not(locality_id: primary_id).pluck(:locality_id)
-    city_ids = Locality.where(id: [ primary_id, *extra_ids ]).distinct.pluck(:city_id)
+    tagged_ids = [ primary_id, *extra_ids ]
+    city_ids = Locality.where(id: tagged_ids).distinct.pluck(:city_id)
+    nearby_on = NearbyMatching.enabled?
+    neighbor_ids = if nearby_on
+      LocalityNeighbor.where(locality_id: tagged_ids).where.not(neighbor_locality_id: tagged_ids).distinct.pluck(:neighbor_locality_id)
+    else
+      []
+    end
 
     whens = [ "WHEN projects.locality_id = :primary_id THEN 0" ]
     binds = { primary_id: }
+    band = 1
     if extra_ids.any?
-      whens << "WHEN projects.locality_id IN (:extra_ids) THEN 1"
+      whens << "WHEN projects.locality_id IN (:extra_ids) THEN #{band}"
       binds[:extra_ids] = extra_ids
+      band += 1
+    end
+    if neighbor_ids.any?
+      whens << "WHEN projects.locality_id IN (:neighbor_ids) THEN #{band}"
+      binds[:neighbor_ids] = neighbor_ids
+      band += 1
     end
     if city_ids.any?
-      whens << "WHEN projects.city_id IN (:city_ids) THEN 2"
+      whens << "WHEN projects.city_id IN (:city_ids) THEN #{band}"
       binds[:city_ids] = city_ids
+      band += 1
     end
 
-    rank = sanitize_sql_array([ "CASE #{whens.join(' ')} ELSE 3 END", binds ])
-    order(Arel.sql(rank), created_at: :desc, id: :desc)
+    rank = sanitize_sql_array([ "CASE #{whens.join(' ')} ELSE #{band} END", binds ])
+    centers = nearby_on ? Locality.where(id: tagged_ids).where.not(lat: nil, lng: nil).to_a : []
+    next order(Arel.sql(rank), created_at: :desc, id: :desc) if centers.empty?
+
+    distance = sanitize_sql_array([ "#{Project.distance_to_centers_sql(centers)} ASC NULLS LAST" ])
+    order(Arel.sql(rank), Arel.sql(distance), created_at: :desc, id: :desc)
   }
+
+  def self.distance_to_centers_sql(centers)
+    parts = centers.map { |center|
+      sanitize_sql_array(
+        [ Inventory::Geo.haversine_sql(usable_lat_sql, usable_lng_sql), { clat: center.lat.to_f, clng: center.lng.to_f } ]
+      )
+    }
+    "LEAST(#{parts.join(', ')})"
+  end
+
+  def self.usable_lat_sql
+    "CASE WHEN #{usable_pin_sql} THEN projects.lat ELSE (SELECT localities.lat FROM localities WHERE localities.id = projects.locality_id) END"
+  end
+
+  def self.usable_lng_sql
+    "CASE WHEN #{usable_pin_sql} THEN projects.lng ELSE (SELECT localities.lng FROM localities WHERE localities.id = projects.locality_id) END"
+  end
+
+  # A pin inside Maharashtra and within about 20 km of its locality center.
+  # Degree checks stand in for the haversine so the ORDER BY stays one expression.
+  def self.usable_pin_sql
+    <<~SQL.squish
+      projects.lat BETWEEN #{Inventory::Geo::LAT_RANGE.begin} AND #{Inventory::Geo::LAT_RANGE.end}
+      AND projects.lng BETWEEN #{Inventory::Geo::LNG_RANGE.begin} AND #{Inventory::Geo::LNG_RANGE.end}
+      AND (
+        (SELECT localities.lat FROM localities WHERE localities.id = projects.locality_id) IS NULL
+        OR (
+          abs(projects.lat - (SELECT localities.lat FROM localities WHERE localities.id = projects.locality_id)) <= 0.2
+          AND abs(projects.lng - (SELECT localities.lng FROM localities WHERE localities.id = projects.locality_id)) <= 0.25
+        )
+      )
+    SQL
+  end
 
   # FirmScoped#across_firms only drops the firm_id clause. The guard scope
   # above is `none` when no tenant is set, and that would make every

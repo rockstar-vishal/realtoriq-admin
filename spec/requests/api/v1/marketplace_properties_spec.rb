@@ -129,7 +129,9 @@ RSpec.describe "Shared property marketplace" do
       "code" => lead.code,
       "localities" => [ "Worli" ],
       "configurations" => [ "2 BHK" ],
-      "marketplace" => true
+      "marketplace" => true,
+      "distance_m" => nil,
+      "group" => "locality"
     )
     expect(response.parsed_body["matches"].map { |match| match["name"] }).not_to include("Secret Client")
     expect(response.body).not_to include("Secret Client")

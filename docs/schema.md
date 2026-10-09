@@ -87,11 +87,21 @@ console session.
 ### Global masters
 
 `cities` (with `state_code` — `MH`, not a truncation of "Maharashtra"),
-`localities`, `builders`, `typologies` (decimal `bedrooms` for 2.5 BHK),
+`localities` (`lat` / `lng` decimal(10,7), both or neither, and only inside
+Maharashtra — the center used for nearby matching; blank until geocoded or
+edited in Admin → Masters), `builders`, `typologies` (decimal `bedrooms` for 2.5 BHK),
 `lead_sources`, `lead_statuses` (`is_dead` / `is_booked` are what make the
 reports writable without hardcoding names in SQL), `property_types`.
 
 **Buildings are deliberately not here** — see Phase 2.
+
+`locality_neighbors` stores both directions of a same-city pair whose centers
+are within 6 km (`distance_m`). It is rebuilt when a center is saved. Matching
+reads it instead of measuring the city on each request. `nearby_matchings` has
+no `firm_id`. One row means nearby matching is on for every firm. The table
+stays empty until `bin/rails matches:nearby_enable`, which rebuilds pairs,
+rewrites digests, and sets the notified fingerprint so that switch does not
+ping anyone. Neither table is firm-scoped.
 
 ### Facebook Lead Ads
 
@@ -300,7 +310,9 @@ night scan found something new and the morning ping has not been sent.
 reaches the capped list does not notify. A lead lists inventory, and a
 project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
-project or another firm's shared property. An unqualified lead is left out in
+project or another firm's shared property. Once nearby matching is on, a
+neighbor locality within 6 km, or a listing within 6 km of a tagged pin, can
+also match. The named locality or the pin circle fills the 50 first. An unqualified lead is left out in
 both directions, including another firm's marketplace lead code. Dead leads
 stay in that list. Booked leads are left out of the live match call and of
 this list. A firm whose subscription has

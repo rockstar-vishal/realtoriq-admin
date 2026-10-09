@@ -5,6 +5,7 @@ module Inventory
   # Price tiers do not stack. A price at or under the budget is the top tier.
   class MatchScore
     LOCATION_POINTS = 30
+    NEARBY_POINTS = 20
     CONFIG_POINTS = 20
     Offer = Struct.new(:price, :name, :key, keyword_init: true)
 
@@ -22,7 +23,7 @@ module Inventory
 
     # offers: priced and unpriced configurations. fallback_price is a project's
     # starting_budget, used only when no configuration has a price.
-    def self.for_offers(budget:, offers:, lead_keys:, fallback_price: nil)
+    def self.for_offers(budget:, offers:, lead_keys:, fallback_price: nil, location_points: LOCATION_POINTS)
       keys = Array(lead_keys).compact_blank
       list = Array(offers)
       matched = list.select { |offer| offer.key.present? && keys.include?(offer.key) }
@@ -38,12 +39,13 @@ module Inventory
       configuration_name = if matched.any?
         (priced_matched.any? ? chosen&.name : matched.first&.name)
       end
+      location = location_points.to_i
 
       {
-        location: LOCATION_POINTS,
+        location:,
         price: price_part,
         configuration: configuration,
-        score: LOCATION_POINTS + price_part + configuration,
+        score: location + price_part + configuration,
         matched_price: chosen&.price,
         matched_configuration: configuration_name
       }
@@ -70,8 +72,8 @@ module Inventory
       Offer.new(price: price.to_i, name: nil, key: nil)
     end
 
-    def self.matched_on(breakdown)
-      reasons = [ "locality" ]
+    def self.matched_on(breakdown, nearby: false)
+      reasons = [ nearby ? "nearby" : "locality" ]
       reasons << "price" if breakdown[:price].positive?
       reasons << "configuration" if breakdown[:configuration].positive?
       reasons

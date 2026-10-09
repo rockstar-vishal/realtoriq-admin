@@ -88,7 +88,12 @@ RSpec.describe "API v1 lead mappings" do
       post "/api/v1/leads/#{lead.id}/matches", headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body).to eq("matches" => [], "truncated" => false)
+      expect(response.parsed_body).to eq(
+        "matches" => [],
+        "truncated" => false,
+        "interest_localities" => [],
+        "neighbor_localities" => []
+      )
     end
 
     it "is 404 for a lead the agent cannot see" do
