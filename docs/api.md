@@ -745,14 +745,43 @@ price fields on `projects[]` and `properties[]`.
 | `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. An unqualified lead, a booked lead, or a lead with no locality, returns `[]`. A dead lead still matches. Does not copy anything into My Projects |
 | `GET /match_digest` | The firm's latest curated list. Super admin only — anyone else is 404. `match_digest` is `null` before the first scan |
 
-**`POST /leads/:id/matches`** lists unmapped rows, highest score first. Optional
-`q` searches the full set (name, builder or firm, locality, city, configuration;
-spaces and case ignored, so `2bhk` finds `2 BHK`) and returns every hit.
-Without `q`, the body is the top 50 and `truncated` is true when more unmapped
-matches exist. A row is listed only when at least one preferred locality
-overlaps and the score clears its floor. Own projects and own properties need
-a score above 30. Catalog projects and another firm's shared properties need a
-score above 50. Locality alone is 30 and is left out.
+**`POST /leads/:id/matches`** lists unmapped rows. Optional `q` searches the
+full set (name, builder or firm, locality, city, configuration; spaces and
+case ignored, so `2bhk` finds `2 BHK`) and returns every hit, with no cap.
+Without `q`, the body is the first 50. The first group fills those slots.
+`truncated` is true when more unmapped matches exist, including a later group
+that did not fit. Search returns those.
+
+Until nearby matching is turned on, a row is listed only when a preferred
+locality overlaps, highest score first. After `bin/rails matches:nearby_enable`,
+groups are fixed. A higher score does not move a row into an earlier group:
+
+1. When the lead has a mapped project or property with a usable pin, listings
+   within 6 km of the nearest such pin, in any locality. Several tags use the
+   nearest pin. A mapped project with no usable pin uses its locality center
+   for this circle. The mapped row itself is not a result. A site visit does
+   not add a pin.
+2. Preferred localities, as one block. Inside it: price and configuration,
+   then distance from the locality center, then name.
+3. Whole neighbor localities whose centers are within 6 km, nearest center
+   first. A listing anywhere in that locality is included. This is one hop.
+   A locality whose center is further than 6 km is left out, and price cannot
+   carry it in. Neighbors are only added when the first groups have not
+   already filled the 50.
+
+A pin outside Maharashtra, or more than 20 km from its own locality center,
+is ignored and the center is used instead. The saved pin is left as entered.
+A withdrawn project mapping is not a pin. Removing a property mapping removes
+its pin. Another firm's private inventory never enters the pin box. Own stock,
+catalog projects, and shared listings do.
+
+Own projects and own properties need a score above 30. Catalog projects and
+another firm's shared properties need a score above 50. A preferred locality
+is 30 points (`matched_on` includes `locality`). A neighbor, or a listing that
+is only inside the 6 km pin circle, is 20 (`matched_on` includes `nearby`).
+Catalog nearby still needs a configuration and a price that scores, because
+20 + 30 is not above 50. Own nearby clears the floor with a configuration
+(40) or a price within 15% (50). Locality points alone are left out.
 
 A rent lead sees available rental properties only. A ready-possession sale lead
 sees available sale properties plus active projects whose possession month is
@@ -769,7 +798,8 @@ The score is 100 points and is not stored:
 
 | Points | When |
 | --- | --- |
-| 30 | A preferred locality overlaps. Every listed row has this |
+| 30 | A preferred locality. `group` is `locality` |
+| 20 | Not a preferred locality, and either within 6 km of a tagged pin or in a neighbor locality. `group` is `nearby` |
 | 50 | The chosen price is at or under the budget plus 2% |
 | 30 | That band was missed, and the price is at or under the budget plus 15% |
 | 20 | Both of those were missed, and the price is at or under the budget plus 25% |
@@ -795,16 +825,25 @@ in the name.
     "score": 100,
     "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
-    "mapped": false, "matched_on": ["locality", "price", "configuration"] }
-], "truncated": false }
+    "mapped": false, "matched_on": ["locality", "price", "configuration"],
+    "distance_m": 800, "group": "locality", "near_shortlist": false }
+], "truncated": false,
+  "interest_localities": [{ "id": "…", "name": "Kolshet" }],
+  "neighbor_localities": [{ "id": "…", "name": "Balkum", "distance_m": 3200 }] }
 ```
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
 title), `price`, and `listing_for` instead of `source` and `starting_budget`.
-`matched_on` lists the dimensions that scored: `locality` always, then `price`
-and `configuration` when those points are above 0. Rows already mapped to the
-lead are omitted. A catalog mapping does not mark the booking copy, and the
-reverse is also separate.
+`matched_on` lists the dimensions that scored: `locality` or `nearby`, then
+`price` and `configuration` when those points are above 0. `group` is
+`locality` when the row's locality is one the lead named, otherwise `nearby`.
+A pin-circle row in a named locality stays `group: "locality"` and sets
+`near_shortlist` to true. `distance_m` is metres to the hook in use: the
+nearest tagged pin, or the locality center when there is no pin. It is null
+while nearby matching is off. `interest_localities` is what the lead named.
+`neighbor_localities` is empty until nearby matching is on. Rows already
+mapped to the lead are omitted. A catalog mapping does not mark the booking
+copy, and the reverse is also separate.
 
 ### `GET /match_digest`
 
@@ -1179,14 +1218,19 @@ re-fetching the list.
 
 **`sort=relevant` applies only to an unfiltered marketplace list**
 (`source=catalog`, no `q`, no drawer param). It orders that firm's projects in
-four bands, newest first inside each band, then `id`: the firm's primary
-locality, its other localities, the rest of the cities those localities belong
-to, then everywhere else. A project with a city and no locality sits in the
-city band. A firm with no primary locality gets newest first. The order is not
-explained to the broker. With `q`, `sort=relevant` is ignored and the list stays
-A–Z. With a drawer param it is ignored and the list stays newest first. On My
-Projects it is ignored and the list stays A–Z (or `sort=recent` when that was
-asked for).
+bands, then `id`. Until nearby matching is on, or until a tagged locality has
+a center, the bands are the firm's primary locality, its other localities, the
+rest of the cities those localities belong to, then everywhere else, newest
+first inside a band. Once nearby matching is on and a center exists, neighbor
+localities (centers within 6 km of a tagged locality, same city) sit between
+the tagged localities and the rest of the city. Inside a band the nearer
+project comes first, using a usable pin or else the locality center. A tagged
+locality stays ahead of a closer locality the firm did not tag. A project
+with a city and no locality sits in the city band. A firm with no primary
+locality gets newest first. The order is not explained to the broker. With
+`q`, `sort=relevant` is ignored and the list stays A–Z. With a drawer param
+it is ignored and the list stays newest first. On My Projects it is ignored
+and the list stays A–Z (or `sort=recent` when that was asked for).
 
 ### `GET /projects/search`
 
@@ -1333,9 +1377,12 @@ project, above 50 for a catalog project). An agent sees only leads assigned to
 them. A project outside the ready window matches under-construction leads. A
 project inside it matches both under-construction and ready-possession leads.
 Unqualified leads, booked leads, rent leads, and a project that is archived or has no locality
-return `[]`. A dead lead still matches, including when a live lead already has
-the same mobile. At most 50, highest score first. A high-scoring dead lead can
-sit above a live one.
+and no usable pin return `[]`. A dead lead still matches, including when a live lead already has
+the same mobile. At most 50. Until nearby matching is on, highest score first.
+After that, the same groups as inventory matching, seen from the listing: a
+buyer with a tagged pin within 6 km, then a buyer who named this locality,
+then a buyer who named a neighbor locality. A higher score does not jump a
+group. A high-scoring dead lead can sit above a live one inside the same group.
 
 ```json
 { "matches": [
@@ -1346,11 +1393,13 @@ sit above a live one.
     "score": 100,
     "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
-    "mapped": false, "matched_on": ["locality", "price", "configuration"] }
+    "mapped": false, "matched_on": ["locality", "price", "configuration"],
+    "distance_m": null, "group": "locality", "near_shortlist": false }
 ] }
 ```
 
-`mobile` is that lead's primary number, so the caller can open WhatsApp without
+`distance_m`, `group`, and `near_shortlist` are the same fields as
+`POST /leads/:id/matches`. `mobile` is that lead's primary number, so the caller can open WhatsApp without
 a second request. It is only present because the caller can already open the
 lead. `status` is that lead's pipeline stage, so a dead or booked card is
 visible before anyone shares it. `mapped` is true when this lead is already
@@ -1360,7 +1409,8 @@ linked to this project id.
 
 Own-firm leads use the same lead payload as the project endpoint, including
 `mobile` and `status`, at the above-30 floor. A sale listing matches ready-possession leads. A rental matches
-rent leads. The lead must prefer the building's locality. Booked and sold-out
+rent leads. The lead must prefer the building's locality, or, once nearby
+matching is on, a neighbor of it or a tagged pin within 6 km. Booked and sold-out
 listings return `[]`. An unqualified lead is left out. A booked lead is left out. A dead lead still matches.
 
 Another firm may call this for a listing that is still shared and available.
@@ -1371,17 +1421,20 @@ the owner.
 
 `marketplace_matches` is the other firms' leads that score above 50, and only
 the owning firm receives them. Each row is
-`{ firm_id, firm_name, code, localities, configurations, marketplace: true }`.
+`{ firm_id, firm_name, code, localities, configurations, marketplace: true, distance_m, group }`.
+`distance_m` and `group` follow the same nearby rules.
 `firm_id` is the other firm's id, the same id as in `marketplace_firms`.
 Match a phone number on that id. Firm names are not unique.
 `code` is that firm's own lead code, so the other broker can find the client.
 `localities` is the shared locality. `configurations` is that lead's
 typology names. There is no lead id, name, phone, budget, or score.
 An under-construction lead is not included on a sale listing. An unqualified
-lead is not included. A booked lead is not included. A dead lead still is. At most 50, highest score first,
-then firm name, then lead code. A high-scoring dead lead can sit above a live
-one. The score stays off the row. The list is empty when
-`listed_on_marketplace` is false.
+lead is not included. A booked lead is not included. A dead lead still is. At most 50.
+Until nearby matching is on, highest score first, then firm name, then lead code.
+After that, the pin, named-locality, and neighbor groups come first, and firm
+name then lead code break ties inside a group. A high-scoring dead lead can
+sit above a live one inside the same group. The score stays off the row. The
+list is empty when `listed_on_marketplace` is false.
 
 `marketplace_firms` is the other firms to contact, and only the owning firm
 receives them. Each row is `{ id, name, mobile, whatsapp }`. A firm is

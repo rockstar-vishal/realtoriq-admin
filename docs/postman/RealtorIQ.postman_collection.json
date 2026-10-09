@@ -1839,7 +1839,7 @@
                 "matches"
               ]
             },
-            "description": "Unmapped inventory that shares a preferred locality and clears the score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. Optional JSON body { q } searches the full set and returns every hit. Without q, the top 50 are returned and truncated is true when more exist. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches."
+            "description": "Unmapped inventory for this lead. Until nearby matching is on, a preferred locality must overlap. After that, the first group fills the 50: listings within 6 km of a tagged pin, then preferred localities, then neighbor localities whose centers are within 6 km. A higher score does not jump a group. Optional JSON body { q } searches the full set and returns every hit with no cap. Without q, truncated is true when more matches exist. Each row has distance_m, group (locality or nearby), and near_shortlist. The body also has interest_localities and neighbor_localities. Score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. A preferred locality is 30 points. Nearby is 20. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches."
           },
           "event": [
             {

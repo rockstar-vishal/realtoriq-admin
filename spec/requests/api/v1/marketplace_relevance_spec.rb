@@ -55,6 +55,49 @@ RSpec.describe "Marketplace relevance" do
     )
   end
 
+  it "keeps newest first inside a band when nearby matching is off, even if centers exist" do
+    primary.update!(lat: 19.05, lng: 73.07)
+    near = Inventory::Geo.offset(19.05, 73.07, north_m: 4_000)
+    catalog!("Near older", city:, locality: primary, created_at: 3.days.ago)
+    far = catalog!("Far newer", city:, locality: primary, created_at: Time.current)
+    far.update!(lat: near[0], lng: near[1])
+
+    expect(names(sort: "relevant")).to eq([ "Far newer", "Near older" ])
+  end
+
+  it "puts a geographic neighbor after tagged localities once nearby matching is on" do
+    NearbyMatching.enable!
+    primary.update!(lat: 19.05, lng: 73.07)
+    close = Inventory::Geo.offset(19.05, 73.07, north_m: 2_000)
+    far = Inventory::Geo.offset(19.05, 73.07, east_m: 12_000)
+    nearby.update!(lat: close[0], lng: close[1])
+    tagged.update!(lat: far[0], lng: far[1])
+
+    catalog!("Elsewhere", city: other_city, locality: pune_locality, created_at: Time.current)
+    catalog!("City only", city:, locality: nil, created_at: 12.hours.ago)
+    catalog!("Nearby", city:, locality: nearby, created_at: 1.day.ago)
+    catalog!("Tagged", city:, locality: tagged, created_at: 2.days.ago)
+    catalog!("Primary", city:, locality: primary, created_at: 3.days.ago)
+
+    expect(names(sort: "relevant")).to eq(
+      [ "Primary", "Tagged", "Nearby", "City only", "Elsewhere" ]
+    )
+  ensure
+    NearbyMatching.delete_all
+  end
+
+  it "orders a band by distance to the tagged center once nearby matching is on" do
+    NearbyMatching.enable!
+    primary.update!(lat: 19.05, lng: 73.07)
+    near = Inventory::Geo.offset(19.05, 73.07, north_m: 4_000)
+    catalog!("Near older", city:, locality: primary, created_at: 3.days.ago).update!(lat: 19.05, lng: 73.07)
+    catalog!("Far newer", city:, locality: primary, created_at: Time.current).update!(lat: near[0], lng: near[1])
+
+    expect(names(sort: "relevant")).to eq([ "Near older", "Far newer" ])
+  ensure
+    NearbyMatching.delete_all
+  end
+
   it "does not include the firm's own projects" do
     catalog!("Primary", city:, locality: primary, created_at: 2.days.ago)
     create(:project, firm:, name: "Mine", builder:, city:, locality: primary)
