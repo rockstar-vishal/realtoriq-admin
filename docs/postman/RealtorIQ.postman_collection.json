@@ -4814,7 +4814,7 @@
             "method": "GET",
             "header": [],
             "url": "{{api_base}}/trainings/{{training_id}}",
-            "description": "Adds intro_text, document_url, podcast_url, created_by_name and this broker's own note. instructions_text is null when ops left it blank — the client shows its default steps. File URLs are permanent, unlike booking documents."
+            "description": "Adds intro_text, document_url, podcast_url, created_by_name and this broker's own note. instructions_text is null when ops left it blank — the client shows its default steps. File URLs are permanent, unlike booking documents. document_url is streamed by this API (/rails/active_storage/blobs/proxy/…): the guide reader fetches it, and a redirect to object storage is missing Access-Control-Allow-Origin. banner_url and an uploaded podcast_url stay redirects."
           }
         },
         {

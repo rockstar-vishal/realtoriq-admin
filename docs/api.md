@@ -1898,6 +1898,10 @@ The list card:
   training is teaching material, not evidence, and a 20-minute audio element
   whose URL expires mid-listen is worse than the risk a forwarded link carries.
   An uploaded podcast wins over a pasted link.
+- `document_url` is streamed by this API (`/rails/active_storage/blobs/proxy/…`).
+  The guide reader fetches the file in the browser. A redirect to object storage
+  answers `200` without `Access-Control-Allow-Origin`, and the browser discards
+  it. `banner_url` and an uploaded `podcast_url` stay redirects.
 - `language` is `hinglish`, `en` or `mr`. One training per language: the English
   edition of a course is a separate row.
 

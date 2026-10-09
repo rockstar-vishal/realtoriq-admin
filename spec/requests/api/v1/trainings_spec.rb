@@ -84,6 +84,26 @@ RSpec.describe "API v1 trainings" do
   end
 
   describe "GET /api/v1/trainings/:id" do
+    # pdf.js fetches the guide. A redirect to storage answers 200 and omits
+    # Access-Control-Allow-Origin, so the browser throws the file away. The
+    # proxy URL stays on the API, which already allows the app origin.
+    it "streams the guide from the API" do
+      training = create(:training, :active)
+
+      get "/api/v1/trainings/#{training.id}", headers: auth_headers
+
+      url = response.parsed_body.dig("training", "document_url")
+      expect(url).to include("/rails/active_storage/blobs/proxy/")
+      expect(response.parsed_body.dig("training", "podcast_url")).to include("/rails/active_storage/blobs/redirect/")
+
+      get URI.parse(url).path, headers: { "Origin" => "http://localhost:3000" }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("application/pdf")
+      expect(response.body).to start_with("%PDF")
+      expect(response.headers["Access-Control-Allow-Origin"]).to eq("http://localhost:3000")
+    end
+
     it "returns what the detail screen needs" do
       admin = create(:admin_user, name: "Priya Ops")
       training = create(:training, :active, created_by_admin_user: admin,
