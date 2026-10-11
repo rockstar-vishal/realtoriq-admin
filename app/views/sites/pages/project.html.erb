@@ -1,0 +1,63 @@
+<% content_for :title, "#{@listing[:name]} · #{@firm.name}" %>
+<% content_for :head do %>
+  <meta property="og:title" content="<%= @listing[:name] %>">
+  <% if @listing[:photos]&.first %>
+    <meta property="og:image" content="<%= @listing[:photos].first %>">
+  <% end %>
+<% end %>
+
+<p class="back"><%= link_to @firm.name, "/" %></p>
+<%= render "sites/pages/brand" %>
+
+<article>
+  <h2 class="listing"><%= @listing[:name] %></h2>
+  <% if @listing[:photos].present? %>
+    <div class="gallery">
+      <% @listing[:photos].each do |url| %>
+        <%= image_tag url, alt: "" %>
+      <% end %>
+    </div>
+  <% end %>
+  <p>
+    <%= [ @listing[:builder_name], @listing[:locality], @listing[:city] ].compact_blank.join(" · ") %>
+  </p>
+  <p class="price">Starting <%= inr(@listing[:starting_budget]) %></p>
+  <% if @listing[:possession_display].present? %>
+    <p>Possession <%= @listing[:possession_display] %></p>
+  <% end %>
+  <% if @listing[:rera_number].present? %>
+    <p>Project RERA <%= @listing[:rera_number] %></p>
+  <% end %>
+  <% if @listing[:promo_text].present? %>
+    <p><%= @listing[:promo_text] %></p>
+  <% end %>
+  <% if @listing[:address].present? %>
+    <p><%= @listing[:address] %></p>
+  <% end %>
+  <% pin = maps_href(@listing[:lat], @listing[:lng]) %>
+  <% if pin %>
+    <p><%= link_to "Open in maps", pin, target: "_blank", rel: "noopener" %></p>
+  <% end %>
+  <% if @listing[:configurations].any? %>
+    <table>
+      <thead>
+        <tr><th>Configuration</th><th>Starting price</th><th>Carpet</th></tr>
+      </thead>
+      <tbody>
+        <% @listing[:configurations].each do |row| %>
+          <tr>
+            <td><%= row[:name] %></td>
+            <td><%= inr(row[:starting_price]) %></td>
+            <td><%= row[:starting_carpet_sqft] && "#{row[:starting_carpet_sqft]} sqft" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+  <% if @listing[:brochure_url] %>
+    <p><%= link_to "Brochure", @listing[:brochure_url] %></p>
+  <% end %>
+</article>
+
+<%= render "sites/pages/contact", compact: true %>
+<%= render "sites/pages/enquiry", listing_kind: "project", listing_slug: @listing[:slug] %>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= content_for(:title) || @firm.name %></title>
+    <meta name="description" content="<%= content_for(:description) || @firm.name %>">
+    <%= csrf_meta_tags %>
+    <%= yield :head %>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Georgia, "Times New Roman", serif; color: #1a1a1a; background: #faf7f2; }
+      a { color: inherit; }
+      .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+      header.site { display: flex; gap: 16px; align-items: center; margin-bottom: 28px; }
+      .mark { width: 64px; height: 64px; border-radius: 4px; background: #1a1a1a; color: #fff; display: grid; place-items: center; font-family: system-ui, sans-serif; font-weight: 700; letter-spacing: 0.04em; overflow: hidden; flex: none; }
+      .mark img { width: 100%; height: 100%; object-fit: cover; }
+      h1 { font-size: 2rem; line-height: 1.15; margin: 0; }
+      .rera { margin: 6px 0 0; font-family: system-ui, sans-serif; font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; color: #5c564e; }
+      .prose { font-size: 1.05rem; line-height: 1.6; white-space: pre-wrap; }
+      .card, .panel { background: #fff; border: 1px solid #e6e0d6; border-radius: 6px; padding: 16px; }
+      .grid { display: grid; gap: 16px; }
+      @media (min-width: 720px) { .grid.cards { grid-template-columns: 1fr 1fr; } }
+      .cover { width: 100%; height: 180px; object-fit: cover; background: #eee; border-radius: 4px; }
+      h2 { font-family: system-ui, sans-serif; font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; margin: 36px 0 12px; }
+      h2.listing { font-family: Georgia, "Times New Roman", serif; font-size: 1.7rem; letter-spacing: 0; text-transform: none; margin: 0 0 12px; }
+      .price { font-family: system-ui, sans-serif; font-weight: 650; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      .actions a, button.send { font-family: system-ui, sans-serif; text-decoration: none; background: #1a1a1a; color: #fff; border: 0; border-radius: 4px; padding: 10px 14px; font-size: 0.9rem; }
+      .actions a.quiet { background: #fff; color: #1a1a1a; border: 1px solid #1a1a1a; }
+      form.enquiry { display: grid; gap: 10px; margin-top: 12px; }
+      input, textarea { font: inherit; width: 100%; padding: 10px; border: 1px solid #d9d2c5; border-radius: 4px; background: #fff; }
+      .hp { position: absolute; left: -9999px; }
+      .note { font-family: system-ui, sans-serif; color: #0b6b3a; }
+      .error { font-family: system-ui, sans-serif; color: #8c1d1d; }
+      table { width: 100%; border-collapse: collapse; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+      th, td { text-align: left; padding: 8px 0; border-bottom: 1px solid #eee; }
+      .gallery { display: grid; gap: 8px; }
+      .gallery img { width: 100%; border-radius: 4px; }
+      .back { font-family: system-ui, sans-serif; font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <%= yield %>
+    </div>
+  </body>
+</html>

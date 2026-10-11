@@ -1,0 +1,26 @@
+<% contact = local_assigns[:purpose] == "contact" %>
+<section class="panel">
+  <h2><%= contact ? "Contact" : "Enquire" %></h2>
+  <% if enquiry_sent? %>
+    <p class="note"><%= contact ? "Thank you. We have your message." : "Thank you. We have your enquiry." %></p>
+  <% else %>
+    <% if @enquiry_error %>
+      <p class="error"><%= @enquiry_error %></p>
+    <% end %>
+    <%= form_with url: "/enquiries", method: :post, class: "enquiry" do %>
+      <%= hidden_field_tag :listing_kind, local_assigns[:listing_kind] %>
+      <%= hidden_field_tag :listing_slug, local_assigns[:listing_slug] %>
+      <label class="hp" for="company">Company</label>
+      <%= text_field_tag :company, nil, class: "hp", tabindex: -1, autocomplete: "off" %>
+      <%= text_field_tag :name, params[:name], placeholder: "Your name", maxlength: 80, required: true %>
+      <%= telephone_field_tag :mobile, params[:mobile], placeholder: "Mobile number", required: true %>
+      <%= text_area_tag :message, params[:message], placeholder: "Message", rows: 4, maxlength: 500, required: contact %>
+      <% site_key = Realtoriq::Credentials.recaptcha_site_key %>
+      <% if site_key.present? %>
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+        <div class="g-recaptcha" data-sitekey="<%= site_key %>"></div>
+      <% end %>
+      <button class="send" type="submit"><%= contact ? "Send message" : "Send enquiry" %></button>
+    <% end %>
+  <% end %>
+</section>

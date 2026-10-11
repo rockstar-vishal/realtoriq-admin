@@ -46,6 +46,9 @@ module Api
             photo_urls: photo_urls(project),
             brochure_url: brochure_url(project),
             brokerage_ladder_url: project.brokerage_ladder.attached? ? BlobUrl.call(project.brokerage_ladder) : nil,
+            on_website: project.on_website,
+            slug: project.slug,
+            website_url: website_url(project),
             external_ref: project.external_ref,
             rm_name: project.rm_name,
             rm_contact: project.rm_contact,
@@ -107,6 +110,13 @@ module Api
         def brochure_url(project)
           project.brochure_source_url.presence ||
             (project.brochure.attached? ? BlobUrl.call(project.brochure) : nil)
+        end
+
+        def website_url(project)
+          return nil unless project.on_website? && project.active? && project.from_own?
+          return nil unless project.firm&.website_public?
+
+          Sites::Host.public_url(project.firm, "/projects/#{project.slug}")
         end
 
         def typology(project_typology)

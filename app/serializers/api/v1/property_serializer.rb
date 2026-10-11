@@ -59,6 +59,9 @@ module Api
 
         def detail(property)
           list(property).merge(
+            on_website: property.on_website,
+            slug: property.slug,
+            website_url: website_url(property),
             description: property.description,
             # The only response that carries it. The design puts it behind a
             # reveal so it can't appear on a client's screen by accident.
@@ -146,6 +149,13 @@ module Api
         end
 
         def photo_urls(property) = photo_attachments(property).map { |a| BlobUrl.call(a) }
+
+        def website_url(property)
+          return nil unless property.on_website? && property.available?
+          return nil unless property.firm&.website_public?
+
+          Sites::Host.public_url(property.firm, "/properties/#{property.slug}")
+        end
       end
     end
   end

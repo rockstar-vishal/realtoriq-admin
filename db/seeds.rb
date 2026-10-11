@@ -90,7 +90,8 @@ end
   [ "Cold call", "outbound" ],
   [ "Telecalling", "outbound" ],
   [ "Builder Microsite", "other" ],
-  [ "Website", "other" ]
+  [ "Website", "other" ],
+  [ "Broker website", "other" ]
 ].each_with_index do |(name, category), index|
   LeadSource.find_or_create_by!(name:) { |s| s.category = category }.update!(sort_order: index)
 end

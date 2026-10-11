@@ -71,7 +71,13 @@ class Firm < ApplicationRecord
 
   validates :name, presence: true, length: { maximum: 160 }
   validates :slug, presence: true, uniqueness: { case_sensitive: false },
+    length: { maximum: 60 },
     format: { with: /\A[a-z0-9\-]+\z/, message: "may only contain lowercase letters, numbers and hyphens" }
+  validates :about, length: { maximum: 2_000 }, allow_blank: true
+  validates :website_phone, format: { with: /\A\+91[6-9]\d{9}\z/ }, allow_blank: true
+  validates :lat, numericality: { in: -90..90 }, allow_nil: true
+  validates :lng, numericality: { in: -180..180 }, allow_nil: true
+  validate :website_pin_is_a_pair
   validates :code, presence: true, uniqueness: { case_sensitive: false }
   validates :pincode, format: { with: /\A\d{6}\z/ }, allow_blank: true
   validates :pan, format: { with: /\A[A-Z]{5}\d{4}[A-Z]\z/, message: "is not a valid PAN" }, allow_blank: true
@@ -108,6 +114,15 @@ class Firm < ApplicationRecord
   def to_param = slug
 
   def display_name = name.presence || legal_name
+
+  # The public site. Inactive, suspended, and lapsed firms are the same 404.
+  def website_public?
+    active? && website_enabled? && current_subscription&.entitled?
+  end
+
+  def public_logo?
+    logo.attached? && logo.blob.content_type.in?(Sites::Catalog::RASTER)
+  end
 
   # How many devices one user may stay signed in on. Comes from the plan;
   # a firm with no live subscription still gets a floor so support can get in.
@@ -146,6 +161,7 @@ class Firm < ApplicationRecord
     return if slug.present?
 
     base = name.to_s.parameterize.presence || "firm"
+    base = base[0, 50].sub(/-\z/, "").presence || "firm"
     self.slug = uniquify(base) { |candidate| self.class.exists?(slug: candidate) }
   end
 
@@ -177,6 +193,12 @@ class Firm < ApplicationRecord
     end
 
     "#{base}-#{SecureRandom.alphanumeric(6).downcase}"
+  end
+
+  def website_pin_is_a_pair
+    return if lat.blank? == lng.blank?
+
+    errors.add(:lat, "and longitude are set together")
   end
 
   def logo_is_a_reasonable_image

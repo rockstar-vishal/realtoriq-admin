@@ -5,6 +5,7 @@ class Property < ApplicationRecord
   include FirmScoped
   include InventoryCode
   include PortalListingCodes
+  include Inventory::PublicSlug
   self.inventory_code_prefix = "H"
   self.inventory_code_index = "index_properties_on_code"
 
@@ -93,4 +94,8 @@ class Property < ApplicationRecord
   end
 
   def rental? = for_rent?
+
+  def public_slug_source
+    title.presence || building&.name
+  end
 end

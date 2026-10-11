@@ -19,6 +19,15 @@ module Realtoriq
       Rails.application.credentials.dig(:realtoriq, :inbound_token).to_s
     end
 
+    # reCAPTCHA v2. The site key is public. The secret stays here.
+    def recaptcha_site_key
+      Rails.application.credentials.dig(:realtoriq, :recaptcha_site_key).to_s
+    end
+
+    def recaptcha_secret
+      Rails.application.credentials.dig(:realtoriq, :recaptcha_secret).to_s
+    end
+
     # API host for visit passes. Falls back to the public microsite origin,
     # which is the same Rails app unless a separate host is configured.
     def turbo_api_origin
