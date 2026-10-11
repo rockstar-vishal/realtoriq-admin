@@ -6,6 +6,7 @@ class Project < ApplicationRecord
   include FirmScoped
   include InventoryCode
   include PortalListingCodes
+  include Inventory::PublicSlug
   self.inventory_code_prefix = "P"
   self.inventory_code_index = "index_projects_on_code"
 
@@ -224,6 +225,15 @@ class Project < ApplicationRecord
   # cross-firm read empty. Unscope both.
   def self.across_firms
     unscoped
+  end
+
+  def public_slug_source = name
+
+  def ready_for_website_sale?
+    label = possession_label.to_s
+    return true if label.match?(/ready/i)
+
+    label.blank? && possession_on.present? && possession_on <= Date.current
   end
 
   def marketplace?

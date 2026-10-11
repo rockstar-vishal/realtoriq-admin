@@ -1814,6 +1814,55 @@ a 5 MB `project_photo` ticket cannot be attached as a 2 MB `collection_proof`.
 
 ---
 
+## Brand website
+
+Super admin only. The public site is `https://cp-{firm-slug}.realtoriq.kgen.tech`.
+It is not a path on the app host. `website_enabled` starts true. Turning it
+off returns 404 for the whole host and does not change each listing's
+`on_website`.
+
+| | |
+| --- | --- |
+| `GET /firm/website` | |
+| `PATCH /firm/website` | |
+
+```json
+{
+  "about": "Family brokerage in Pune.",
+  "website_phone": "9820144210",
+  "website_enabled": true,
+  "address_line1": "12 MG Road",
+  "address_line2": null,
+  "city_id": "…",
+  "locality_id": "…",
+  "pincode": "411001",
+  "lat": 18.52,
+  "lng": 73.85,
+  "google_place_id": "ChIJ…",
+  "logo_signed_id": "…",
+  "remove_logo": false
+}
+```
+
+Unknown keys are ignored. `website_phone` is stored for the public Call and
+WhatsApp buttons only. It does not change `contact_channels`. Blank clears it.
+The logo is png, jpeg, or webp. SVG is rejected. `url` in the response is the
+public home when the site is actually up, otherwise null. `suggested_phone`
+is the firm's mobile channel when no website number is saved yet.
+`lat` and `lng` are sent together. One without the other is `422 invalid`,
+and the stored pin is left as it was. Sending both blank clears the pin.
+
+The public home form emails the broker and does not create a lead. The address
+is the firm's verified email channel, or the super admin's email when that
+channel is not verified. A project page or a property page is what creates a
+lead, mapped to that listing. The checkbox posts `g-recaptcha-response`.
+
+`PATCH /projects/:id` and `PATCH /properties/:id` accept `on_website`. Project
+edits stay super-admin only. The detail payload adds `on_website`, `slug`, and
+`website_url` (null unless that listing is on the public site right now).
+
+---
+
 ## Firm contact channels
 
 The **firm's** email, mobile and WhatsApp — one of each. Users have no channels
@@ -1878,7 +1927,7 @@ A notification looks like:
 ```
 
 `kind` is `followup_due`, `test`, `training_published`, `marketplace_enquiry`,
-`inbound_enquiry`, `facebook`, or `match_digest`. A match digest opens
+`inbound_enquiry`, `facebook`, `match_digest`, or `website_enquiry`. A match digest opens
 `/matches` (`data.page` is `matches`) and is sent only to the firm's super admin.
 Its title is `New matches are ready`. The body counts leads and listings and
 does not name a client.

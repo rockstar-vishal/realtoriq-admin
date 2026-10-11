@@ -264,6 +264,14 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`properties.confidential_note`** never appears in a list payload and never
   in the `shareable` subset. It is returned only by the property detail, where
   the design puts it behind a reveal.
+- **`projects.slug` / `properties.slug`** are public path segments, unique per
+  firm, assigned once from the name or title. Renaming does not change them.
+  Catalog rows have no slug. **`on_website`** defaults true. A public page also
+  requires an active own project or an available property, and a firm whose
+  **`website_enabled`** is true, status is active, and subscription is entitled.
+- **`firms.about`**, **`website_phone`**, **`lat` / `lng` / `google_place_id`**
+  are the Brand Website profile. The phone is not a contact channel. The pin
+  is both coordinates or neither.
 - Amenities (`has_pool`, `has_gym`) live on the **building**, not the listing —
   every flat in it shares the same pool.
 
@@ -377,7 +385,7 @@ control for it.
 
 ### Ancillary
 
-**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published`, `marketplace_enquiry` or `inbound_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user.
+**`notifications`** — firm-scoped inbox: `user_id`, `kind` (`followup_due`, `test`, `training_published`, `marketplace_enquiry`, `inbound_enquiry`, `facebook`, `match_digest`, or `website_enquiry`), `title`, `body`, `read_at`, `data`, `dedupe_key` unique per user. A website enquiry mints that key when the form is accepted, so a retry of the mail job does not add a second row.
 
 **`marketplace_enquiries`** — one row per microsite form submission (`enquiry_id` unique). A repeat of that id does not create another lead.
 

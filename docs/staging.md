@@ -99,7 +99,7 @@ Optional, with sensible defaults:
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `APP_HOST` | `http://localhost:3000` | Public origin. **Set this** — file URLs are absolute |
-| `ALLOWED_HOSTS` | unset (any) | Comma-separated, e.g. `staging.realtoriq.in` |
+| `ALLOWED_HOSTS` | unset (any) | Comma-separated. A leading dot allows one subdomain level, so `.realtoriq.kgen.tech` covers every `cp-{slug}.realtoriq.kgen.tech`. Listing only the staging hostname 403s the firm sites. `cp-{slug}.localhost` and `cp-{slug}.lvh.me` are firm hosts in development and test only |
 | `CORS_ORIGINS` | **`*`** on staging | Set in `config/application.yml` to close it down again |
 | `DATABASE_HOST` | unset | **Leave unset** for a local Postgres — see below |
 | `DATABASE_USERNAME` | unset | Only for a remote database |

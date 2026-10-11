@@ -1,0 +1,13 @@
+<header class="site">
+  <div class="mark">
+    <% if (logo = site_logo_url(@firm)) %>
+      <%= image_tag logo, alt: "" %>
+    <% else %>
+      <%= site_initials(@firm) %>
+    <% end %>
+  </div>
+  <div>
+    <h1><%= @firm.name %></h1>
+    <p class="rera">RERA <%= site_rera(@firm) %></p>
+  </div>
+</header>

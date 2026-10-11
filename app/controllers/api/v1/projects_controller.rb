@@ -347,7 +347,7 @@ module Api
         params.permit(
           :name, :builder_id, :city_id, :locality_id, :address, :lat, :lng,
           :google_place_id, :starting_budget, :possession_on, :possession_label,
-          :rera_number, :brokerage_percent, :promo_text, :promo_ends_on, :status
+          :rera_number, :brokerage_percent, :promo_text, :promo_ends_on, :status, :on_website
         )
       end
 

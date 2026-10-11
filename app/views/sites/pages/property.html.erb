@@ -1,0 +1,44 @@
+<% content_for :title, "#{@listing[:title]} · #{@firm.name}" %>
+<% content_for :head do %>
+  <meta property="og:title" content="<%= @listing[:title] %>">
+  <% if @listing[:photos]&.first %>
+    <meta property="og:image" content="<%= @listing[:photos].first %>">
+  <% end %>
+<% end %>
+
+<p class="back"><%= link_to @firm.name, "/" %></p>
+<%= render "sites/pages/brand" %>
+
+<article>
+  <h2 class="listing"><%= @listing[:title] %></h2>
+  <% if @listing[:photos].present? %>
+    <div class="gallery">
+      <% @listing[:photos].each do |url| %>
+        <%= image_tag url, alt: "" %>
+      <% end %>
+    </div>
+  <% end %>
+  <p class="price">
+    <%= inr(@listing[:price]) %>
+    <%= @listing[:listing_for] == "rent" ? "per month" : "for sale" %>
+  </p>
+  <p><%= [ @listing[:building_name], @listing[:locality], @listing[:city] ].compact_blank.join(" · ") %></p>
+  <% if @listing[:carpet_area_sqft] %>
+    <p><%= @listing[:carpet_area_sqft] %> sqft carpet</p>
+  <% end %>
+  <% if @listing[:floor_band].present? %>
+    <p>Floor <%= @listing[:floor_band] %></p>
+  <% end %>
+  <% amenities = [] %>
+  <% amenities << "Pool" if @listing[:has_pool] %>
+  <% amenities << "Gym" if @listing[:has_gym] %>
+  <% if amenities.any? %>
+    <p><%= amenities.join(" · ") %></p>
+  <% end %>
+  <% if @listing[:description].present? %>
+    <p class="prose"><%= @listing[:description] %></p>
+  <% end %>
+</article>
+
+<%= render "sites/pages/contact", compact: true %>
+<%= render "sites/pages/enquiry", listing_kind: "property", listing_slug: @listing[:slug] %>

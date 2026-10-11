@@ -1,0 +1,21 @@
+<% phone = site_phone(@firm) %>
+<% lines = local_assigns[:compact] ? [] : site_address_lines(@firm) %>
+<% pin = local_assigns[:compact] ? nil : maps_href(@firm.lat, @firm.lng) %>
+<% if phone || lines.any? || pin %>
+  <section class="panel">
+    <% if lines.any? %>
+      <% lines.each do |line| %>
+        <div><%= line %></div>
+      <% end %>
+    <% end %>
+    <div class="actions">
+      <% if phone %>
+        <%= link_to "Call", tel_href(phone) %>
+        <%= link_to "WhatsApp", whatsapp_href(phone), target: "_blank", rel: "noopener" %>
+      <% end %>
+      <% if pin %>
+        <%= link_to "Open in maps", pin, class: "quiet", target: "_blank", rel: "noopener" %>
+      <% end %>
+    </div>
+  </section>
+<% end %>

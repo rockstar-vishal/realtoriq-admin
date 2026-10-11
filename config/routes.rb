@@ -253,6 +253,7 @@ Rails.application.routes.draw do
       end
 
       scope :firm do
+        resource :website, only: %i[show update], controller: "firm_website"
         resources :contact_channels, only: %i[index] do
           member do
             post :request_code
@@ -261,6 +262,15 @@ Rails.application.routes.draw do
         end
       end
     end
+  end
+
+  constraints Sites::HostConstraint do
+    get "/", to: "sites/pages#home"
+    get "/projects/:slug", to: "sites/pages#project",
+      constraints: { slug: /[a-z0-9]+(?:-[a-z0-9]+)*/ }
+    get "/properties/:slug", to: "sites/pages#property",
+      constraints: { slug: /[a-z0-9]+(?:-[a-z0-9]+)*/ }
+    post "/enquiries", to: "sites/enquiries#create"
   end
 
   root to: redirect("/admin")

@@ -734,6 +734,38 @@
       ]
     },
     {
+      "name": "Brand website",
+      "description": "Super admin. The public site is https://cp-{firm-slug}.realtoriq.kgen.tech. website_enabled false takes the whole host down and leaves each listing's on_website flag as it is. website_phone does not change contact channels.",
+      "item": [
+        {
+          "name": "Show brand website",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/firm/website"
+          }
+        },
+        {
+          "name": "Update brand website",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"about\": \"Family brokerage in Pune.\",\n  \"website_phone\": \"9820144210\",\n  \"website_enabled\": true,\n  \"address_line1\": \"12 MG Road\",\n  \"pincode\": \"411001\"\n}"
+            },
+            "url": "{{api_base}}/firm/website",
+            "description": "Logo is a firm_logo signed_id, png jpeg or webp. SVG is rejected. Blank website_phone clears it. lat and lng are set together or both cleared."
+          }
+        }
+      ]
+    },
+    {
       "name": "Firm contact channels",
       "description": "The firm's email, mobile and WhatsApp — the three rows behind Settings → Contact channels.\n\nThese belong to the **firm**, not to individual users. A user's own mobile receives the login code, but that is authentication (proving possession at sign-in), not channel verification.\n\nAny user can read them; only the firm's `super_admin` can act on them.",
       "item": [
@@ -3187,7 +3219,7 @@
             "description": "Send only what changed. Omitting `typologies` leaves them alone; sending the key at all **replaces the whole set**, so a partial list silently drops the rest.\n\nPrice and area bands are derived from the typologies on read, never stored, so they move on their own once a typology changes.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Aurum Vista Phase 2 {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet West\",\n  \"lat\": 19.2201,\n  \"lng\": 72.976,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAB\",\n  \"starting_budget\": 15100000,\n  \"possession_on\": \"2028-03-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054322\",\n  \"brokerage_percent\": 2.75,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 15100000,\n      \"starting_carpet_sqft\": 760\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
+              "raw": "{\n  \"name\": \"Aurum Vista Phase 2 {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet West\",\n  \"lat\": 19.2201,\n  \"lng\": 72.976,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAB\",\n  \"starting_budget\": 15100000,\n  \"possession_on\": \"2028-03-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054322\",\n  \"brokerage_percent\": 2.75,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"on_website\": true,\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 15100000,\n      \"starting_carpet_sqft\": 760\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
             }
           },
           "event": [
@@ -3910,7 +3942,7 @@
             "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\"\n}"
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\",\n  \"on_website\": true\n}"
             }
           },
           "event": [

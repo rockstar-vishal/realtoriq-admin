@@ -201,7 +201,7 @@ module Api
       def property_params
         params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :available_from, :description,
-                      :confidential_note, :status, :listed_on_marketplace)
+                      :confidential_note, :status, :listed_on_marketplace, :on_website)
       end
 
       def portal_code_params

@@ -219,6 +219,8 @@ RSpec.describe "Environment guarantees" do
       filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
 
       expect(filter.filter("code" => "888888")["code"]).to eq("[FILTERED]")
+      expect(filter.filter("mobile" => "+919820144210")["mobile"]).to eq("[FILTERED]")
+      expect(filter.filter("g-recaptcha-response" => "tok")["g-recaptcha-response"]).to eq("[FILTERED]")
     end
   end
 

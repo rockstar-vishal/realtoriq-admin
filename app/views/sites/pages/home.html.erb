@@ -1,0 +1,54 @@
+<% content_for :title, @firm.name %>
+<% content_for :head do %>
+  <meta property="og:title" content="<%= @firm.name %>">
+  <meta property="og:type" content="website">
+<% end %>
+
+<%= render "sites/pages/brand" %>
+
+<% if @firm.about.present? %>
+  <p class="prose"><%= @firm.about %></p>
+<% end %>
+
+<%= render "sites/pages/contact" %>
+<%= render "sites/pages/enquiry", listing_kind: nil, listing_slug: nil, purpose: "contact" %>
+
+<h2>Projects</h2>
+<% if @projects.empty? %>
+  <p>No projects listed.</p>
+<% else %>
+  <div class="grid cards">
+    <% @projects.each do |project| %>
+      <a class="card" href="/projects/<%= project[:slug] %>">
+        <% if project[:cover_url] %>
+          <%= image_tag project[:cover_url], class: "cover", alt: "" %>
+        <% end %>
+        <h3><%= project[:name] %></h3>
+        <div><%= [ project[:builder_name], project[:locality], project[:city] ].compact_blank.join(" · ") %></div>
+        <div class="price">Starting <%= inr(project[:starting_budget]) %></div>
+        <div><%= project[:possession_display] %></div>
+      </a>
+    <% end %>
+  </div>
+<% end %>
+
+<h2>Properties</h2>
+<% if @properties.empty? %>
+  <p>No properties listed.</p>
+<% else %>
+  <div class="grid cards">
+    <% @properties.each do |property| %>
+      <a class="card" href="/properties/<%= property[:slug] %>">
+        <% if property[:cover_url] %>
+          <%= image_tag property[:cover_url], class: "cover", alt: "" %>
+        <% end %>
+        <h3><%= property[:title] %></h3>
+        <div><%= [ property[:building_name], property[:locality], property[:city] ].compact_blank.join(" · ") %></div>
+        <div class="price">
+          <%= inr(property[:price]) %>
+          <%= property[:listing_for] == "rent" ? " / month" : "" %>
+        </div>
+      </a>
+    <% end %>
+  </div>
+<% end %>
