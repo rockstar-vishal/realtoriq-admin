@@ -13,13 +13,11 @@ module Sites
     end
 
     def project
-      @listing = catalog.project(params[:slug])
-      missing if @listing.nil?
+      present("projects")
     end
 
     def property
-      @listing = catalog.property(params[:slug])
-      missing if @listing.nil?
+      present("properties")
     end
 
     private
@@ -34,6 +32,30 @@ module Sites
       # associations (a property's building) are invisible without it.
       # Nothing here reads a firm id from the request body.
       Current.firm = @firm
+    end
+
+    def present(kind)
+      listing = listing_for(kind)
+      return missing if listing.nil?
+
+      canonical = listing[:path]
+      unless request.path.casecmp?(canonical)
+        target = request.query_string.present? ? "#{canonical}?#{request.query_string}" : canonical
+        return redirect_to(target, status: :moved_permanently)
+      end
+
+      @listing = listing
+    end
+
+    # The code is the identity. A path that is only the older slug still resolves,
+    # then redirects to the code. A wrong or missing title does the same.
+    def listing_for(kind)
+      token = params[:code].to_s
+      if Host.code?(token)
+        kind == "projects" ? catalog.project_by_code(token) : catalog.property_by_code(token)
+      elsif params[:slug].blank?
+        kind == "projects" ? catalog.project(token) : catalog.property(token)
+      end
     end
 
     def catalog

@@ -154,7 +154,8 @@ module Api
           return nil unless property.on_website? && property.available?
           return nil unless property.firm&.website_public?
 
-          Sites::Host.public_url(property.firm, "/properties/#{property.slug}")
+          path = Sites::Host.listing_path("properties", property.code, property.title)
+          path && Sites::Host.public_url(property.firm, path)
         end
       end
     end

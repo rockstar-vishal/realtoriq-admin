@@ -28,9 +28,23 @@ module Sites
       rows.map { |property| property_card(property, covers[property.id]) }
     end
 
+    def project_by_code(code)
+      show_project(visible_project(code: code.to_s.upcase))
+    end
+
     def project(slug)
-      record = Project.unscoped.includes(:builder, :city, :locality, project_typologies: :typology)
-        .find_by(firm_id: firm.id, source: "own", status: "active", on_website: true, slug:)
+      show_project(visible_project(slug:))
+    end
+
+    def property_by_code(code)
+      show_property(visible_property(code: code.to_s.upcase))
+    end
+
+    def property(slug)
+      show_property(visible_property(slug:))
+    end
+
+    def show_project(record)
       return nil if record.nil?
 
       project_card(record, nil).merge(
@@ -45,9 +59,7 @@ module Sites
       )
     end
 
-    def property(slug)
-      record = Property.unscoped.includes(:typology, building: [ :city, :locality ])
-        .find_by(firm_id: firm.id, status: "available", on_website: true, slug:)
+    def show_property(record)
       return nil if record.nil?
 
       property_card(record, nil).merge(
@@ -64,9 +76,25 @@ module Sites
 
     attr_reader :firm
 
+    def visible_project(conditions)
+      return nil unless Host.code?(conditions[:code].to_s) || conditions[:slug].present?
+
+      Project.unscoped.includes(:builder, :city, :locality, project_typologies: :typology)
+        .find_by({ firm_id: firm.id, source: "own", status: "active", on_website: true }.merge(conditions))
+    end
+
+    def visible_property(conditions)
+      return nil unless Host.code?(conditions[:code].to_s) || conditions[:slug].present?
+
+      Property.unscoped.includes(:typology, building: [ :city, :locality ])
+        .find_by({ firm_id: firm.id, status: "available", on_website: true }.merge(conditions))
+    end
+
     def project_card(project, cover)
       {
         slug: project.slug,
+        code: project.code.to_s.downcase,
+        path: Host.listing_path("projects", project.code, project.name),
         name: project.name,
         builder_name: project.builder&.name,
         city: project.city&.name,
@@ -81,6 +109,8 @@ module Sites
     def property_card(property, cover)
       {
         slug: property.slug,
+        code: property.code.to_s.downcase,
+        path: Host.listing_path("properties", property.code, property.title),
         title: property.title,
         listing_for: property.listing_for,
         price: property.price,

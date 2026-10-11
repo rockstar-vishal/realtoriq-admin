@@ -62,5 +62,85 @@ module Sites
     def site_address_lines(firm)
       [ firm.address_line1, firm.address_line2, firm.locality&.name, firm.city&.name, firm.pincode ].compact_blank
     end
+
+    ABOUT_BULLET = /\A\s*(?:[-*]\s+|[•·▪◦►▸➤✓✔☑✅]\uFE0F?\s*|\d{1,2}[.)]\s+)/
+    ABOUT_STOP = /(?:[.!?](?=\s+["“‘(]?[[:upper:][:digit:]])|।(?=\s))/
+    ABOUT_ABBREVIATIONS = %w[pvt ltd co no nos dr mr mrs ms st rd opp approx etc sq ft vs].freeze
+    ABOUT_LEAD_MAX = 160
+    ABOUT_HEADING = /\A\s*about(?:\s+us)?\s*[:\-–]?\s*\z/i
+
+    # The firm's About text, shaped for the home page. A short first line or
+    # first sentence leads. The rest keeps the firm's own paragraphs, and lines
+    # that start with a bullet become a list. The template does the escaping.
+    # fold: :phone folds it on a phone only, :all on every screen.
+    def about_parts(text)
+      text = text.to_s.gsub(/\r\n?/, "\n").strip
+      # The page already says "About us"; a first line that only repeats it goes.
+      first, rest = text.split("\n", 2)
+      text = rest.to_s.strip if first.to_s.match?(ABOUT_HEADING)
+      return nil if text.empty?
+
+      lead, rest = about_lead(text)
+      blocks = rest.split(/\n[ \t]*\n+/).flat_map { |chunk| about_blocks(chunk) }
+      { lead:, blocks:, fold: about_fold(blocks) }
+    end
+
+    # Localities across the listings on show, the most listed first.
+    def site_areas(*groups)
+      names = groups.flatten.filter_map { |listing| listing[:locality].presence }
+      names.tally.each_with_index.sort_by { |(_, count), index| [ -count, index ] }.map { |(name, _), _| name }
+    end
+
+    private
+
+    def about_lead(text)
+      first, rest = text.split("\n", 2)
+      first = first.strip
+      return [ nil, text ] if first.match?(ABOUT_BULLET) || first.end_with?(":")
+      return [ first, rest.to_s.strip ] if first.length.between?(6, ABOUT_LEAD_MAX)
+
+      sentence = about_first_sentence(first)
+      return [ nil, text ] if sentence.nil?
+
+      [ sentence, [ first.delete_prefix(sentence).strip, rest.to_s ].join("\n").strip ]
+    end
+
+    def about_first_sentence(line)
+      offset = 0
+      while (match = line.match(ABOUT_STOP, offset))
+        stop = match.end(0)
+        return nil if stop > ABOUT_LEAD_MAX
+
+        word = line[0...match.begin(0)][/[[:alpha:]]+\z/].to_s.downcase
+        return line[0...stop] if stop >= 30 && word.length > 1 && !ABOUT_ABBREVIATIONS.include?(word)
+
+        offset = stop
+      end
+      nil
+    end
+
+    def about_blocks(chunk)
+      lines = chunk.lines(chomp: true).map(&:strip).reject(&:empty?)
+      lines.chunk_while { |a, b| a.match?(ABOUT_BULLET) == b.match?(ABOUT_BULLET) }.filter_map do |group|
+        if group.first.match?(ABOUT_BULLET)
+          items = group.map { |line| line.sub(ABOUT_BULLET, "").strip }.reject(&:empty?)
+          [ :list, items ] if items.any?
+        else
+          [ :text, group.join("\n") ]
+        end
+      end
+    end
+
+    # A rough count of phone lines; about 43 characters fit on one.
+    def about_fold(blocks)
+      size = blocks.sum do |kind, value|
+        kind == :list ? value.sum { |item| item.length + 40 } : value.length + (value.count("\n") * 40) + 60
+      end
+      if size > 1_100
+        :all
+      elsif size > 440
+        :phone
+      end
+    end
   end
 end

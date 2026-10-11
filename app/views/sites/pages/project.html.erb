@@ -5,59 +5,109 @@
     <meta property="og:image" content="<%= @listing[:photos].first %>">
   <% end %>
 <% end %>
+<% photos = Array(@listing[:photos]) %>
+<% pin = maps_href(@listing[:lat], @listing[:lng]) %>
 
-<p class="back"><%= link_to @firm.name, "/" %></p>
-<%= render "sites/pages/brand" %>
+<%= render "sites/pages/brand", compact: true %>
 
-<article>
-  <h2 class="listing"><%= @listing[:name] %></h2>
-  <% if @listing[:photos].present? %>
-    <div class="gallery">
-      <% @listing[:photos].each do |url| %>
-        <%= image_tag url, alt: "" %>
+<main>
+  <% if photos.any? %>
+    <div class="container gallery-wrap">
+      <div class="gallery<%= ' single' if photos.size == 1 %>">
+        <% photos.each_with_index do |url, index| %>
+          <a class="shot" href="<%= url %>" target="_blank" rel="noopener">
+            <%= image_tag url, alt: "#{@listing[:name]}, photo #{index + 1}", loading: (index.zero? ? "eager" : "lazy") %>
+          </a>
+        <% end %>
+      </div>
+      <% if photos.size > 1 %>
+        <p class="gallery-note"><%= photos.size %> photos. Tap one to see it full size.</p>
       <% end %>
     </div>
   <% end %>
-  <p>
-    <%= [ @listing[:builder_name], @listing[:locality], @listing[:city] ].compact_blank.join(" · ") %>
-  </p>
-  <p class="price">Starting <%= inr(@listing[:starting_budget]) %></p>
-  <% if @listing[:possession_display].present? %>
-    <p>Possession <%= @listing[:possession_display] %></p>
-  <% end %>
-  <% if @listing[:rera_number].present? %>
-    <p>Project RERA <%= @listing[:rera_number] %></p>
-  <% end %>
-  <% if @listing[:promo_text].present? %>
-    <p><%= @listing[:promo_text] %></p>
-  <% end %>
-  <% if @listing[:address].present? %>
-    <p><%= @listing[:address] %></p>
-  <% end %>
-  <% pin = maps_href(@listing[:lat], @listing[:lng]) %>
-  <% if pin %>
-    <p><%= link_to "Open in maps", pin, target: "_blank", rel: "noopener" %></p>
-  <% end %>
-  <% if @listing[:configurations].any? %>
-    <table>
-      <thead>
-        <tr><th>Configuration</th><th>Starting price</th><th>Carpet</th></tr>
-      </thead>
-      <tbody>
-        <% @listing[:configurations].each do |row| %>
-          <tr>
-            <td><%= row[:name] %></td>
-            <td><%= inr(row[:starting_price]) %></td>
-            <td><%= row[:starting_carpet_sqft] && "#{row[:starting_carpet_sqft]} sqft" %></td>
-          </tr>
-        <% end %>
-      </tbody>
-    </table>
-  <% end %>
-  <% if @listing[:brochure_url] %>
-    <p><%= link_to "Brochure", @listing[:brochure_url] %></p>
-  <% end %>
-</article>
 
-<%= render "sites/pages/contact", compact: true %>
-<%= render "sites/pages/enquiry", listing_kind: "project", listing_slug: @listing[:slug] %>
+  <div class="container detail">
+    <article class="detail-main">
+      <p class="eyebrow">Project</p>
+      <h1 class="listing-title"><%= @listing[:name] %></h1>
+      <% meta = [ @listing[:builder_name], @listing[:locality], @listing[:city] ].compact_blank %>
+      <% if meta.any? %>
+        <p class="listing-meta"><%= meta.join(" · ") %></p>
+      <% end %>
+      <% if @listing[:starting_budget] %>
+        <p class="listing-price"><span class="label">Starting</span> <%= inr(@listing[:starting_budget]) %></p>
+      <% end %>
+
+      <% if @listing[:possession_display].present? || @listing[:rera_number].present? %>
+        <dl class="facts">
+          <% if @listing[:possession_display].present? %>
+            <div class="fact"><dt>Possession</dt><dd><%= @listing[:possession_display] %></dd></div>
+          <% end %>
+          <% if @listing[:rera_number].present? %>
+            <div class="fact"><dt>Project RERA</dt><dd><%= @listing[:rera_number] %></dd></div>
+          <% end %>
+        </dl>
+      <% end %>
+
+      <% if @listing[:promo_text].present? %>
+        <p class="promo"><%= @listing[:promo_text] %></p>
+      <% end %>
+
+      <% if @listing[:configurations].any? %>
+        <section class="sub">
+          <h2>Configurations</h2>
+          <div class="configs-wrap">
+            <table class="configs">
+              <thead>
+                <tr><th scope="col">Configuration</th><th scope="col">Starting price</th><th scope="col">Carpet</th></tr>
+              </thead>
+              <tbody>
+                <% @listing[:configurations].each do |row| %>
+                  <tr>
+                    <td><%= row[:name] %></td>
+                    <td><%= inr(row[:starting_price]) || "—" %></td>
+                    <td><%= row[:starting_carpet_sqft] ? "#{row[:starting_carpet_sqft]} sqft" : "—" %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      <% end %>
+
+      <% if @listing[:address].present? || pin %>
+        <section class="sub">
+          <h2>Location</h2>
+          <div class="place">
+            <% if @listing[:address].present? %>
+              <p><%= @listing[:address] %></p>
+            <% end %>
+            <% if pin %>
+              <a class="btn btn-quiet" href="<%= pin %>" target="_blank" rel="noopener">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                Open in maps
+              </a>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <% if @listing[:brochure_url] %>
+        <section class="sub">
+          <a class="btn btn-quiet" href="<%= @listing[:brochure_url] %>" target="_blank" rel="noopener">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Brochure
+          </a>
+        </section>
+      <% end %>
+    </article>
+
+    <aside class="detail-side">
+      <% if @listing[:starting_budget] %>
+        <p class="side-price"><span class="label">Starting</span> <%= inr(@listing[:starting_budget]) %></p>
+      <% end %>
+      <%= render "sites/pages/contact", compact: true %>
+      <%= render "sites/pages/enquiry", listing_kind: "project", listing_code: @listing[:code], heading: "Enquire about #{@listing[:name]}" %>
+    </aside>
+  </div>
+</main>

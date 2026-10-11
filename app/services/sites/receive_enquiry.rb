@@ -14,13 +14,13 @@ module Sites
       new(...).call
     end
 
-    def initialize(firm:, name:, mobile:, message:, listing_kind:, listing_slug:)
+    def initialize(firm:, name:, mobile:, message:, listing_kind:, listing_code:)
       @firm = firm
       @name = clip(name, NAME_MAX).tr("\r\n", " ").strip
       @mobile = mobile
       @message = clip(message, MESSAGE_MAX).strip
       @listing_kind = listing_kind.to_s
-      @listing_slug = listing_slug.to_s
+      @listing_code = listing_code.to_s.upcase
     end
 
     def call
@@ -42,7 +42,7 @@ module Sites
 
     private
 
-    attr_reader :firm, :name, :mobile, :message, :listing_kind, :listing_slug
+    attr_reader :firm, :name, :mobile, :message, :listing_kind, :listing_code
 
     def deliver(phone, owner, listing)
       type = listing.is_a?(Property) && listing.for_rent? ? "rent" : "sale"
@@ -95,14 +95,16 @@ module Sites
     end
 
     def find_listing
+      return nil unless Host.code?(listing_code)
+
       case listing_kind
       when "project"
         Project.unscoped.find_by(
-          firm_id: firm.id, source: "own", status: "active", on_website: true, slug: listing_slug
+          firm_id: firm.id, source: "own", status: "active", on_website: true, code: listing_code
         )
       when "property"
         Property.unscoped.find_by(
-          firm_id: firm.id, status: "available", on_website: true, slug: listing_slug
+          firm_id: firm.id, status: "available", on_website: true, code: listing_code
         )
       end
     end

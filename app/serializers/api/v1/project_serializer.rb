@@ -116,7 +116,8 @@ module Api
           return nil unless project.on_website? && project.active? && project.from_own?
           return nil unless project.firm&.website_public?
 
-          Sites::Host.public_url(project.firm, "/projects/#{project.slug}")
+          path = Sites::Host.listing_path("projects", project.code, project.name)
+          path && Sites::Host.public_url(project.firm, path)
         end
 
         def typology(project_typology)

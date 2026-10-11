@@ -44,6 +44,17 @@ RSpec.describe "Firm website" do
     post "/enquiries", params: { "g-recaptcha-response" => "pass" }.merge(extra), headers: { "HOST" => host }
   end
 
+  def public_project_path(record = project)
+    Sites::Host.listing_path("projects", record.code, record.name)
+  end
+
+  def public_property_path(record)
+    Current.firm = record.firm
+    Sites::Host.listing_path("properties", record.code, record.title)
+  ensure
+    Current.firm = nil
+  end
+
   it "does not use the modern-browser filter or a parent cookie domain" do
     expect(Sites::PagesController.ancestors).not_to include(ApplicationController)
     expect(Rails.application.config.session_options[:domain]).to be_nil
@@ -57,6 +68,7 @@ RSpec.describe "Firm website" do
     expect(response.body).to include("Send message")
     expect(response.body).to include("Not Available")
     expect(response.body).to include("A family brokerage.")
+    expect(response.body.index('id="about"')).to be < response.body.index('id="projects"')
     expect(response.body).to include("12 MG Road")
     expect(response.body).to include("tel:+919820144210")
     expect(response.body).to include("https://wa.me/919820144210")
@@ -74,9 +86,26 @@ RSpec.describe "Firm website" do
     expect(response.body).to include("A52100000001")
     expect(response.body).not_to include("P52100099999")
 
-    get "/projects/#{project.slug}", headers: { "HOST" => host }
+    get public_project_path, headers: { "HOST" => host }
     expect(response.body).to include("P52100099999")
     expect(response.body).to include("A52100000001")
+  end
+
+  it "keeps a short code, a wrong title, and the older slug working" do
+    get "/projects/#{project.code.downcase}", headers: { "HOST" => host }
+    expect(response).to redirect_to(public_project_path)
+
+    get "#{public_project_path.sub(%r{/[^/]+\z}, '')}/old-title", headers: { "HOST" => host }
+    expect(response).to redirect_to(public_project_path)
+
+    get "/projects/#{project.slug}", headers: { "HOST" => host }
+    expect(response).to redirect_to(public_project_path)
+
+    get "/properties/#{sale.code.downcase}", headers: { "HOST" => host }
+    expect(response).to redirect_to(public_property_path(sale))
+
+    get "/properties/#{sale.slug}", headers: { "HOST" => host }
+    expect(response).to redirect_to(public_property_path(sale))
   end
 
   it "does not serve another firm's listing, a hidden listing, or the CRM" do
@@ -90,7 +119,7 @@ RSpec.describe "Firm website" do
     expect(response).to have_http_status(:not_found)
     expect(response.body).to eq("Not found")
 
-    get "/projects/#{project.slug}", headers: { "HOST" => host }
+    get public_project_path, headers: { "HOST" => host }
     expect(response).to have_http_status(:not_found)
 
     visit_home
@@ -138,16 +167,16 @@ RSpec.describe "Firm website" do
     expect(response.body).not_to include("image/svg")
     expect(response.body).not_to include("src=\"http://#{host}")
     expect(response.body).not_to include("src=\"https://#{host}")
-    expect(response.body).to include("/projects/#{project.slug}")
+    expect(response.body).to include(public_project_path)
   end
 
   it "creates a sale lead from a project and a rent lead from a rental" do
     post_enquiry(
       name: "Rhea Kapoor", mobile: "9820144210", message: "Is this available?",
-      listing_kind: "project", listing_slug: project.slug
+      listing_kind: "project", listing_code: project.code
     )
 
-    expect(response).to redirect_to("/projects/#{project.slug}?sent=1")
+    expect(response).to redirect_to("#{public_project_path}?sent=1")
     lead = Lead.unscoped.find_by!(firm_id: firm.id, mobile: "+919820144210")
     expect(lead.transaction_type).to eq("sale")
     expect(lead.property_type.name).to eq("Under construction")
@@ -155,7 +184,7 @@ RSpec.describe "Firm website" do
     expect(lead.lead_projects.map(&:project_id)).to eq([ project.id ])
 
     post_enquiry(
-      name: "Rhea Kapoor", mobile: "9820144211", listing_kind: "property", listing_slug: rental.slug
+      name: "Rhea Kapoor", mobile: "9820144211", listing_kind: "property", listing_code: rental.code
     )
 
     rent_lead = Lead.unscoped.find_by!(firm_id: firm.id, mobile: "+919820144211")
@@ -166,13 +195,13 @@ RSpec.describe "Firm website" do
 
   it "thanks the buyer again when the mobile is already a live lead" do
     post_enquiry(
-      name: "Rhea Kapoor", mobile: "9820144210", listing_kind: "project", listing_slug: project.slug
+      name: "Rhea Kapoor", mobile: "9820144210", listing_kind: "project", listing_code: project.code
     )
     post_enquiry(
-      name: "Rhea Kapoor", mobile: "9820144210", listing_kind: "project", listing_slug: project.slug
+      name: "Rhea Kapoor", mobile: "9820144210", listing_kind: "project", listing_code: project.code
     )
 
-    expect(response).to redirect_to("/projects/#{project.slug}?sent=1")
+    expect(response).to redirect_to("#{public_project_path}?sent=1")
     expect(Lead.unscoped.where(firm_id: firm.id, mobile: "+919820144210").count).to eq(1)
     expect(response.body).not_to include("already")
   end
@@ -219,7 +248,7 @@ RSpec.describe "Firm website" do
   it "does not create a lead for a listing that is not on the site" do
     post_enquiry(
       name: "Rhea Kapoor", mobile: "9820144216", message: "Hello",
-      listing_kind: "project", listing_slug: "not-a-real-listing"
+      listing_kind: "project", listing_code: "not-a-real-listing"
     )
 
     expect(response).to have_http_status(:not_found)
@@ -255,7 +284,7 @@ RSpec.describe "Firm website" do
     perform_enqueued_jobs do
       post_enquiry(
         name: "Rhea Kapoor", mobile: "9820144210", message: "Is this available?",
-        listing_kind: "project", listing_slug: project.slug
+        listing_kind: "project", listing_code: project.code
       )
     end
 

@@ -1860,6 +1860,10 @@ lead, mapped to that listing. The checkbox posts `g-recaptcha-response`.
 `PATCH /projects/:id` and `PATCH /properties/:id` accept `on_website`. Project
 edits stay super-admin only. The detail payload adds `on_website`, `slug`, and
 `website_url` (null unless that listing is on the public site right now).
+`website_url` is `https://cp-{firm slug}.realtoriq.kgen.tech/projects/{code}/{name}`
+for a project and `/properties/{code}/{title}` for a property. The code is that
+listing's own code. The words are the current name, so a rename changes the
+words and the code keeps the old link working.
 
 ---
 
