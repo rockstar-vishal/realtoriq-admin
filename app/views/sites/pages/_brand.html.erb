@@ -1,13 +1,21 @@
-<header class="site">
-  <div class="mark">
-    <% if (logo = site_logo_url(@firm)) %>
-      <%= image_tag logo, alt: "" %>
-    <% else %>
-      <%= site_initials(@firm) %>
-    <% end %>
-  </div>
-  <div>
-    <h1><%= @firm.name %></h1>
-    <p class="rera">RERA <%= site_rera(@firm) %></p>
+<% logo = site_logo_url(@firm) %>
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a class="back" href="/" aria-label="All listings from <%= @firm.name %>">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <a class="brand" href="/">
+      <span class="mark mark-sm">
+        <% if logo %>
+          <%= image_tag logo, alt: "" %>
+        <% else %>
+          <%= site_initials(@firm) %>
+        <% end %>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name"><%= @firm.name %></span>
+        <span class="brand-rera">RERA <%= site_rera(@firm) %></span>
+      </span>
+    </a>
   </div>
 </header>

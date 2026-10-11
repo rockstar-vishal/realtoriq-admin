@@ -6,7 +6,10 @@ module Sites
   module Host
     SUFFIX = "realtoriq.kgen.tech"
     LABEL = /[a-z0-9]+(?:-[a-z0-9]+)*/
-    LISTING_PATH = %r{\A/(projects|properties)/#{LABEL.source}\z}
+    # The listing's own code, lowercased in the path. H- for a property, P- for a project.
+    CODE = /[hp]-[a-hj-np-z2-9]{6}/i
+    # /projects/p-k3m9qx, /projects/p-k3m9qx/palm-court, and the older /projects/palm-court.
+    LISTING_PATH = %r{\A/(projects|properties)/#{LABEL.source}(?:/#{LABEL.source})?\z}i
 
     module_function
 
@@ -31,6 +34,21 @@ module Sites
       return true if path == "/enquiries" && request.post?
 
       request.get? && path.match?(LISTING_PATH)
+    end
+
+    def code?(value)
+      value.to_s.match?(/\A#{CODE.source}\z/i)
+    end
+
+    # Words are for a person reading the link. The code is what identifies the listing.
+    def listing_path(kind, code, text)
+      token = code.to_s.downcase
+      return nil unless code?(token)
+      return nil unless %w[projects properties].include?(kind)
+
+      readable = text.to_s.parameterize.presence
+      path = "/#{kind}/#{token}"
+      readable ? "#{path}/#{readable}" : path
     end
 
     def public_url(firm, path = "/")

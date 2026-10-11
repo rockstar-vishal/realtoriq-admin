@@ -1,26 +1,38 @@
 <% contact = local_assigns[:purpose] == "contact" %>
-<section class="panel">
-  <h2><%= contact ? "Contact" : "Enquire" %></h2>
+<section class="panel" id="enquire">
+  <h2><%= local_assigns[:heading].presence || (contact ? "Send a message" : "Enquire") %></h2>
   <% if enquiry_sent? %>
-    <p class="note"><%= contact ? "Thank you. We have your message." : "Thank you. We have your enquiry." %></p>
+    <p class="note" role="status"><%= contact ? "Thank you. We have your message." : "Thank you. We have your enquiry." %></p>
   <% else %>
     <% if @enquiry_error %>
-      <p class="error"><%= @enquiry_error %></p>
+      <p class="error" role="alert"><%= @enquiry_error %></p>
     <% end %>
-    <%= form_with url: "/enquiries", method: :post, class: "enquiry" do %>
+    <%# The fragment brings the visitor back to this form after the redirect or an error. The request is still POST /enquiries. %>
+    <%= form_with url: "/enquiries#enquire", method: :post, class: "enquiry" do %>
       <%= hidden_field_tag :listing_kind, local_assigns[:listing_kind] %>
-      <%= hidden_field_tag :listing_slug, local_assigns[:listing_slug] %>
+      <%= hidden_field_tag :listing_code, local_assigns[:listing_code] %>
       <label class="hp" for="company">Company</label>
       <%= text_field_tag :company, nil, class: "hp", tabindex: -1, autocomplete: "off" %>
-      <%= text_field_tag :name, params[:name], placeholder: "Your name", maxlength: 80, required: true %>
-      <%= telephone_field_tag :mobile, params[:mobile], placeholder: "Mobile number", required: true %>
-      <%= text_area_tag :message, params[:message], placeholder: "Message", rows: 4, maxlength: 500, required: contact %>
+      <div class="field">
+        <label for="name">Your name</label>
+        <%= text_field_tag :name, params[:name], maxlength: 80, required: true, autocomplete: "name" %>
+      </div>
+      <div class="field">
+        <label for="mobile">Mobile number</label>
+        <%= telephone_field_tag :mobile, params[:mobile], required: true, autocomplete: "tel", inputmode: "tel", placeholder: "10-digit mobile" %>
+      </div>
+      <div class="field">
+        <label for="message">Message<% unless contact %> <span class="opt">(optional)</span><% end %></label>
+        <%= text_area_tag :message, params[:message], rows: 4, maxlength: 500, required: contact %>
+      </div>
       <% site_key = Realtoriq::Credentials.recaptcha_site_key %>
       <% if site_key.present? %>
         <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-        <div class="g-recaptcha" data-sitekey="<%= site_key %>"></div>
+        <div class="captcha">
+          <div class="g-recaptcha" data-sitekey="<%= site_key %>"></div>
+        </div>
       <% end %>
-      <button class="send" type="submit"><%= contact ? "Send message" : "Send enquiry" %></button>
+      <button class="btn btn-primary btn-block" type="submit"><%= contact ? "Send message" : "Send enquiry" %></button>
     <% end %>
   <% end %>
 </section>

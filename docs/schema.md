@@ -264,9 +264,12 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`properties.confidential_note`** never appears in a list payload and never
   in the `shareable` subset. It is returned only by the property detail, where
   the design puts it behind a reveal.
-- **`projects.slug` / `properties.slug`** are public path segments, unique per
-  firm, assigned once from the name or title. Renaming does not change them.
-  Catalog rows have no slug. **`on_website`** defaults true. A public page also
+- **`projects.slug` / `properties.slug`** are the first public addresses, unique
+  per firm, assigned once from the name or title. Renaming does not change them.
+  The address in use is `/projects/{code}/{name}` and `/properties/{code}/{title}`.
+  The code identifies the listing. Missing or wrong words redirect to the current
+  name, and an older slug-only link redirects there too. Catalog rows have no slug.
+  **`on_website`** defaults true. A public page also
   requires an active own project or an available property, and a firm whose
   **`website_enabled`** is true, status is active, and subscription is entitled.
 - **`firms.about`**, **`website_phone`**, **`lat` / `lng` / `google_place_id`**

@@ -5,40 +5,75 @@
     <meta property="og:image" content="<%= @listing[:photos].first %>">
   <% end %>
 <% end %>
+<% photos = Array(@listing[:photos]) %>
+<% rent = @listing[:listing_for] == "rent" %>
+<% amenities = [] %>
+<% amenities << "Pool" if @listing[:has_pool] %>
+<% amenities << "Gym" if @listing[:has_gym] %>
 
-<p class="back"><%= link_to @firm.name, "/" %></p>
-<%= render "sites/pages/brand" %>
+<%= render "sites/pages/brand", compact: true %>
 
-<article>
-  <h2 class="listing"><%= @listing[:title] %></h2>
-  <% if @listing[:photos].present? %>
-    <div class="gallery">
-      <% @listing[:photos].each do |url| %>
-        <%= image_tag url, alt: "" %>
+<main>
+  <% if photos.any? %>
+    <div class="container gallery-wrap">
+      <div class="gallery<%= ' single' if photos.size == 1 %>">
+        <% photos.each_with_index do |url, index| %>
+          <a class="shot" href="<%= url %>" target="_blank" rel="noopener">
+            <%= image_tag url, alt: "#{@listing[:title]}, photo #{index + 1}", loading: (index.zero? ? "eager" : "lazy") %>
+          </a>
+        <% end %>
+      </div>
+      <% if photos.size > 1 %>
+        <p class="gallery-note"><%= photos.size %> photos. Tap one to see it full size.</p>
       <% end %>
     </div>
   <% end %>
-  <p class="price">
-    <%= inr(@listing[:price]) %>
-    <%= @listing[:listing_for] == "rent" ? "per month" : "for sale" %>
-  </p>
-  <p><%= [ @listing[:building_name], @listing[:locality], @listing[:city] ].compact_blank.join(" · ") %></p>
-  <% if @listing[:carpet_area_sqft] %>
-    <p><%= @listing[:carpet_area_sqft] %> sqft carpet</p>
-  <% end %>
-  <% if @listing[:floor_band].present? %>
-    <p>Floor <%= @listing[:floor_band] %></p>
-  <% end %>
-  <% amenities = [] %>
-  <% amenities << "Pool" if @listing[:has_pool] %>
-  <% amenities << "Gym" if @listing[:has_gym] %>
-  <% if amenities.any? %>
-    <p><%= amenities.join(" · ") %></p>
-  <% end %>
-  <% if @listing[:description].present? %>
-    <p class="prose"><%= @listing[:description] %></p>
-  <% end %>
-</article>
 
-<%= render "sites/pages/contact", compact: true %>
-<%= render "sites/pages/enquiry", listing_kind: "property", listing_slug: @listing[:slug] %>
+  <div class="container detail">
+    <article class="detail-main">
+      <p class="eyebrow"><%= rent ? "For rent" : "For sale" %></p>
+      <h1 class="listing-title"><%= @listing[:title] %></h1>
+      <% meta = [ @listing[:building_name], @listing[:locality], @listing[:city] ].compact_blank %>
+      <% if meta.any? %>
+        <p class="listing-meta"><%= meta.join(" · ") %></p>
+      <% end %>
+      <% if @listing[:price] %>
+        <p class="listing-price"><%= inr(@listing[:price]) %> <span class="per"><%= rent ? "per month" : "for sale" %></span></p>
+      <% end %>
+
+      <% if @listing[:carpet_area_sqft] || @listing[:floor_band].present? %>
+        <dl class="facts">
+          <% if @listing[:carpet_area_sqft] %>
+            <div class="fact"><dt>Carpet</dt><dd><%= @listing[:carpet_area_sqft] %> sqft</dd></div>
+          <% end %>
+          <% if @listing[:floor_band].present? %>
+            <div class="fact"><dt>Floor</dt><dd><%= @listing[:floor_band] %></dd></div>
+          <% end %>
+        </dl>
+      <% end %>
+
+      <% if amenities.any? %>
+        <div class="chips">
+          <% amenities.each do |amenity| %>
+            <span class="badge"><%= amenity %></span>
+          <% end %>
+        </div>
+      <% end %>
+
+      <% if @listing[:description].present? %>
+        <section class="sub">
+          <h2>About this home</h2>
+          <p class="description"><%= @listing[:description] %></p>
+        </section>
+      <% end %>
+    </article>
+
+    <aside class="detail-side">
+      <% if @listing[:price] %>
+        <p class="side-price"><%= inr(@listing[:price]) %> <span class="per"><%= rent ? "per month" : "for sale" %></span></p>
+      <% end %>
+      <%= render "sites/pages/contact", compact: true %>
+      <%= render "sites/pages/enquiry", listing_kind: "property", listing_code: @listing[:code], heading: "Enquire about this home" %>
+    </aside>
+  </div>
+</main>

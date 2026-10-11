@@ -1,54 +1,203 @@
+<% about = about_parts(@firm.about) %>
+<% areas = site_areas(@projects, @properties) %>
+<% covers = (@projects + @properties).filter_map { |listing| listing[:cover_url] }.uniq.first(3) %>
+<% live = [ (pluralize(@projects.size, "project") if @projects.any?), (pluralize(@properties.size, "home") if @properties.any?) ].compact %>
+<% place = [ @firm.locality&.name, @firm.city&.name ].compact_blank.join(", ") %>
+<% logo = site_logo_url(@firm) %>
+<% summary = about && truncate([ about[:lead], *about[:blocks].map { |_, value| Array(value).join(" ") } ].compact.join(" ").squish, length: 160, separator: " ") %>
 <% content_for :title, @firm.name %>
+<% content_for :description, summary if summary %>
 <% content_for :head do %>
   <meta property="og:title" content="<%= @firm.name %>">
   <meta property="og:type" content="website">
+  <% if summary %>
+    <meta property="og:description" content="<%= summary %>">
+  <% end %>
+  <% if logo || covers.any? %>
+    <meta property="og:image" content="<%= covers.first || logo %>">
+  <% end %>
 <% end %>
+<% for_sale = @properties.reject { |property| property[:listing_for] == "rent" } %>
+<% for_rent = @properties.select { |property| property[:listing_for] == "rent" } %>
 
-<%= render "sites/pages/brand" %>
+<header class="hero">
+  <div class="container hero-grid<%= ' has-photos' if covers.any? %><%= ' has-copy' if about || areas.any? %>">
+    <div class="hero-media photos-<%= covers.size %>" aria-hidden="true">
+      <% covers.each_with_index do |url, index| %>
+        <%= image_tag url, alt: "", fetchpriority: (index.zero? ? "high" : nil) %>
+      <% end %>
+      <% if covers.any? && live.any? %>
+        <span class="live-chip"><span class="live-dot"></span><%= live.join(" · ") %></span>
+      <% end %>
+    </div>
 
-<% if @firm.about.present? %>
-  <p class="prose"><%= @firm.about %></p>
-<% end %>
-
-<%= render "sites/pages/contact" %>
-<%= render "sites/pages/enquiry", listing_kind: nil, listing_slug: nil, purpose: "contact" %>
-
-<h2>Projects</h2>
-<% if @projects.empty? %>
-  <p>No projects listed.</p>
-<% else %>
-  <div class="grid cards">
-    <% @projects.each do |project| %>
-      <a class="card" href="/projects/<%= project[:slug] %>">
-        <% if project[:cover_url] %>
-          <%= image_tag project[:cover_url], class: "cover", alt: "" %>
+    <div class="hero-id">
+      <span class="mark mark-xl">
+        <% if logo %>
+          <%= image_tag logo, alt: "" %>
+        <% else %>
+          <%= site_initials(@firm) %>
         <% end %>
-        <h3><%= project[:name] %></h3>
-        <div><%= [ project[:builder_name], project[:locality], project[:city] ].compact_blank.join(" · ") %></div>
-        <div class="price">Starting <%= inr(project[:starting_budget]) %></div>
-        <div><%= project[:possession_display] %></div>
-      </a>
+      </span>
+      <div class="hero-name">
+        <h1 class="firm-name"><%= @firm.name %></h1>
+        <p class="hero-tags">
+          <% if @firm.rera_number.to_s.strip.present? %>
+            <span class="rera-pill">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+              RERA <%= site_rera(@firm) %>
+            </span>
+          <% else %>
+            <span class="rera-plain">RERA <%= site_rera(@firm) %></span>
+          <% end %>
+          <% if place.present? %>
+            <span class="place-line">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <%= place %>
+            </span>
+          <% end %>
+        </p>
+      </div>
+    </div>
+
+    <% if about || areas.any? %>
+      <div class="hero-copy">
+        <% if about %>
+          <section class="about-block" id="about" aria-labelledby="about-title">
+            <h2 class="eyebrow" id="about-title">About us</h2>
+            <% if about[:lead] %>
+              <p class="about-lead"><%= about[:lead] %></p>
+            <% end %>
+            <% if about[:blocks].any? %>
+              <% if about[:fold] %>
+                <input type="checkbox" id="about-more" class="more-toggle">
+              <% end %>
+              <div class="story<%= " fold-#{about[:fold]}" if about[:fold] %>">
+                <% about[:blocks].each do |kind, value| %>
+                  <% if kind == :list %>
+                    <ul class="ticks">
+                      <% value.each do |item| %>
+                        <li>
+                          <span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12.5 10 17 19 7"/></svg></span>
+                          <span><%= item %></span>
+                        </li>
+                      <% end %>
+                    </ul>
+                  <% else %>
+                    <p<%= raw(' class="list-label"') if value.end_with?(":") %>><%= value %></p>
+                  <% end %>
+                <% end %>
+              </div>
+              <% if about[:fold] %>
+                <label for="about-more" class="more-link fold-<%= about[:fold] %>">
+                  <span class="more">Read more</span><span class="less">Show less</span>
+                  <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </label>
+              <% end %>
+            <% end %>
+          </section>
+        <% end %>
+        <% if areas.any? %>
+          <div class="areas">
+            <h2 class="eyebrow">Listings in</h2>
+            <ul class="area-tags">
+              <% areas.first(6).each do |area| %>
+                <li><%= area %></li>
+              <% end %>
+              <% if areas.size > 6 %>
+                <li class="more-areas">+<%= areas.size - 6 %> more</li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+      </div>
     <% end %>
   </div>
-<% end %>
+</header>
+<div class="jump-wrap">
+  <nav class="container jump" aria-label="On this page">
+    <% if @projects.any? %>
+      <a href="#projects">Projects <span><%= @projects.size %></span></a>
+    <% end %>
+    <% if for_sale.any? %>
+      <a href="#for-sale">For sale <span><%= for_sale.size %></span></a>
+    <% end %>
+    <% if for_rent.any? %>
+      <a href="#for-rent">For rent <span><%= for_rent.size %></span></a>
+    <% end %>
+    <a href="#enquire">Contact</a>
+  </nav>
+</div>
 
-<h2>Properties</h2>
-<% if @properties.empty? %>
-  <p>No properties listed.</p>
-<% else %>
-  <div class="grid cards">
-    <% @properties.each do |property| %>
-      <a class="card" href="/properties/<%= property[:slug] %>">
-        <% if property[:cover_url] %>
-          <%= image_tag property[:cover_url], class: "cover", alt: "" %>
+<main class="container">
+  <section class="block" id="projects">
+    <div class="block-head"><h2>Projects</h2></div>
+    <% if @projects.empty? %>
+      <p class="empty">No projects listed right now.</p>
+    <% else %>
+      <div class="cards cards-projects">
+        <% @projects.each do |project| %>
+          <a class="card<%= ' has-media' if project[:cover_url] %>" href="<%= project[:path] %>">
+            <% if project[:cover_url] %>
+              <div class="card-media">
+                <%= image_tag project[:cover_url], alt: "", loading: "lazy" %>
+                <% if project[:possession_display].present? %>
+                  <span class="badge">Possession <%= project[:possession_display] %></span>
+                <% end %>
+              </div>
+            <% end %>
+            <div class="card-body">
+              <% if !project[:cover_url] && project[:possession_display].present? %>
+                <span class="badge">Possession <%= project[:possession_display] %></span>
+              <% end %>
+              <% if project[:starting_budget] %>
+                <p class="card-price"><span class="label">Starting</span> <%= inr(project[:starting_budget]) %></p>
+              <% end %>
+              <h3 class="card-title"><%= project[:name] %></h3>
+              <p class="card-meta"><%= [ project[:builder_name], project[:locality], project[:city] ].compact_blank.join(" · ") %></p>
+              <% if project[:configuration_names].present? %>
+                <p class="card-tags"><%= project[:configuration_names].uniq.join(" · ") %></p>
+              <% end %>
+            </div>
+          </a>
         <% end %>
-        <h3><%= property[:title] %></h3>
-        <div><%= [ property[:building_name], property[:locality], property[:city] ].compact_blank.join(" · ") %></div>
-        <div class="price">
-          <%= inr(property[:price]) %>
-          <%= property[:listing_for] == "rent" ? " / month" : "" %>
+      </div>
+    <% end %>
+  </section>
+
+  <section class="block" id="properties">
+    <div class="block-head"><h2>Properties</h2></div>
+    <% if @properties.empty? %>
+      <p class="empty">No properties listed right now.</p>
+    <% else %>
+      <% [ [ "for-sale", "For sale", for_sale ], [ "for-rent", "For rent", for_rent ] ].each do |anchor, label, group| %>
+        <% next if group.empty? %>
+        <h3 class="subhead" id="<%= anchor %>"><%= label %></h3>
+        <div class="cards cards-properties">
+          <% group.each do |property| %>
+            <% rent = property[:listing_for] == "rent" %>
+            <a class="card<%= ' has-media' if property[:cover_url] %>" href="<%= property[:path] %>">
+              <% if property[:cover_url] %>
+                <div class="card-media">
+                  <%= image_tag property[:cover_url], alt: "", loading: "lazy" %>
+                </div>
+              <% end %>
+              <div class="card-body">
+                <p class="card-price">
+                  <%= inr(property[:price]) %><% if rent %> <span class="per">/ month</span><% end %>
+                </p>
+                <h4 class="card-title"><%= property[:title] %></h4>
+                <p class="card-meta"><%= [ property[:building_name], property[:locality], property[:city] ].compact_blank.join(" · ") %></p>
+              </div>
+            </a>
+          <% end %>
         </div>
-      </a>
+      <% end %>
     <% end %>
-  </div>
-<% end %>
+  </section>
+
+  <section class="block reach" aria-label="Contact">
+    <%= render "sites/pages/contact" %>
+    <%= render "sites/pages/enquiry", listing_kind: nil, listing_code: nil, purpose: "contact" %>
+  </section>
+</main>

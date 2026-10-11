@@ -265,11 +265,12 @@ Rails.application.routes.draw do
   end
 
   constraints Sites::HostConstraint do
+    segment = /[a-z0-9]+(?:-[a-z0-9]+)*/i
     get "/", to: "sites/pages#home"
-    get "/projects/:slug", to: "sites/pages#project",
-      constraints: { slug: /[a-z0-9]+(?:-[a-z0-9]+)*/ }
-    get "/properties/:slug", to: "sites/pages#property",
-      constraints: { slug: /[a-z0-9]+(?:-[a-z0-9]+)*/ }
+    get "/projects/:code/:slug", to: "sites/pages#project", constraints: { code: segment, slug: segment }
+    get "/projects/:code", to: "sites/pages#project", constraints: { code: segment }
+    get "/properties/:code/:slug", to: "sites/pages#property", constraints: { code: segment, slug: segment }
+    get "/properties/:code", to: "sites/pages#property", constraints: { code: segment }
     post "/enquiries", to: "sites/enquiries#create"
   end
 
