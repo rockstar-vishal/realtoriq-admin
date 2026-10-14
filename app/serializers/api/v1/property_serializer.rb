@@ -136,9 +136,11 @@ module Api
           )
         end
 
-        # Attachment ids are UUIDv7, so ordering by id is creation order and the
-        # first is the cover. The design shows no reordering, so none exists.
-        def photo_attachments(property) = property.photos.attachments.sort_by(&:id)
+        # Attachment ids are random UUIDs, so sorting by id shuffles the gallery.
+        # created_at is upload order. The first upload is the cover.
+        def photo_attachments(property)
+          property.photos.attachments.sort_by { |attachment| [ attachment.created_at, attachment.id ] }
+        end
 
         # Carries the attachment id, which `photo_urls` does not — and without
         # it DELETE /properties/:id/photos/:photo_id was uncallable. Detail

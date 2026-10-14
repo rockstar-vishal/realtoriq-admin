@@ -1608,8 +1608,10 @@ A detail returns **both**:
 
 **`photos[].id` is the attachment id that `DELETE` takes.** It is not the id
 inside the blob URL — that is the *blob* id, a different record, and using it
-gives you a 404. Max **20** photos per listing (`too_many_photos`). The first by
-id is the cover; there is no reordering.
+gives you a 404. Max **20** photos per listing (`too_many_photos`). Attachment
+ids are random, so they do not sort by time. `photos`, `photo_urls` and
+`cover_photo_url` follow upload order (`created_at`). The first upload is the
+cover. There is no reordering.
 
 ---
 

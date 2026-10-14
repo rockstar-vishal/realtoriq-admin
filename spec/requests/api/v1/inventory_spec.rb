@@ -329,6 +329,26 @@ RSpec.describe "API v1 inventory" do
       expect(body["shareable"]).not_to have_key("brokerage_percent")
     end
 
+    it "keeps the first uploaded photo as the banner when a later photo has a smaller id" do
+      create_project
+      id = response.parsed_body.dig("project", "id")
+      project = Project.across_firms.find(id)
+      project.photos.attach(io: StringIO.new("banner"), filename: "banner.jpg", content_type: "image/jpeg")
+      project.photos.attach(io: StringIO.new("later"), filename: "later.jpg", content_type: "image/jpeg")
+      banner, later = project.photos.attachments.order(:created_at, :id).to_a
+      later_id = "00000000-0000-4000-8000-000000000001"
+      banner_id = "ffffffff-ffff-4000-8000-000000000099"
+      ActiveStorage::Attachment.where(id: later.id).update_all(id: later_id, created_at: 1.minute.ago)
+      ActiveStorage::Attachment.where(id: banner.id).update_all(id: banner_id, created_at: 2.minutes.ago)
+
+      get "/api/v1/projects/#{id}", headers: auth
+
+      photos = response.parsed_body.dig("project", "photos")
+      expect(photos.map { |photo| photo["id"] }).to eq([ banner_id, later_id ])
+      expect(response.parsed_body.dig("project", "cover_photo_url")).to eq(photos.first["url"])
+      expect(response.parsed_body.dig("project", "photo_urls")).to eq(photos.map { |photo| photo["url"] })
+    end
+
     it "returns 404 for another firm's project" do
       other = create(:project, firm: create(:firm))
 
