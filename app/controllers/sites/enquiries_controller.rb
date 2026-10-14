@@ -4,11 +4,12 @@ module Sites
   class EnquiriesController < PagesController
     def create
       return redirect_to(sent_path) if params[:company].present?
-      return too_many unless Throttle.allow?(ip: request.remote_ip, firm_id: @firm.id, request:)
+      return too_many unless Throttle.body_ok?(request) && Throttle.allow_ip?(request.remote_ip)
       unless Recaptcha.accepted?(captcha_token, remote_ip: request.remote_ip, hostname: request.host)
         @enquiry_error = "Confirm you are not a robot."
         return render_form
       end
+      return too_many unless Throttle.allow_firm?(@firm.id)
 
       result = dispatch_form
       return redirect_to(sent_path) if result.ok?

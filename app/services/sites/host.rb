@@ -30,10 +30,15 @@ module Sites
 
     def allowed_path?(request)
       path = request.path
-      return true if path == "/" && request.get?
+      return true if path == "/" && read?(request)
       return true if path == "/enquiries" && request.post?
 
-      request.get? && path.match?(LISTING_PATH)
+      read?(request) && path.match?(LISTING_PATH)
+    end
+
+    # Link previews and uptime checks use HEAD. It carries the same path as GET.
+    def read?(request)
+      request.get? || request.head?
     end
 
     def code?(value)
@@ -46,7 +51,7 @@ module Sites
       return nil unless code?(token)
       return nil unless %w[projects properties].include?(kind)
 
-      readable = text.to_s.parameterize.presence
+      readable = Inventory::PublicSlug.segment(text)
       path = "/#{kind}/#{token}"
       readable ? "#{path}/#{readable}" : path
     end

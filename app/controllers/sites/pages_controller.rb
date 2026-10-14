@@ -49,13 +49,18 @@ module Sites
 
     # The code is the identity. A path that is only the older slug still resolves,
     # then redirects to the code. A wrong or missing title does the same.
+    # An old slug can look like a code ("p-square"). A miss on the code falls
+    # through to that slug. A second path segment means the code was the identity,
+    # so a miss there stays a 404.
     def listing_for(kind)
       token = params[:code].to_s
       if Host.code?(token)
-        kind == "projects" ? catalog.project_by_code(token) : catalog.property_by_code(token)
-      elsif params[:slug].blank?
-        kind == "projects" ? catalog.project(token) : catalog.property(token)
+        found = kind == "projects" ? catalog.project_by_code(token) : catalog.property_by_code(token)
+        return found if found || params[:slug].present?
       end
+      return if params[:slug].present?
+
+      kind == "projects" ? catalog.project(token.downcase) : catalog.property(token.downcase)
     end
 
     def catalog
