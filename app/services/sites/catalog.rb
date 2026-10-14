@@ -137,14 +137,15 @@ module Sites
       attachments = ActiveStorage::Attachment
         .where(record_type:, record_id: ids, name: "photos")
         .select("DISTINCT ON (active_storage_attachments.record_id) active_storage_attachments.*")
-        .order("active_storage_attachments.record_id, active_storage_attachments.id")
+        .order("active_storage_attachments.record_id, active_storage_attachments.created_at, active_storage_attachments.id")
         .to_a
       ActiveRecord::Associations::Preloader.new(records: attachments, associations: :blob).call
       attachments.index_by(&:record_id)
     end
 
     def photo_urls(record)
-      record.photos.attachments.sort_by(&:id).filter_map { |attachment| Api::V1::BlobUrl.call(attachment) }
+      record.photos.attachments.sort_by { |attachment| [ attachment.created_at, attachment.id ] }
+        .filter_map { |attachment| Api::V1::BlobUrl.call(attachment) }
     end
 
     def brochure_url(project)

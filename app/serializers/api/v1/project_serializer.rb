@@ -131,8 +131,6 @@ module Api
           }
         end
 
-        # Attachment ids are UUIDv7, so ordering by id is creation order and the
-        # first is the cover. The design shows no reordering, so none exists.
         def configuration_names(project)
           project.project_typologies.map { |row| row.typology&.name }.compact
         end
@@ -142,7 +140,11 @@ module Api
           first && BlobUrl.call(first)
         end
 
-        def photo_attachments(project) = project.photos.attachments.sort_by(&:id)
+        # Attachment ids are random UUIDs, so sorting by id shuffles the gallery.
+        # created_at is upload order. The first upload is the banner.
+        def photo_attachments(project)
+          project.photos.attachments.sort_by { |attachment| [ attachment.created_at, attachment.id ] }
+        end
 
         # Carries the attachment id, which `photo_urls` does not — and without
         # it DELETE /projects/:id/photos/:photo_id was uncallable: the id
