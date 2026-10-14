@@ -4,16 +4,25 @@ module Sites
   # Anonymous enquiry posts. A cache that cannot count refuses the call, the
   # same way inbound lead intake does. The test null store is the exception.
   class Throttle
-    BODY_BYTES = 4.kilobytes
+    # A 500-character message in Hindi, Marathi or Gujarati is percent-encoded
+    # in the form body, and the captcha token travels with it. 4 KB refused
+    # those posts as "Too many enquiries".
+    BODY_BYTES = 32.kilobytes
     PER_IP = 8
     PER_FIRM = 30
     IP_WINDOW = 10.minutes
     FIRM_WINDOW = 1.hour
 
-    def self.allow?(ip:, firm_id:, request:)
-      return false if ip.blank? || firm_id.blank?
-      return false unless body_ok?(request)
-      return false unless within?("sites:ip:#{ip}", PER_IP, IP_WINDOW)
+    # The firm counter is separate so a post that fails the captcha does not
+    # use up the firm's hour. The IP counter still runs first.
+    def self.allow_ip?(ip)
+      return false if ip.blank?
+
+      within?("sites:ip:#{ip}", PER_IP, IP_WINDOW)
+    end
+
+    def self.allow_firm?(firm_id)
+      return false if firm_id.blank?
 
       within?("sites:firm:#{firm_id}", PER_FIRM, FIRM_WINDOW)
     end

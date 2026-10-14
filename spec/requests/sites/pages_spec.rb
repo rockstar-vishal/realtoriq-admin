@@ -108,6 +108,25 @@ RSpec.describe "Firm website" do
     expect(response).to redirect_to(public_property_path(sale))
   end
 
+  it "redirects an older slug that looks like a listing code" do
+    project.update_column(:slug, "p-square")
+
+    get "/projects/p-square", headers: { "HOST" => host }
+
+    expect(response).to redirect_to(public_project_path)
+  end
+
+  it "answers a HEAD check for a page that exists" do
+    head "/", headers: { "HOST" => host }
+    expect(response).to have_http_status(:ok)
+
+    head public_project_path, headers: { "HOST" => host }
+    expect(response).to have_http_status(:ok)
+
+    head "/admin", headers: { "HOST" => host }
+    expect(response).to have_http_status(:not_found)
+  end
+
   it "does not serve another firm's listing, a hidden listing, or the CRM" do
     other = create(:firm, :with_super_admin, name: "Other Realty")
     create(:subscription, firm: other, plan:)
@@ -260,12 +279,18 @@ RSpec.describe "Firm website" do
     expect(Lead.unscoped.where(firm_id: firm.id).count).to eq(0)
     expect(ActiveJob::Base.queue_adapter.enqueued_jobs.map { |job| job[:job] }).not_to include(Sites::ContactNotifyJob)
 
+    firm_was_counted = false
+    allow(Sites::Throttle).to receive(:allow_firm?).and_wrap_original do |method, *args|
+      firm_was_counted = true
+      method.call(*args)
+    end
     post "/enquiries", params: {
       name: "Rhea Kapoor", mobile: "9820144212", "g-recaptcha-response" => "nope"
     }, headers: { "HOST" => host }
     expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("not a robot")
     expect(Lead.unscoped.where(firm_id: firm.id).count).to eq(0)
+    expect(firm_was_counted).to be(false)
 
     post "/enquiries", params: {
       name: "Rhea Kapoor", mobile: "9820144212", message: "Hello", recaptcha_token: "pass"

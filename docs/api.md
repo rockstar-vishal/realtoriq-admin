@@ -1850,7 +1850,9 @@ Unknown keys are ignored. `website_phone` is stored for the public Call and
 WhatsApp buttons only. It does not change `contact_channels`. Blank clears it.
 The logo is png, jpeg, or webp. SVG is rejected. `url` in the response is the
 public home when the site is actually up, otherwise null. `suggested_phone`
-is the firm's mobile channel when no website number is saved yet.
+is the firm's verified mobile when `website_phone` is blank. It is a hint.
+Sending it back is what stores it; a blank `website_phone` stays blank, and a
+later save that omits the key does not copy the verified mobile onto the site.
 `lat` and `lng` are sent together. One without the other is `422 invalid`,
 and the stored pin is left as it was. Sending both blank clears the pin.
 

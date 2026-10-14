@@ -20,8 +20,14 @@ module Inventory
       # `taken` is a hash of slug => true for the firm already processed.
       # Callers that mint one slug pass a fresh hash; the database is the
       # backstop when two creates race.
+      # Underscores survive parameterize, and the public path does not allow
+      # them. "P_Square" has to save, and the link has to open.
+      def segment(text)
+        text.to_s.parameterize.tr("_", "-").squeeze("-").gsub(/\A-+|-+\z/, "").presence
+      end
+
       def mint(text, taken = {})
-        base = text.to_s.parameterize.presence || "listing"
+        base = segment(text) || "listing"
         base = base[0, 48].sub(/-\z/, "").presence || "listing"
         candidate = base
         n = 2

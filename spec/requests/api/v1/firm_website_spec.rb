@@ -90,6 +90,22 @@ RSpec.describe "API v1 brand website" do
     expect(property.reload.on_website).to be(false)
   end
 
+  it "leaves a cleared website phone cleared" do
+    firm.update!(website_phone: "+919820144210")
+    headers = auth(super_admin)
+
+    patch "/api/v1/firm/website", params: { website_phone: "" }, headers:, as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(firm.reload.website_phone).to be_nil
+    expect(response.parsed_body.dig("website", "phone")).to be_nil
+    expect(response.parsed_body.dig("website", "suggested_phone")).to eq(mobile.value)
+
+    patch "/api/v1/firm/website", params: { about: "Still blank." }, headers:, as: :json
+
+    expect(firm.reload.website_phone).to be_nil
+  end
+
   it "refuses a pin when only one coordinate is sent" do
     firm.update!(lat: 18.5, lng: 73.8)
 

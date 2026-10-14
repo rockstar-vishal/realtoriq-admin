@@ -265,10 +265,13 @@ destroys invoices and collections, so that check is what keeps money records.
   in the `shareable` subset. It is returned only by the property detail, where
   the design puts it behind a reveal.
 - **`projects.slug` / `properties.slug`** are the first public addresses, unique
-  per firm, assigned once from the name or title. Renaming does not change them.
+  per firm, assigned once from the name or title. An underscore in that text
+  becomes a hyphen, so the row can be saved and the public link can open.
+  Renaming does not change them.
   The address in use is `/projects/{code}/{name}` and `/properties/{code}/{title}`.
   The code identifies the listing. Missing or wrong words redirect to the current
-  name, and an older slug-only link redirects there too. Catalog rows have no slug.
+  name. An older slug-only link redirects there too, including a slug that
+  happens to look like a listing code. Catalog rows have no slug.
   **`on_website`** defaults true. A public page also
   requires an active own project or an available property, and a firm whose
   **`website_enabled`** is true, status is active, and subscription is entitled.
