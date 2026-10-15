@@ -149,9 +149,7 @@ module Sites
     end
 
     def brochure_url(project)
-      return nil unless project.brochure.attached?
-
-      Api::V1::BlobUrl.call(project.brochure)
+      Realtoriq::BrochureUrl.for(project)
     end
 
     def coordinate(value)

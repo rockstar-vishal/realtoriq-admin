@@ -91,6 +91,17 @@ RSpec.describe "Firm website" do
     expect(response.body).to include("A52100000001")
   end
 
+  it "links the brochure at the public path, not the storage path" do
+    project.brochure.attach(
+      io: StringIO.new("%PDF-1.4"), filename: "brochure.pdf", content_type: "application/pdf"
+    )
+
+    get public_project_path, headers: { "HOST" => host }
+
+    expect(response.body).to include("/realtoriq/brochures/#{project.code}.pdf")
+    expect(response.body).not_to include("active_storage")
+  end
+
   it "keeps a short code, a wrong title, and the older slug working" do
     get "/projects/#{project.code.downcase}", headers: { "HOST" => host }
     expect(response).to redirect_to(public_project_path)
