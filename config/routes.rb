@@ -288,6 +288,11 @@ Rails.application.routes.draw do
   get "/legal/:kind(/:version)", to: "legal#show", as: :legal,
     constraints: { kind: /terms|privacy/, version: /\d+\.\d+/ }
 
+  # A brochure this firm uploaded. Marketplace brochures are served by LaunchIQ.
+  get "/realtoriq/brochures/:code", to: "realtoriq/brochures#show",
+    as: :realtoriq_brochure,
+    constraints: { code: /p-[a-hj-np-z2-9]{6}/i }
+
   constraints Sites::HostConstraint do
     segment = /[a-z0-9]+(?:-[a-z0-9]+)*/i
     get "/", to: "sites/pages#home"

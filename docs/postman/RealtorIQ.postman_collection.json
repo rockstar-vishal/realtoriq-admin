@@ -3059,7 +3059,10 @@
                   "  pm.expect(project.source).to.eql(\"own\");",
                   "});",
                   "",
-                  "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
+                  "pm.test(\"the brochure is a public pdf path\", () => {",
+                  "  pm.expect(project.brochure_url).to.include(\"/realtoriq/brochures/\");",
+                  "  pm.expect(project.brochure_url).to.not.include(\"active_storage\");",
+                  "});"
                 ]
               }
             }
@@ -3270,7 +3273,10 @@
                   "  pm.expect(project.brokerage_percent).to.eql(2.75);",
                   "});",
                   "",
-                  "pm.test(\"the brochure is attached\", () => pm.expect(project.brochure_url).to.be.a(\"string\"));"
+                  "pm.test(\"the brochure is a public pdf path\", () => {",
+                  "  pm.expect(project.brochure_url).to.include(\"/realtoriq/brochures/\");",
+                  "  pm.expect(project.brochure_url).to.not.include(\"active_storage\");",
+                  "});"
                 ]
               }
             }

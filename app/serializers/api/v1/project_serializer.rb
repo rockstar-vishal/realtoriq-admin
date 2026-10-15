@@ -105,11 +105,10 @@ module Api
 
         private
 
-        # Marketplace listings link the LaunchIQ PDF. A firm's own project
-        # uses the file it uploaded.
+        # Never the Active Storage path. Share text and the firm site both
+        # paste this, and a customer should not see /rails/active_storage.
         def brochure_url(project)
-          project.brochure_source_url.presence ||
-            (project.brochure.attached? ? BlobUrl.call(project.brochure) : nil)
+          Realtoriq::BrochureUrl.for(project)
         end
 
         def website_url(project)

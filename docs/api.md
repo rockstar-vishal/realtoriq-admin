@@ -1369,9 +1369,13 @@ super admin receives the lead. A firm that is not `active` is refused. A lapsed
 subscription is not.
 
 Detail adds `rm_name` and `rm_contact` for marketplace rows. They are not in
-`shareable`. `brochure_url` on a marketplace project is the LaunchIQ file
-URL from the push, and only when that host is LaunchIQ or S3. RealtorIQ does
-not copy that PDF. A firm's own project still serves the PDF it uploaded. `brokerage_ladder_url` is the copied ladder
+`shareable`. `brochure_url` on a marketplace project is
+`{turbo_public_origin}/realtoriq/brochures/{external_ref}`. LaunchIQ serves
+that file from its own storage. RealtorIQ does not download it. When
+`turbo_public_origin` is unset, the stored LaunchIQ URL is returned as it
+arrived. A firm's own project is this app's `GET /realtoriq/brochures/{code}.pdf`,
+the PDF it uploaded. The share message uses `brochure_url`, so it does not
+contain `/rails/active_storage`. `brokerage_ladder_url` is the copied ladder
 image and is on every project detail that has one, marketplace or own. It is
 not in `shareable`.
 
