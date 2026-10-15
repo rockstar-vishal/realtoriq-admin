@@ -63,6 +63,14 @@ Rails.application.routes.draw do
 
     resources :plans, except: %i[show]
 
+    resources :applications, only: %i[index show edit update], param: :reference do
+      member do
+        post :reject
+        get "files/:slot", action: :file, as: :file,
+          constraints: { slot: /visiting_card|rera_certificate|acceptance_pdf/ }
+      end
+    end
+
     # Skills & Trainings. No show: the edit screen is the detail screen, and
     # what a broker sees comes from the API.
     resources :trainings, except: %i[show] do
@@ -263,6 +271,22 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # Public registration. Outside the firm-host constraint, so a firm site 404s it.
+  get "/self-signup", to: "onboarding/applications#show", as: :registration
+  post "/self-signup", to: "onboarding/applications#submit"
+  get "/self-signup/submitted", to: "onboarding/applications#submitted", as: :registration_submitted
+  get "/self-signup/localities", to: "onboarding/applications#localities", as: :registration_localities
+  post "/self-signup/verifications/:kind/send", to: "onboarding/verifications#send_code",
+    as: :registration_send_code, constraints: { kind: /mobile|whatsapp|email/ }
+  post "/self-signup/verifications/:kind/verify", to: "onboarding/verifications#verify_code",
+    as: :registration_verify_code, constraints: { kind: /mobile|whatsapp|email/ }
+  post "/self-signup/verifications/:kind/change", to: "onboarding/verifications#change",
+    as: :registration_change_contact, constraints: { kind: /mobile|whatsapp|email/ }
+  get "/register", to: redirect("/self-signup")
+  get "/register/submitted", to: redirect("/self-signup/submitted")
+  get "/legal/:kind(/:version)", to: "legal#show", as: :legal,
+    constraints: { kind: /terms|privacy/, version: /\d+\.\d+/ }
 
   constraints Sites::HostConstraint do
     segment = /[a-z0-9]+(?:-[a-z0-9]+)*/i

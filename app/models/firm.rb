@@ -5,6 +5,8 @@
 # Firm itself is not FirmScoped — it *is* the scope. Everything that hangs off
 # it is.
 class Firm < ApplicationRecord
+  class ActivationRefused < StandardError; end
+
   STATUSES = %w[pending active suspended churned].freeze
 
   enum :status, STATUSES.index_by(&:itself), validate: true
@@ -65,6 +67,13 @@ class Firm < ApplicationRecord
   has_one :current_subscription, -> { live.order(current_period_start: :desc) },
     class_name: "Subscription", inverse_of: :firm
 
+  # The application is FirmScoped. Drop the current-tenant clause, then put
+  # this firm's id back: unscope(where: :firm_id) alone also drops the has_one
+  # key, so the association would attach itself to some other application.
+  has_one :onboarding_application, ->(firm) {
+    unscope(where: :firm_id).where(firm_id: firm.id)
+  }, inverse_of: :firm
+
   has_one_attached :logo do |attachable|
     attachable.variant :thumb, resize_to_limit: [ 96, 96 ], preprocessed: true
   end
@@ -88,6 +97,9 @@ class Firm < ApplicationRecord
   before_validation :normalise_identifiers
   before_validation :assign_slug, on: :create
   before_validation :assign_code, on: :create
+  before_destroy :release_registration_records
+
+  scope :kept, -> { where(discarded_at: nil) }
 
   # Other firms' marketplace. The review demo firm is public, so it is neither
   # a source nor a viewer. Active firms only — a suspended firm is already out.
@@ -98,11 +110,12 @@ class Firm < ApplicationRecord
   # hasn't set a tenant — which is exactly the admin panel's situation. Raw SQL
   # here sidesteps that entirely, and skips the DISTINCT a join would need.
   scope :search, ->(term) {
-    next all if term.blank?
+    relation = kept
+    next relation if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
 
-    where(
+    relation.where(
       "firms.name ILIKE :q OR firms.legal_name ILIKE :q OR firms.code ILIKE :q OR EXISTS (" \
       "  SELECT 1 FROM users" \
       "  WHERE users.firm_id = firms.id AND (users.mobile ILIKE :q OR users.email ILIKE :q)" \
@@ -117,8 +130,10 @@ class Firm < ApplicationRecord
 
   # The public site. Inactive, suspended, and lapsed firms are the same 404.
   def website_public?
-    active? && website_enabled? && current_subscription&.entitled?
+    !discarded? && active? && website_enabled? && current_subscription&.entitled?
   end
+
+  def discarded? = discarded_at.present?
 
   def public_logo?
     logo.attached? && logo.blob.content_type.in?(Sites::Catalog::RASTER)
@@ -135,10 +150,19 @@ class Firm < ApplicationRecord
   end
 
   def activate!(actor: nil)
+    raise ActivationRefused, Onboarding::DISCARDED_FIRM if discarded?
+
+    registration = OnboardingApplication.across_firms.find_by(firm_id: id)
+    if registration && !current_subscription&.entitled?
+      raise ActivationRefused, Onboarding::PLAN_REQUIRED
+    end
+
+    was_pending = pending?
     transaction do
       update!(status: :active, activated_at: Time.current, suspended_at: nil, suspension_reason: nil)
       AuditEvent.record!(actor:, subject: self, action: "firm.activated")
     end
+    OnboardingMailer.approved(registration.id).deliver_later if was_pending && registration
   end
 
   def suspend!(reason:, actor: nil)
@@ -199,6 +223,34 @@ class Firm < ApplicationRecord
     return if lat.blank? == lng.blank?
 
     errors.add(:lat, "and longitude are set together")
+  end
+
+  # An activated firm's acceptance is kept for three years. Anything else that
+  # came in through registration goes with the firm, before the restrict
+  # foreign key can stop the delete.
+  def release_registration_records
+    application = OnboardingApplication.across_firms.find_by(firm_id: id)
+    return if application.nil?
+
+    contact_channels.update_all(verified_by_user_id: nil)
+    OneTimeCode.where(user_id: users.select(:id)).update_all(user_id: nil)
+
+    acceptance = LegalAcceptance.across_firms.find_by(onboarding_application_id: application.id)
+    if activated_at.present?
+      # update! still hits the required-firm validator FirmScoped installed.
+      # Redeclaring the association optional does not remove it, and the
+      # database allows the null. Skip validations for this retention write.
+      acceptance&.update_columns(
+        retain_until: Date.current + 3.years,
+        firm_id: nil,
+        onboarding_application_id: nil,
+        updated_at: Time.current
+      )
+    else
+      acceptance&.destroy!
+    end
+    application.destroy!
+    association(:onboarding_application).reset
   end
 
   def logo_is_a_reasonable_image

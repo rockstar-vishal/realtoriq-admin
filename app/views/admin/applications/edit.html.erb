@@ -1,0 +1,40 @@
+<% content_for :title, "Edit #{@application.reference} · RealtorIQ Admin" %>
+
+<div class="mb-2">
+  <%= link_to "← #{@application.reference}", admin_application_path(@application), class: "text-[13px] no-underline text-[var(--color-neutral-700)]" %>
+</div>
+
+<h1 class="text-[32px] mb-6">Edit application</h1>
+<p class="text-[13px] text-[var(--color-neutral-700)] mb-4">Mobile, WhatsApp, email and the acceptance record stay as submitted.</p>
+
+<%= form_with model: @application, url: admin_application_path(@application), method: :patch, class: "max-w-[640px] flex flex-col gap-3" do |f| %>
+  <% if @application.errors.any? %>
+    <p class="text-[var(--color-accent)]"><%= @application.errors.full_messages.to_sentence %></p>
+  <% end %>
+
+  <div class="field"><%= f.label :applicant_name, "Applicant name" %><%= f.text_field :applicant_name, class: "input" %></div>
+  <div class="field"><%= f.label :applicant_designation, "Designation" %><%= f.text_field :applicant_designation, class: "input" %></div>
+  <div class="field"><%= f.label :entity_type %><%= f.select :entity_type, Onboarding::ENTITY_TYPE_LABELS.map { |kind, label| [ label, kind ] }, {}, class: "input" %></div>
+  <div class="field"><%= f.label :firm_name %><%= f.text_field :firm_name, class: "input" %></div>
+  <div class="field"><%= f.label :legal_name %><%= f.text_field :legal_name, class: "input" %></div>
+  <div class="field"><%= f.label :address_line1, "Address" %><%= f.text_field :address_line1, class: "input" %></div>
+  <div class="field"><%= f.label :address_line2, "Address line 2" %><%= f.text_field :address_line2, class: "input" %></div>
+  <div class="field"><%= f.label :city_id, "City" %><%= f.collection_select :city_id, @cities, :id, :name, {}, class: "input" %></div>
+  <div class="field"><%= f.label :locality_id, "Locality" %><%= f.collection_select :locality_id, @localities, :id, :name, {}, class: "input" %></div>
+  <div class="field"><%= f.label :pincode %><%= f.text_field :pincode, class: "input" %></div>
+  <div class="field">
+    <%= f.label :extra_locality_ids, "Other localities" %>
+    <%= f.collection_select :extra_locality_ids, @localities, :id, :name, { selected: @application.extra_locality_ids }, { multiple: true, class: "input" } %>
+  </div>
+  <div class="field"><%= f.label :team_size %><%= f.select :team_size, Onboarding::TEAM_SIZE_LABELS.map { |size, label| [ label, size ] }, { include_blank: "Optional" }, class: "input" %></div>
+  <div class="field"><%= f.label :pan %><%= f.text_field :pan, class: "input" %></div>
+  <div class="field"><%= f.label :gst_number, "GSTIN" %><%= f.text_field :gst_number, class: "input" %></div>
+  <div class="field">
+    <%= f.label :rera_registered, "RERA registered" %>
+    <%= f.select :rera_registered, [ [ "Yes", true ], [ "No", false ] ], {}, class: "input" %>
+  </div>
+  <div class="field"><%= f.label :rera_number %><%= f.text_field :rera_number, class: "input" %></div>
+  <div class="field"><%= f.label :rera_valid_till, "RERA valid till" %><%= f.date_field :rera_valid_till, class: "input" %></div>
+  <div class="field"><%= f.label :internal_notes, "Internal notes" %><%= f.text_area :internal_notes, class: "input" %></div>
+  <%= f.submit "Save", class: "btn btn-primary" %>
+<% end %>

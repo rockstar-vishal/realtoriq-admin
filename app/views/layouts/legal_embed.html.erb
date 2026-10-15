@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title><%= content_for(:title) || "RealtorIQ" %></title>
+    <%# Shown inside the signup page's dialog. Links to other sites open in a new
+        tab; the contents links still jump within the frame. %>
+    <script>
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest("a[href^='http'], a[href^='mailto:']")
+        if (link) { link.target = "_blank"; link.rel = "noopener" }
+      })
+    </script>
+    <%= render "layouts/onboarding_styles" %>
+  </head>
+  <body class="su-embed">
+    <div class="su-legal-wrap">
+      <%= yield %>
+    </div>
+  </body>
+</html>

@@ -2,8 +2,7 @@
 
 module Api
   module V1
-    # Sign-in. No passwords and no self-signup anywhere: ops create the account,
-    # and possession of the mobile is the credential.
+    # Sign-in. No passwords. A pending firm cannot sign in; ops activate it.
     class AuthController < BaseController
       # The unauthenticated surface, so it carries its own rate limit on top of
       # the per-user lockout. See config/application.rb — strict in production,
@@ -17,9 +16,14 @@ module Api
         # The design's "This number isn't registered" wall. Said plainly because
         # there is no self-signup — a stranger learning that a number is not
         # registered gains nothing they can act on.
-        return render_error("not_registered", "This number isn't registered. Channel partners are onboarded by the sales team.", status: :not_found) if user.nil?
+        return render_error("not_registered", Onboarding::NOT_REGISTERED, status: :not_found) if user.nil?
 
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
+
+        # Before any code is issued. A pending firm is not a workspace yet.
+        if user.firm.pending?
+          return render_error("account_unapproved", Onboarding::UNAPPROVED, status: :forbidden)
+        end
 
         review_login = Auth::ReviewLogin.applies_to?(user)
         field_demo = Auth::FieldDemo.applies_to?(user)
@@ -82,6 +86,10 @@ module Api
 
         # State checks come after the code is proven, so an unauthenticated
         # caller can't probe which firms are suspended.
+        if user.firm.pending?
+          return render_error("account_unapproved", Onboarding::UNAPPROVED, status: :forbidden)
+        end
+
         if user.firm.suspended?
           return render_error("account_suspended", "This account is suspended. Contact your RM.", status: :forbidden)
         end
@@ -110,6 +118,7 @@ module Api
 
         user = session.user
         return render_error("account_disabled", "This account has been disabled.", status: :forbidden) if user.disabled?
+        return render_error("account_unapproved", Onboarding::UNAPPROVED, status: :forbidden) if user.firm.pending?
         return render_error("account_suspended", "This account is suspended.", status: :forbidden) if user.firm.suspended?
 
         rotated = session.rotate_if_matches!(digest)

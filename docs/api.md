@@ -81,7 +81,7 @@ balance, the attempts left, the failing fields.
 ## Authentication
 
 **There are no passwords.** Possession of the mobile number is the credential,
-and there is no self-signup: ops create the firm and its first user.
+Brokers may apply at `/self-signup`. Nobody gets a workspace until ops activate the firm in `/admin`. A pending firm cannot sign in.
 
 ### Flow
 
@@ -113,9 +113,9 @@ how a stolen token gets caught.
 { "request_id": "01a0…", "sent_to": "+919820144xxx", "expires_in": 599, "attempts_allowed": 3 }
 ```
 
-The number comes back masked. An unregistered mobile is `404 not_registered` —
-said plainly, because with no self-signup a stranger learns nothing they can act
-on.
+The number comes back masked. An unknown mobile is `404 not_registered`, and the
+message points at `https://api.realtoriq.kgen.tech/self-signup`. A pending firm is
+`403 account_unapproved` and no code is sent.
 
 ### `POST /auth/verify`
 
@@ -180,6 +180,12 @@ Checked on every authenticated request, so handle them globally:
 firm suspended mid-session starts failing on the next call.
 
 ---
+
+## Registration
+
+`GET /self-signup` is HTML on the API host, not a JSON endpoint. The broker verifies mobile and email, then submits once. WhatsApp is required and can be verified later. A successful submit creates a **pending** firm. Ops activate it from `/admin` after assigning a live plan. There is no draft. `GET /register` redirects there.
+
+`GET /legal/terms` and `GET /legal/privacy` serve the pinned texts. `?embed=1` returns the body without the page chrome.
 
 ## Session and reference data
 
@@ -2197,7 +2203,8 @@ Switch on `code`. The `message` is for humans and may be reworded.
 
 | Code | Status | |
 | --- | --- | --- |
-| `not_registered` | 404 | No such mobile. There is no self-signup |
+| `not_registered` | 404 | No such mobile. The message links to `/self-signup` |
+| `account_unapproved` | 403 | The firm is still pending. No code is sent, and an existing session is not force-logged-out by the web app |
 | `invalid_code` | 401 | Wrong, expired or already-used code. `details.attempts_left` |
 | `otp_locked` | 429 | Three wrong codes. Locked 30 minutes |
 | `rate_limited` | 429 | Too many code requests from this IP |

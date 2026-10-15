@@ -66,6 +66,9 @@ gem "thruster", require: false
 # Firm logos are resized into a square thumbnail for the admin tables.
 gem "image_processing", "~> 1.2"
 
+# The registration acceptance PDF. Noto Sans is vendored so the rupee sign renders.
+gem "prawn", "~> 2.5"
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
@@ -85,6 +88,7 @@ group :test do
   gem "shoulda-matchers", "~> 6.4"
   gem "capybara"
   gem "selenium-webdriver"
+  gem "pdf-reader", "~> 2.12"
 end
 
 group :development do

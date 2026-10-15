@@ -1,0 +1,25 @@
+<% content_for :title, "#{@title} · RealtorIQ" %>
+<% other_kind, other_title = @document.kind == "terms" ? [ "privacy", "Privacy Policy" ] : [ "terms", "Terms & Conditions" ] %>
+
+<% if params[:embed] == "1" %>
+  <p class="su-legal-meta" style="margin: 0 0 4px"><span class="su-pill">Version <%= @document.version %></span></p>
+  <div class="su-legal-body"><%= @html %></div>
+<% else %>
+  <% content_for :brand_body do %>
+    <div class="su-brand-note">
+      <strong>Questions about these terms?</strong>
+      Write to <a style="color:#fff" href="mailto:support@kgen.tech">support@kgen.tech</a>.
+    </div>
+  <% end %>
+
+  <article class="su-legal">
+    <p class="su-eyebrow">RealtorIQ</p>
+    <h1 class="su-legal-title"><%= @title %></h1>
+    <div class="su-legal-meta">
+      <span class="su-pill">Version <%= @document.version %></span>
+      <span class="su-pill">KGen Intelligence Private Limited</span>
+      <%= link_to "#{other_title} →", legal_path(kind: other_kind), class: "su-pill" %>
+    </div>
+    <div class="su-legal-body"><%= @html %></div>
+  </article>
+<% end %>

@@ -8,8 +8,9 @@ one app:
 - **`/api/v1`** — JSON API for the React broker app (separate repo).
 
 Tenants are broker **firms**. A firm has one super admin and any number of
-managers and agents. There is no self-signup anywhere: ops create the firm and
-its super admin, who then signs in with a one-time code to their mobile.
+managers and agents. Brokers may apply at `/self-signup`. Nobody gets a workspace
+until ops activate the firm in `/admin`: open the application, assign a live
+plan on the firm's Subscription tab, then Activate. A pending firm cannot sign in.
 
 ## Getting started
 

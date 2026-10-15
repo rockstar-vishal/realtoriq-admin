@@ -1,0 +1,7 @@
+Your RealtorIQ workspace is ready.
+
+Sign in at <%= Onboarding::SIGN_IN_URL %> with <%= @mobile %>.
+<% if @subscription %>
+Plan: <%= @subscription.plan.name %>
+Period: <%= @subscription.current_period_start %> to <%= @subscription.current_period_end %>
+<% end %>

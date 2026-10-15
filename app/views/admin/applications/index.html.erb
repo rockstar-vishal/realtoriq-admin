@@ -1,0 +1,55 @@
+<% content_for :title, "Applications · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Applications</h1>
+  <span class="text-[13px] text-[var(--color-neutral-600)]"><%= pluralize(@pagy.count, "application") %></span>
+</div>
+
+<nav class="flex gap-6 mb-5 border-b-2 border-[var(--color-divider)]">
+  <% %w[awaiting activated rejected lapsed].each do |tab| %>
+    <%= link_to tab.humanize, admin_applications_path(tab:, q: params[:q]),
+          class: "pb-3 -mb-[2px] text-[13px] no-underline border-b-2 #{@tab == tab ? "border-[var(--color-accent)] text-[var(--color-accent)] font-extrabold" : "border-transparent text-[var(--color-neutral-700)]"}" %>
+  <% end %>
+</nav>
+
+<%= form_with url: admin_applications_path, method: :get, class: "flex flex-wrap items-end gap-4 mb-5" do |f| %>
+  <%= hidden_field_tag :tab, @tab %>
+  <div class="field w-[280px]">
+    <%= f.label :q, "Search" %>
+    <%= f.search_field :q, value: params[:q], class: "input", placeholder: "Reference, name, mobile, email, PAN, GST, RERA" %>
+  </div>
+  <%= f.submit "Search", class: "btn btn-secondary" %>
+<% end %>
+
+<table class="w-full text-[14px]">
+  <thead>
+    <tr class="text-left text-[var(--color-neutral-700)]">
+      <th class="py-2">Reference</th>
+      <th>Firm</th>
+      <th>City</th>
+      <th>Submitted</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @applications.each do |application| %>
+      <tr class="border-t border-[var(--color-divider)]">
+        <td class="py-3"><%= link_to application.reference, admin_application_path(application) %></td>
+        <td><%= application.firm_name %></td>
+        <td><%= application.city.name %></td>
+        <td><%= ist_stamp(application.submitted_at) %></td>
+        <td>
+          <% if @tab == "awaiting" %>
+            Lapses in <%= application.days_until_lapse %> <%= "day".pluralize(application.days_until_lapse) %>
+          <% else %>
+            <%= application.status.humanize %>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<% if @pagy.pages > 1 %>
+  <div class="mt-6 text-[13px]"><%== pagy_nav(@pagy) %></div>
+<% end %>

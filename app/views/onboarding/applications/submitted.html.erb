@@ -1,0 +1,48 @@
+<% content_for :title, "Registration received · RealtorIQ" %>
+
+<% content_for :brand_body do %>
+  <div class="su-brand-note">
+    <strong>Need help?</strong>
+    Write to <a style="color:#fff" href="mailto:realtoriq@kgen.tech">realtoriq@kgen.tech</a> and quote your reference.
+  </div>
+<% end %>
+
+<% check = '<svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>'.html_safe %>
+
+<div class="su-done">
+  <div class="su-done-badge"><%= check %></div>
+  <header class="su-head">
+    <p class="su-eyebrow" style="margin-top: 22px">Registration received</p>
+    <h1>You're registered. We're on it.</h1>
+    <p class="su-lede">Your firm is with our team for review. We'll email you as soon as your workspace is ready.</p>
+  </header>
+
+  <div class="su-ref" data-controller="signup-copy" data-signup-copy-text-value="<%= @reference %>">
+    <div><small>Your reference</small><strong><%= @reference %></strong></div>
+    <button type="button" class="su-btn" data-action="signup-copy#copy" data-signup-copy-target="button">Copy</button>
+  </div>
+
+  <section class="su-card">
+    <div class="su-card-head" style="margin-bottom: 14px"><div><h2>What happens next</h2></div></div>
+    <ol class="su-steps">
+      <li class="is-done">
+        <span class="su-step-dot"><svg class="su-icon" style="width: 14px; height: 14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div><strong>Registration submitted</strong><p>We've emailed you a PDF of the terms you accepted.</p></div>
+      </li>
+      <li>
+        <span class="su-step-dot">2</span>
+        <div><strong>Our team reviews your details</strong><p>We may call you if something needs checking.</p></div>
+      </li>
+      <li>
+        <span class="su-step-dot">3</span>
+        <div><strong>Your workspace is activated</strong><p>You'll get an email with your plan.</p></div>
+      </li>
+      <li>
+        <span class="su-step-dot">4</span>
+        <div><strong>Sign in with your mobile number</strong><p>At <a href="<%= Onboarding::SIGN_IN_URL %>">app.realtoriq.kgen.tech</a>, with a one-time code.</p></div>
+      </li>
+    </ol>
+  </section>
+
+  <p class="su-hint" style="margin-top: 18px">Questions? Write to <a href="mailto:realtoriq@kgen.tech">realtoriq@kgen.tech</a> and quote your reference.</p>
+</div>

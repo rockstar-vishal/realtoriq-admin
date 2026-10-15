@@ -44,6 +44,10 @@ module Api
 
       # Blocked states from the design, as codes the app can switch on.
       def enforce_account_state
+        if current_firm.pending?
+          return render_error("account_unapproved", Onboarding::UNAPPROVED, status: :forbidden)
+        end
+
         if current_firm.suspended?
           return render_error("account_suspended", "This account is suspended. Contact your RM.",
                               status: :forbidden)

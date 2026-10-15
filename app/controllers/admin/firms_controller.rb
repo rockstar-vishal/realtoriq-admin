@@ -10,7 +10,7 @@ module Admin
       scope = filter_by_verification(scope)
 
       @pagy, @firms = pagy(scope.includes(:contact_channels).order(created_at: :desc))
-      @status_counts = Firm.group(:status).count
+      @status_counts = Firm.kept.group(:status).count
     end
 
     def show
@@ -52,6 +52,8 @@ module Admin
     def activate
       @firm.activate!(actor: current_admin)
       redirect_to admin_firm_path(@firm), notice: "#{@firm.name} is active."
+    rescue Firm::ActivationRefused => e
+      redirect_to admin_firm_path(@firm), alert: e.message
     end
 
     def suspend

@@ -1,0 +1,420 @@
+<% content_for :title, "Register your firm · RealtorIQ" %>
+
+<% steps = [
+     [ "you", "You and your firm" ],
+     [ "contacts", "Contact details" ],
+     [ "office", "Office and areas" ],
+     [ "rera", "RERA and tax" ],
+     [ "documents", "Visiting card" ],
+     [ "submit", "Review and submit" ]
+   ] %>
+
+<% content_for :brand_body do %>
+  <p class="su-rail-title">Your progress</p>
+  <ol class="su-rail">
+    <% steps.each do |key, title| %>
+      <li data-rail-step="<%= key %>"><a href="#<%= key %>"><span class="su-rail-dot"></span><%= title %></a></li>
+    <% end %>
+  </ol>
+  <div class="su-brand-note">
+    <strong>What happens next</strong>
+    Our team checks your details and activates your workspace. We'll email you when it's ready, and you sign in with your mobile number.
+  </div>
+<% end %>
+
+<% req = '<span class="su-req" aria-hidden="true">*</span>'.html_safe %>
+<% opt = '<span class="su-opt">Optional</span>'.html_safe %>
+<% summary = signup_error_summary(@form) %>
+
+<div class="su-page" data-controller="signup-progress legal-dialog">
+  <header class="su-head">
+    <p class="su-eyebrow">Broker self-signup</p>
+    <h1>Register your firm on RealtorIQ</h1>
+    <p class="su-lede">It takes about 5 minutes. Keep your visiting card handy, and your RERA certificate if you have one.</p>
+    <ul class="su-keys">
+      <li><%= req %> Required</li>
+      <li><svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>About 5 minutes</li>
+      <li><svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Documents stay private</li>
+    </ul>
+  </header>
+
+  <div class="su-progress" aria-hidden="true">
+    <div class="su-progress-row">
+      <strong data-signup-progress-target="count">0 of <%= steps.size %> done</strong>
+      <span data-signup-progress-target="next">Next: <%= steps.first.last %></span>
+    </div>
+    <div class="su-progress-track"><div class="su-progress-fill" data-signup-progress-target="fill"></div></div>
+  </div>
+
+  <% if summary.any? %>
+    <div class="su-banner su-banner-err su-summary" role="alert" tabindex="-1">
+      <svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      <div>
+        <h2><%= summary.size == 1 ? "Please fix 1 thing before submitting" : "Please fix #{summary.size} things before submitting" %></h2>
+        <ul>
+          <% summary.each do |message, anchor| %>
+            <li><%= anchor ? link_to(message, anchor) : message %></li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  <% end %>
+  <% if @files_again %>
+    <div class="su-banner su-banner-warn" role="status">
+      <svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <div>Everything you typed is still here. Browsers don't keep chosen files, so please add your visiting card<%= " and RERA certificate" if @form.rera_yes? %> again.</div>
+    </div>
+  <% end %>
+
+  <%= form_with url: registration_path, method: :post, multipart: true, class: "su-form",
+        data: {
+          turbo: false,
+          action: "input->signup-progress#refresh change->signup-progress#refresh signup-contact:changed->signup-progress#refresh signup-file:changed->signup-progress#refresh signup-combobox:changed->signup-progress#refresh signup-reveal:changed->signup-progress#refresh"
+        } do %>
+    <%# Pressing Enter in a text box must not fire the first Send code button. %>
+    <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+
+    <%# 1 · You and your firm %>
+    <section class="su-card" id="you" data-step="you" data-title="You and your firm" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">1</span>
+        <div><h2>You and your firm</h2><p>As printed on your visiting card.</p></div>
+      </div>
+      <div class="su-grid su-grid-2">
+        <div class="su-field">
+          <label class="su-label" for="applicant_name">Your full name <%= req %></label>
+          <input class="su-input" type="text" id="applicant_name" name="applicant_name" value="<%= @form.applicant_name %>"
+                 autocomplete="name" maxlength="160" required data-required data-missing="Enter your full name."
+                 aria-invalid="<%= field_invalid(@form, :applicant_name) %>" aria-describedby="applicant_name_error">
+          <%= field_error(@form, :applicant_name) %>
+        </div>
+        <div class="su-field">
+          <label class="su-label" for="applicant_designation">Designation <%= req %></label>
+          <input class="su-input" type="text" id="applicant_designation" name="applicant_designation" value="<%= @form.applicant_designation %>"
+                 list="designations" autocomplete="organization-title" maxlength="80" placeholder="Owner, Partner, Director…"
+                 required data-required data-missing="Enter your designation."
+                 aria-invalid="<%= field_invalid(@form, :applicant_designation) %>" aria-describedby="applicant_designation_error">
+          <datalist id="designations">
+            <% %w[Owner Proprietor Partner Director Founder Manager].each do |title| %><option value="<%= title %>"><% end %>
+          </datalist>
+          <%= field_error(@form, :applicant_designation) %>
+        </div>
+        <div class="su-field">
+          <label class="su-label" for="firm_name">Firm name <%= req %></label>
+          <input class="su-input" type="text" id="firm_name" name="firm_name" value="<%= @form.firm_name %>"
+                 autocomplete="organization" maxlength="160" required data-required data-missing="Enter your firm's name."
+                 aria-invalid="<%= field_invalid(@form, :firm_name) %>" aria-describedby="firm_name_error">
+          <p class="su-hint">The name clients know you by.</p>
+          <%= field_error(@form, :firm_name) %>
+        </div>
+        <div class="su-field">
+          <label class="su-label" for="legal_name">Legal name <%= opt %></label>
+          <input class="su-input" type="text" id="legal_name" name="legal_name" value="<%= @form.legal_name %>" maxlength="160"
+                 aria-invalid="<%= field_invalid(@form, :legal_name) %>" aria-describedby="legal_name_error">
+          <p class="su-hint">Only if it's different, like a registered company name.</p>
+          <%= field_error(@form, :legal_name) %>
+        </div>
+        <fieldset class="su-field su-span-2" id="field-entity_type">
+          <legend class="su-legend">Type of business <%= req %></legend>
+          <div class="su-chips">
+            <% Onboarding::ENTITY_TYPE_LABELS.each_with_index do |(value, name), index| %>
+              <label class="su-chip">
+                <input type="radio" name="entity_type" value="<%= value %>" <%= "checked" if @form.entity_type == value %>
+                       <% if index.zero? %>required data-required data-missing="Choose your type of business."<% end %>>
+                <span><%= name %></span>
+              </label>
+            <% end %>
+          </div>
+          <%= field_error(@form, :entity_type) %>
+        </fieldset>
+      </div>
+    </section>
+
+    <%# 2 · Contacts %>
+    <section class="su-card" id="contacts" data-step="contacts" data-title="Contact details" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">2</span>
+        <div><h2>Contact details</h2><p>We'll send a 6-digit code to each. Your mobile number becomes your sign-in.</p></div>
+      </div>
+      <div class="su-contacts">
+        <%= render "contact", kind: "mobile", label: "Mobile number", must_verify: true %>
+        <%= render "contact", kind: "whatsapp", label: "WhatsApp number", must_verify: false %>
+        <%= render "contact", kind: "email", label: "Email address", must_verify: true %>
+      </div>
+    </section>
+
+    <%# 3 · Office and areas %>
+    <section class="su-card" id="office" data-step="office" data-title="Office and areas" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">3</span>
+        <div><h2>Office and areas</h2><p>Where your office is, and the areas you cover.</p></div>
+      </div>
+      <div class="su-grid su-grid-2">
+        <div class="su-field su-span-2">
+          <label class="su-label" for="address_line1">Office address <%= req %></label>
+          <input class="su-input" type="text" id="address_line1" name="address_line1" value="<%= @form.address_line1 %>"
+                 autocomplete="address-line1" maxlength="200" placeholder="Shop / office number, building, street"
+                 required data-required data-missing="Enter your office address."
+                 aria-invalid="<%= field_invalid(@form, :address_line1) %>" aria-describedby="address_line1_error">
+          <%= field_error(@form, :address_line1) %>
+        </div>
+        <div class="su-field su-span-2">
+          <label class="su-label" for="address_line2">Address line 2 <%= opt %></label>
+          <input class="su-input" type="text" id="address_line2" name="address_line2" value="<%= @form.address_line2 %>"
+                 autocomplete="address-line2" maxlength="200" placeholder="Landmark, area">
+        </div>
+        <div class="su-field" id="field-city_id">
+          <label class="su-label" for="city_id">City <%= req %></label>
+          <select class="su-select" id="city_id" name="city_id" required data-required data-missing="Choose your city."
+                  aria-invalid="<%= field_invalid(@form, :city_id) %>" aria-describedby="city_id_error">
+            <option value="">Choose a city</option>
+            <% @cities.each do |city| %>
+              <option value="<%= city.id %>" <%= "selected" if @form.city_id.to_s == city.id.to_s %>><%= city.name %></option>
+            <% end %>
+          </select>
+          <%= field_error(@form, :city_id) %>
+        </div>
+        <div class="su-field">
+          <label class="su-label" for="pincode">Pincode <%= req %></label>
+          <input class="su-input" type="text" id="pincode" name="pincode" value="<%= @form.pincode %>"
+                 inputmode="numeric" autocomplete="postal-code" maxlength="6" pattern="\d{6}" placeholder="400068"
+                 required data-required data-missing="Enter the 6-digit pincode."
+                 aria-invalid="<%= field_invalid(@form, :pincode) %>" aria-describedby="pincode_error">
+          <%= field_error(@form, :pincode) %>
+        </div>
+
+        <div class="su-field su-span-2" id="field-locality_id" data-controller="signup-combobox"
+             data-signup-combobox-city-field-value="city_id"
+             data-signup-combobox-placeholder-value="Search your office locality">
+          <label class="su-label" for="locality_id">Office locality <%= req %></label>
+          <select class="su-select su-native" id="locality_id" name="locality_id" required
+                  data-required data-missing="Choose your office locality." data-signup-combobox-target="select"
+                  aria-invalid="<%= field_invalid(@form, :locality_id) %>">
+            <option value="">Choose a locality</option>
+            <% @localities.each do |locality| %>
+              <option value="<%= locality.id %>" data-city="<%= locality.city_id %>" data-name="<%= locality.name %>"
+                      <%= "selected" if @form.locality_id.to_s == locality.id.to_s %>><%= locality.name %>, <%= locality.city.name %></option>
+            <% end %>
+          </select>
+          <div class="su-combo">
+            <div class="su-combo-box" data-signup-combobox-target="box" data-action="click->signup-combobox#focus">
+              <span hidden data-signup-combobox-target="tags"></span>
+              <input class="su-combo-input" type="text" id="locality_search" role="combobox" aria-autocomplete="list"
+                     aria-expanded="false" aria-controls="locality_list" autocomplete="off" spellcheck="false"
+                     data-signup-combobox-target="input"
+                     data-action="input->signup-combobox#search focus->signup-combobox#open keydown->signup-combobox#key blur->signup-combobox#blur">
+            </div>
+            <ul class="su-combo-list" id="locality_list" role="listbox" hidden
+                data-signup-combobox-target="list" data-action="mousedown->signup-combobox#choose"></ul>
+          </div>
+          <%= field_error(@form, :locality_id) %>
+        </div>
+
+        <div class="su-field su-span-2" id="field-extra_locality_ids" data-controller="signup-combobox"
+             data-signup-combobox-multiple-value="true"
+             data-signup-combobox-city-field-value="city_id"
+             data-signup-combobox-exclude-field-value="locality_id"
+             data-signup-combobox-placeholder-value="Search and add localities">
+          <label class="su-label" for="extra_locality_ids">Other localities you cover <%= opt %></label>
+          <% extra_ids = Array(@form.extra_locality_ids).map(&:to_s) %>
+          <select class="su-select su-native" id="extra_locality_ids" name="extra_locality_ids[]" multiple size="6"
+                  data-signup-combobox-target="select">
+            <% @localities.each do |locality| %>
+              <option value="<%= locality.id %>" data-city="<%= locality.city_id %>" data-name="<%= locality.name %>"
+                      <%= "selected" if extra_ids.include?(locality.id.to_s) %>><%= locality.name %>, <%= locality.city.name %></option>
+            <% end %>
+          </select>
+          <div class="su-combo">
+            <div class="su-combo-box" data-signup-combobox-target="box" data-action="click->signup-combobox#focus">
+              <span style="display: contents" data-signup-combobox-target="tags"></span>
+              <input class="su-combo-input" type="text" id="extra_locality_search" role="combobox" aria-autocomplete="list"
+                     aria-expanded="false" aria-controls="extra_locality_list" autocomplete="off" spellcheck="false"
+                     data-signup-combobox-target="input"
+                     data-action="input->signup-combobox#search focus->signup-combobox#open keydown->signup-combobox#key blur->signup-combobox#blur">
+            </div>
+            <ul class="su-combo-list" id="extra_locality_list" role="listbox" hidden
+                data-signup-combobox-target="list" data-action="mousedown->signup-combobox#choose"></ul>
+          </div>
+          <p class="su-combo-count" data-signup-combobox-target="count"></p>
+          <p class="su-hint">Brokers and builders use these to match you with listings and leads.</p>
+          <%= field_error(@form, :extra_locality_ids) %>
+        </div>
+
+        <fieldset class="su-field su-span-2" id="field-team_size">
+          <legend class="su-legend">Team size <%= opt %></legend>
+          <div class="su-chips">
+            <% Onboarding::TEAM_SIZE_LABELS.each do |value, name| %>
+              <label class="su-chip">
+                <input type="radio" name="team_size" value="<%= value %>" <%= "checked" if @form.team_size == value %>>
+                <span><%= name %></span>
+              </label>
+            <% end %>
+          </div>
+          <%= field_error(@form, :team_size) %>
+        </fieldset>
+      </div>
+    </section>
+
+    <%# 4 · RERA and tax %>
+    <section class="su-card" id="rera" data-step="rera" data-title="RERA and tax" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">4</span>
+        <div><h2>RERA and tax</h2><p>RERA registration is optional to join, but you need it to sell RERA-registered projects.</p></div>
+      </div>
+
+      <div data-controller="signup-reveal" data-signup-reveal-name-value="rera_registered">
+        <fieldset class="su-field" id="field-rera_registered">
+          <legend class="su-legend">Do you have a RERA agent registration? <%= req %></legend>
+          <div class="su-options">
+            <label class="su-option">
+              <input type="radio" name="rera_registered" value="true" <%= "checked" if @form.rera_yes? %> required
+                     data-required data-missing="Tell us whether you have a RERA registration." data-action="signup-reveal#toggle">
+              <span class="su-option-box"><span class="su-option-radio"></span><span><strong>Yes, I'm registered</strong><small>Add your number and certificate.</small></span></span>
+            </label>
+            <label class="su-option">
+              <input type="radio" name="rera_registered" value="false" <%= "checked" if @form.rera_no? %> data-action="signup-reveal#toggle">
+              <span class="su-option-box"><span class="su-option-radio"></span><span><strong>No, not yet</strong><small>Confirm a short declaration instead.</small></span></span>
+            </label>
+          </div>
+          <%= field_error(@form, :rera_registered) %>
+        </fieldset>
+
+        <div class="su-reveal" data-when="true" data-signup-reveal-target="panel">
+          <p class="su-reveal-title">If yes</p>
+          <div class="su-grid su-grid-2">
+            <div class="su-field">
+              <label class="su-label" for="rera_number">RERA registration number <%= req %></label>
+              <input class="su-input su-upper" type="text" id="rera_number" name="rera_number" value="<%= @form.rera_number %>"
+                     maxlength="40" placeholder="A51800012345" autocapitalize="characters" spellcheck="false"
+                     data-required data-missing="Enter your RERA registration number."
+                     aria-invalid="<%= field_invalid(@form, :rera_number) %>" aria-describedby="rera_number_error">
+              <%= field_error(@form, :rera_number) %>
+            </div>
+            <div class="su-field">
+              <label class="su-label" for="rera_valid_till">Valid till <%= req %></label>
+              <input class="su-input" type="date" id="rera_valid_till" name="rera_valid_till" value="<%= @form.rera_valid_till %>"
+                     min="<%= Date.tomorrow.iso8601 %>"
+                     data-required data-missing="Enter the date your RERA registration is valid till."
+                     aria-invalid="<%= field_invalid(@form, :rera_valid_till) %>" aria-describedby="rera_valid_till_error">
+              <%= field_error(@form, :rera_valid_till) %>
+            </div>
+            <div class="su-span-2">
+              <%= render "file_drop", field: :rera_certificate, label: "RERA certificate",
+                    prompt: "Upload your certificate", meta: "PDF or photo, up to 2 MB",
+                    missing: "Add your RERA certificate.", icon: :upload, required: false %>
+            </div>
+          </div>
+        </div>
+
+        <div class="su-reveal" data-when="false" data-signup-reveal-target="panel">
+          <p class="su-reveal-title">If no</p>
+          <div class="su-field" id="field-rera_declaration">
+            <label class="su-check">
+              <input type="hidden" name="rera_declaration" value="0">
+              <input type="checkbox" id="rera_declaration" name="rera_declaration" value="1" <%= "checked" if @form.rera_declaration.to_s == "1" %>
+                     data-required data-missing="Tick the declaration to continue without RERA.">
+              <span><%= Onboarding::RERA_DECLARATION %></span>
+            </label>
+            <%= field_error(@form, :rera_declaration) %>
+          </div>
+        </div>
+      </div>
+
+      <hr class="su-divider">
+      <div class="su-subhead"><h3>Tax details</h3><%= opt %></div>
+      <div class="su-grid su-grid-2">
+        <div class="su-field">
+          <label class="su-label" for="pan">PAN <%= opt %></label>
+          <input class="su-input su-upper" type="text" id="pan" name="pan" value="<%= @form.pan %>"
+                 maxlength="10" placeholder="ABCDE1234F" autocapitalize="characters" spellcheck="false"
+                 aria-invalid="<%= field_invalid(@form, :pan) %>" aria-describedby="pan_error">
+          <%= field_error(@form, :pan) %>
+        </div>
+        <div class="su-field">
+          <label class="su-label" for="gst">GSTIN <%= opt %></label>
+          <input class="su-input su-upper" type="text" id="gst" name="gst" value="<%= @form.gst %>"
+                 maxlength="15" placeholder="27ABCDE1234F1Z5" autocapitalize="characters" spellcheck="false"
+                 aria-invalid="<%= field_invalid(@form, :gst) %>" aria-describedby="gst_error">
+          <p class="su-hint">If you add both, the PAN inside the GSTIN must match.</p>
+          <%= field_error(@form, :gst) %>
+        </div>
+      </div>
+    </section>
+
+    <%# 5 · Visiting card %>
+    <section class="su-card" id="documents" data-step="documents" data-title="Visiting card" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">5</span>
+        <div><h2>Visiting card</h2><p>Helps our team confirm your firm. Only our team can see it.</p></div>
+      </div>
+      <%= render "file_drop", field: :visiting_card, label: "Photo of your visiting card",
+            prompt: "Tap to take a photo or choose a file", meta: "Front side · JPG, PNG, PDF · up to 2 MB",
+            missing: "Add a photo of your visiting card.", icon: :card, required: true %>
+    </section>
+
+    <%# 6 · Review and submit %>
+    <section class="su-card" id="submit" data-step="submit" data-title="Review and submit" data-signup-progress-target="step">
+      <div class="su-card-head">
+        <span class="su-num">6</span>
+        <div><h2>Review and submit</h2><p>Accept the terms and send your registration.</p></div>
+      </div>
+
+      <ul class="su-ready">
+        <li data-signup-progress-target="check" data-check="mobile"><a href="#contact-mobile">Mobile number verified</a></li>
+        <li data-signup-progress-target="check" data-check="email"><a href="#contact-email">Email address verified</a></li>
+        <li data-signup-progress-target="check" data-check="details"><a href="#you">All required details filled in</a></li>
+        <li data-signup-progress-target="check" data-check="accept"><a href="#field-accept">Terms accepted</a></li>
+        <li data-signup-progress-target="check" data-check="captcha"><a href="#captcha">Captcha ticked</a></li>
+      </ul>
+
+      <% statement_start, rest = Onboarding::ACCEPTANCE_STATEMENT.split("Terms & Conditions", 2) %>
+      <% statement_middle, statement_end = rest.to_s.split("Privacy Policy", 2) %>
+      <div class="su-accept su-field" id="field-accept">
+        <label class="su-check">
+          <input type="hidden" name="accept" value="0">
+          <input type="checkbox" id="accept" name="accept" value="1" <%= "checked" if @form.accept.to_s == "1" %> required
+                 data-required data-missing="Tick the box to accept the terms.">
+          <span>
+            <%= statement_start %><%= link_to "Terms & Conditions", legal_path(kind: "terms"), target: "_blank", rel: "noopener",
+                  data: { action: "legal-dialog#open", legal_dialog_url_param: legal_path(kind: "terms", embed: 1), legal_dialog_title_param: "Terms & Conditions" } %><%= statement_middle %><%= link_to "Privacy Policy", legal_path(kind: "privacy"), target: "_blank", rel: "noopener",
+                  data: { action: "legal-dialog#open", legal_dialog_url_param: legal_path(kind: "privacy", embed: 1), legal_dialog_title_param: "Privacy Policy" } %><%= statement_end %>
+          </span>
+        </label>
+        <%= field_error(@form, :accept) %>
+      </div>
+
+      <% site_key = Realtoriq::Credentials.recaptcha_site_key %>
+      <% if site_key.present? %>
+        <div class="su-captcha" id="captcha" data-signup-progress-target="captcha">
+          <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+          <div class="g-recaptcha" data-sitekey="<%= site_key %>" data-callback="suCaptchaDone" data-expired-callback="suCaptchaExpired"></div>
+        </div>
+      <% end %>
+
+      <div class="su-hp" aria-hidden="true">
+        <label for="website">Website</label>
+        <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <button type="submit" class="su-btn su-btn-lg" data-signup-progress-target="submit" data-action="signup-progress#guard">
+        Submit registration
+        <svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
+      <p class="su-status su-center" data-signup-progress-target="status" role="status" aria-live="polite"></p>
+      <p class="su-submit-note">We'll email you a PDF of the terms you accepted. You can sign in once our team activates your workspace.</p>
+    </section>
+  <% end %>
+
+  <dialog class="su-dialog" data-legal-dialog-target="dialog" data-action="close->legal-dialog#closed click->legal-dialog#backdrop">
+    <div class="su-dialog-head">
+      <strong data-legal-dialog-target="title">Terms &amp; Conditions</strong>
+      <div class="su-dialog-actions">
+        <a class="su-link" href="<%= legal_path(kind: "terms") %>" target="_blank" rel="noopener" data-legal-dialog-target="tab">Open in new tab</a>
+        <button type="button" class="su-dialog-close" data-action="legal-dialog#close" aria-label="Close">
+          <svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+    </div>
+    <iframe title="Legal document" data-legal-dialog-target="frame"></iframe>
+  </dialog>
+</div>
