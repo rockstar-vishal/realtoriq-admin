@@ -1,0 +1,32 @@
+<%#
+  A drop zone around one file input. Locals: field (:visiting_card or
+  :rera_certificate), label, prompt, meta, missing, icon (:card or :upload),
+  required (adds the HTML required attribute; signup-reveal sets it for RERA).
+%>
+<% icons = {
+     card: '<svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M14 10h4M14 14h4M6 16h6"/></svg>',
+     upload: '<svg class="su-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>'
+   } %>
+<div class="su-field" id="field-<%= field %>" data-controller="signup-file"
+     data-signup-file-max-bytes-value="<%= Onboarding::MAX_FILE_BYTES %>">
+  <label class="su-label" for="<%= field %>"><%= label %> <span class="su-req" aria-hidden="true">*</span></label>
+  <div class="su-drop <%= "is-bad" if @form.errors[field].present? %>" data-signup-file-target="zone"
+       data-action="dragover->signup-file#over dragleave->signup-file#leave drop->signup-file#drop">
+    <input type="file" id="<%= field %>" name="<%= field %>"
+           accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic"
+           <%= "required" if required %> data-required data-missing="<%= missing %>"
+           aria-describedby="<%= field %>_error"
+           data-signup-file-target="input" data-action="change->signup-file#pick">
+    <span class="su-drop-icon" data-signup-file-target="icon"><%= icons.fetch(icon).html_safe %></span>
+    <span class="su-drop-text">
+      <strong data-signup-file-target="name"><%= prompt %></strong>
+      <small data-signup-file-target="meta"><%= meta %></small>
+    </span>
+    <span class="su-drop-actions">
+      <button type="button" class="su-link" data-action="signup-file#replace">Replace</button>
+      <button type="button" class="su-link" data-action="signup-file#remove">Remove</button>
+    </span>
+  </div>
+  <p class="su-error" data-signup-file-target="message" hidden></p>
+  <%= field_error(@form, field) %>
+</div>

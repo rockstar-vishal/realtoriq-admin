@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#0a0a0a">
+    <title><%= content_for(:title) || "Register your firm · RealtorIQ" %></title>
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%# Set before the first paint so the JavaScript-only states never flash. %>
+    <script>document.documentElement.className = "js"</script>
+    <%= render "layouts/onboarding_styles" %>
+    <%= javascript_importmap_tags %>
+  </head>
+  <body>
+    <div class="su-shell">
+      <aside class="su-brand">
+        <div class="su-brand-top">
+          <a class="su-mark" href="<%= Onboarding::SIGN_IN_URL %>">
+            <%= image_tag "brand/realtoriq-icon.png", alt: "", width: 52, height: 52 %>
+            <strong>RealtorIQ</strong>
+          </a>
+          <a class="su-brand-link" href="<%= Onboarding::SIGN_IN_URL %>">Sign in <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="su-brand-big">
+          <h2>RealtorIQ</h2>
+          <div class="su-brand-rule"></div>
+          <p>Powered by <strong>KGen Intelligence Pvt Ltd</strong></p>
+        </div>
+        <div class="su-brand-body">
+          <% if content_for?(:brand_body) %>
+            <%= yield :brand_body %>
+          <% else %>
+            <div class="su-brand-note">
+              <strong>Need help?</strong>
+              Write to <a style="color:#fff" href="mailto:realtoriq@kgen.tech">realtoriq@kgen.tech</a>.
+            </div>
+          <% end %>
+        </div>
+        <div class="su-brand-foot">
+          <a class="su-brand-link" href="<%= Onboarding::SIGN_IN_URL %>">Already registered? Sign in <span aria-hidden="true">→</span></a>
+          <p>Broker self-signup</p>
+        </div>
+      </aside>
+
+      <main class="su-main">
+        <div class="su-main-inner">
+          <% if notice.present? %>
+            <p class="su-banner su-banner-ok" role="status"><%= notice %></p>
+          <% end %>
+          <% if alert.present? %>
+            <p class="su-banner su-banner-err" role="alert"><%= alert %></p>
+          <% end %>
+
+          <%= yield %>
+
+          <footer class="su-foot">
+            <span>© KGen Intelligence Pvt Ltd</span>
+            <%= link_to "Terms", legal_path(kind: "terms") %>
+            <%= link_to "Privacy", legal_path(kind: "privacy") %>
+            <span>Need help? <a href="mailto:realtoriq@kgen.tech">realtoriq@kgen.tech</a></span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

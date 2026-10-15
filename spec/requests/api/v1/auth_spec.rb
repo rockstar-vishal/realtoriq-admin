@@ -46,6 +46,18 @@ RSpec.describe "API v1 auth" do
 
       expect(response).to have_http_status(:not_found)
       expect(response.parsed_body.dig("error", "code")).to eq("not_registered")
+      expect(response.parsed_body.dig("error", "message")).to include("https://api.realtoriq.kgen.tech/self-signup")
+    end
+
+    it "does not text a pending firm" do
+      firm.update!(status: :pending)
+
+      request_code
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("account_unapproved")
+      expect(deliverer.deliveries).to be_empty
+      expect(OneTimeCode.count).to eq(0)
     end
 
     it "refuses a disabled user" do
@@ -145,6 +157,16 @@ RSpec.describe "API v1 auth" do
       expect(response).to have_http_status(:forbidden)
       expect(response.parsed_body.dig("error", "code")).to eq("account_suspended")
     end
+
+    it "refuses a pending firm after the code is proven" do
+      record, code = OneTimeCode.issue!(purpose: "login", destination: user.mobile, user:, ip: "127.0.0.1")
+      firm.update!(status: :pending)
+
+      post "/api/v1/auth/verify", params: { request_id: record.id, code: }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("account_unapproved")
+    end
   end
 
   describe "device sessions" do
@@ -228,6 +250,32 @@ RSpec.describe "API v1 auth" do
       post "/api/v1/auth/refresh", params: { refresh_token: token }, as: :json
 
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "refuses a pending firm before rotating the refresh token" do
+      token = sign_in["refresh_token"]
+      firm.update!(status: :pending)
+
+      post "/api/v1/auth/refresh", params: { refresh_token: token }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("account_unapproved")
+
+      firm.update!(status: :active)
+      post "/api/v1/auth/refresh", params: { refresh_token: token }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "an authenticated request" do
+    it "refuses a pending firm" do
+      token = sign_in["access_token"]
+      firm.update!(status: :pending)
+
+      get "/api/v1/me", headers: { "Authorization" => "Bearer #{token}" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body.dig("error", "code")).to eq("account_unapproved")
     end
   end
 

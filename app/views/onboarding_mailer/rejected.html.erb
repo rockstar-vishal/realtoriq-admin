@@ -1,0 +1,3 @@
+<p>Your RealtorIQ application for <%= @application.firm_name %> was not accepted (Ref <%= @application.reference %>).</p>
+<p><%= @application.rejection_reason %></p>
+<p>You may apply again at <a href="<%= Onboarding::REGISTER_URL %>"><%= Onboarding::REGISTER_URL %></a></p>

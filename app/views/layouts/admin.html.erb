@@ -18,9 +18,15 @@
       <% end %>
 
       <div class="flex items-center gap-6">
-        <% [["Firms", admin_firms_path], ["Plans", admin_plans_path], ["Trainings", admin_trainings_path], ["Masters", admin_masters_cities_path]].each do |label, path| %>
-          <%= link_to label, path,
-                class: "text-[14px] no-underline hover:text-[var(--color-accent)] #{'text-[var(--color-accent)]' if current_page_section?(path)}" %>
+        <% awaiting = OnboardingApplication.awaiting.count %>
+        <% [["Firms", admin_firms_path, nil], ["Applications", admin_applications_path, awaiting], ["Plans", admin_plans_path, nil], ["Trainings", admin_trainings_path, nil], ["Masters", admin_masters_cities_path, nil]].each do |label, path, count| %>
+          <%= link_to path,
+                class: "text-[14px] no-underline hover:text-[var(--color-accent)] #{'text-[var(--color-accent)]' if current_page_section?(path)}" do %>
+            <%= label %>
+            <% if count.to_i.positive? %>
+              <span class="tag tag-solid"><%= count %></span>
+            <% end %>
+          <% end %>
         <% end %>
       </div>
 

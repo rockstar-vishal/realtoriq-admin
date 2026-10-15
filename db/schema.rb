@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_15_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -422,8 +422,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
     t.decimal "lat", precision: 10, scale: 7
     t.decimal "lng", precision: 10, scale: 7
     t.string "google_place_id"
+    t.datetime "discarded_at"
     t.index ["city_id"], name: "index_firms_on_city_id"
     t.index ["code"], name: "index_firms_on_code", unique: true
+    t.index ["discarded_at"], name: "index_firms_on_discarded_at"
     t.index ["locality_id"], name: "index_firms_on_locality_id"
     t.index ["review_demo"], name: "index_firms_one_review_demo", unique: true, where: "review_demo"
     t.index ["slug"], name: "index_firms_on_slug", unique: true
@@ -709,6 +711,29 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
     t.check_constraint "transaction_type::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "leads_transaction_type_check"
   end
 
+  create_table "legal_acceptances", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "onboarding_application_id"
+    t.uuid "firm_id"
+    t.string "terms_version", null: false
+    t.string "terms_sha256", null: false
+    t.string "privacy_version", null: false
+    t.string "privacy_sha256", null: false
+    t.text "statement", null: false
+    t.datetime "accepted_at", null: false
+    t.string "ip"
+    t.string "user_agent", limit: 300
+    t.jsonb "evidence", default: {}, null: false
+    t.string "pdf_sha256"
+    t.datetime "pdf_generated_at"
+    t.datetime "emailed_at"
+    t.date "retain_until"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id"], name: "index_legal_acceptances_on_firm_id"
+    t.index ["onboarding_application_id"], name: "index_legal_acceptances_on_onboarding_application_id"
+    t.index ["retain_until"], name: "index_legal_acceptances_on_retain_until"
+  end
+
   create_table "localities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "city_id", null: false
     t.string "name", null: false
@@ -793,6 +818,61 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
     t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying, 'match_digest'::character varying, 'website_enquiry'::character varying]::text[])", name: "notifications_kind_check"
+  end
+
+  create_table "onboarding_applications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.string "reference", null: false
+    t.string "status", default: "submitted", null: false
+    t.string "applicant_name", null: false
+    t.string "applicant_designation", null: false
+    t.string "mobile", null: false
+    t.string "whatsapp", null: false
+    t.string "email", null: false
+    t.datetime "mobile_verified_at", null: false
+    t.datetime "whatsapp_verified_at"
+    t.datetime "email_verified_at", null: false
+    t.string "entity_type", null: false
+    t.string "firm_name", null: false
+    t.string "legal_name"
+    t.string "pan"
+    t.string "gst_number"
+    t.string "team_size"
+    t.boolean "rera_registered", null: false
+    t.string "rera_number"
+    t.date "rera_valid_till"
+    t.datetime "rera_declared_at"
+    t.string "address_line1", null: false
+    t.string "address_line2"
+    t.uuid "city_id", null: false
+    t.uuid "locality_id", null: false
+    t.string "pincode", null: false
+    t.uuid "extra_locality_ids", default: [], null: false, array: true
+    t.datetime "submitted_at", null: false
+    t.string "submit_ip"
+    t.string "submit_user_agent"
+    t.string "created_ip"
+    t.datetime "captcha_verified_at", null: false
+    t.datetime "reviewed_at"
+    t.uuid "reviewed_by_admin_id"
+    t.text "rejection_reason"
+    t.text "internal_notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((email)::text)", name: "index_onboarding_applications_one_submitted_email", unique: true, where: "((status)::text = 'submitted'::text)"
+    t.index ["city_id"], name: "index_onboarding_applications_on_city_id"
+    t.index ["firm_id"], name: "index_onboarding_applications_on_firm_id", unique: true
+    t.index ["gst_number"], name: "index_onboarding_applications_on_gst_number"
+    t.index ["locality_id"], name: "index_onboarding_applications_on_locality_id"
+    t.index ["mobile"], name: "index_onboarding_applications_one_submitted_mobile", unique: true, where: "((status)::text = 'submitted'::text)"
+    t.index ["pan"], name: "index_onboarding_applications_on_pan"
+    t.index ["reference"], name: "index_onboarding_applications_on_reference", unique: true
+    t.index ["rera_number"], name: "index_onboarding_applications_on_rera_number"
+    t.index ["reviewed_by_admin_id"], name: "index_onboarding_applications_on_reviewed_by_admin_id"
+    t.index ["status"], name: "index_onboarding_applications_on_status"
+    t.check_constraint "entity_type::text = ANY (ARRAY['individual'::character varying, 'proprietorship'::character varying, 'partnership'::character varying, 'llp'::character varying, 'private_limited'::character varying, 'public_limited'::character varying, 'other'::character varying]::text[])", name: "onboarding_applications_entity_type_check"
+    t.check_constraint "status::text = ANY (ARRAY['submitted'::character varying, 'rejected'::character varying, 'lapsed'::character varying]::text[])", name: "onboarding_applications_status_check"
+    t.check_constraint "team_size IS NULL OR (team_size::text = ANY (ARRAY['just_me'::character varying, '2_5'::character varying, '6_20'::character varying, '21_plus'::character varying]::text[]))", name: "onboarding_applications_team_size_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1224,6 +1304,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
   add_foreign_key "leads", "lead_statuses"
   add_foreign_key "leads", "property_types"
   add_foreign_key "leads", "users", column: "assigned_user_id", on_delete: :nullify
+  add_foreign_key "legal_acceptances", "firms", on_delete: :nullify
+  add_foreign_key "legal_acceptances", "onboarding_applications", on_delete: :nullify
   add_foreign_key "localities", "cities"
   add_foreign_key "locality_neighbors", "localities"
   add_foreign_key "locality_neighbors", "localities", column: "neighbor_locality_id"
@@ -1233,6 +1315,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_11_180000) do
   add_foreign_key "match_digests", "firms"
   add_foreign_key "notifications", "firms"
   add_foreign_key "notifications", "users", on_delete: :cascade
+  add_foreign_key "onboarding_applications", "admin_users", column: "reviewed_by_admin_id"
+  add_foreign_key "onboarding_applications", "cities"
+  add_foreign_key "onboarding_applications", "firms", on_delete: :restrict
+  add_foreign_key "onboarding_applications", "localities"
   add_foreign_key "one_time_codes", "contact_channels"
   add_foreign_key "one_time_codes", "users"
   add_foreign_key "project_share_links", "firms"

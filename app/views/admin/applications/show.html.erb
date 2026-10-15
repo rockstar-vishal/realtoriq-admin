@@ -1,0 +1,104 @@
+<% content_for :title, "#{@application.reference} · RealtorIQ Admin" %>
+
+<div class="mb-2">
+  <%= link_to "← Applications", admin_applications_path, class: "text-[13px] no-underline text-[var(--color-neutral-700)]" %>
+</div>
+
+<div class="flex items-start gap-4" data-controller="dialog">
+  <div class="flex-1">
+    <h1 class="text-[32px] leading-none"><%= @application.firm_name %></h1>
+    <p class="mt-2 text-[13px] text-[var(--color-neutral-700)]">
+      <%= @application.reference %> · <%= @application.status.humanize %>
+      <% if @application.submitted? && @application.firm.pending? && !@application.firm.discarded? %>
+        · Lapses in <%= @application.days_until_lapse %> <%= "day".pluralize(@application.days_until_lapse) %>
+      <% end %>
+    </p>
+  </div>
+  <div class="flex items-center gap-2">
+    <% if @application.submitted? && !@application.firm.discarded? %>
+      <%= link_to "Edit", edit_admin_application_path(@application), class: "btn btn-secondary" %>
+    <% end %>
+    <%= link_to "Firm", admin_firm_path(@application.firm), class: "btn btn-secondary" %>
+    <% if @application.firm.pending? && !@application.firm.discarded? %>
+      <%= button_to "Activate", activate_admin_firm_path(@application.firm), method: :patch, class: "btn btn-primary" %>
+      <button type="button" class="btn btn-secondary" data-action="dialog#open" data-dialog-id-param="reject-application">Reject</button>
+    <% end %>
+  </div>
+
+  <dialog id="reject-application" class="dialog">
+    <h2 class="font-heading font-extrabold text-[20px]">Reject <%= @application.firm_name %></h2>
+    <p class="text-[14px]">The mobile and email are freed immediately. The firm is discarded.</p>
+    <%= form_with url: reject_admin_application_path(@application), method: :post, class: "flex flex-col gap-3" do |f| %>
+      <div class="field">
+        <%= f.label :reason, "Reason *" %>
+        <%= f.text_area :reason, class: "input", required: true %>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary" data-action="dialog#close">Keep it</button>
+        <%= f.submit "Reject", class: "btn btn-danger" %>
+      </div>
+    <% end %>
+  </dialog>
+</div>
+
+<% if @application.firm.discarded? %>
+  <div class="mt-5 px-4 py-3 border-l-[3px] border-[var(--color-accent)] bg-[var(--color-accent-100)] text-[13px]">
+    Discarded <%= ist_stamp(@application.firm.discarded_at) %>
+    <% if @application.rejection_reason.present? %> — <%= @application.rejection_reason %><% end %>
+  </div>
+<% end %>
+
+<dl class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-[14px]">
+  <div><dt class="text-[var(--color-neutral-700)]">Applicant</dt><dd><%= @application.applicant_name %>, <%= @application.applicant_designation %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">Legal name</dt><dd><%= @application.legal_name.presence || "—" %> · <%= Onboarding.entity_label(@application.entity_type) %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">Mobile</dt><dd><%= @application.mobile %> · verified <%= ist_stamp(@application.mobile_verified_at) %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">WhatsApp</dt><dd><%= @application.whatsapp %><%= @application.whatsapp_verified_at ? ", verified #{ist_stamp(@application.whatsapp_verified_at)}" : ", not verified" %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">Email</dt><dd><%= @application.email %> · verified <%= ist_stamp(@application.email_verified_at) %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">Address</dt><dd><%= [@application.address_line1, @application.address_line2, @application.locality.name, @application.city.name, @application.pincode].compact_blank.join(", ") %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">PAN</dt><dd><%= @application.pan.presence || "—" %></dd></div>
+  <div><dt class="text-[var(--color-neutral-700)]">GSTIN</dt><dd><%= @application.gst_number.presence || "—" %></dd></div>
+  <div>
+    <dt class="text-[var(--color-neutral-700)]">RERA</dt>
+    <dd>
+      <% if @application.rera_registered? %>
+        <%= @application.rera_number %> · till <%= @application.rera_valid_till %>
+        · <%= link_to "MahaRERA", "https://maharera.maharashtra.gov.in", target: "_blank", rel: "noopener" %>
+      <% else %>
+        Declaration recorded <%= ist_stamp(@application.rera_declared_at) %>
+      <% end %>
+    </dd>
+  </div>
+  <div><dt class="text-[var(--color-neutral-700)]">Notes</dt><dd><%= @application.internal_notes.presence || "—" %></dd></div>
+</dl>
+
+<h2 class="mt-8 text-[18px]">Documents</h2>
+<ul class="text-[14px]">
+  <% if @application.visiting_card.attached? %>
+    <li><%= link_to "Visiting card", file_admin_application_path(@application, slot: "visiting_card"), target: "_blank", rel: "noopener" %></li>
+  <% end %>
+  <% if @application.rera_certificate.attached? %>
+    <li><%= link_to "RERA certificate", file_admin_application_path(@application, slot: "rera_certificate"), target: "_blank", rel: "noopener" %></li>
+  <% end %>
+  <% if @application.legal_acceptance&.document&.attached? %>
+    <li><%= link_to "Acceptance PDF", file_admin_application_path(@application, slot: "acceptance_pdf"), target: "_blank", rel: "noopener" %></li>
+  <% end %>
+</ul>
+
+<% if @duplicates.any? %>
+  <h2 class="mt-8 text-[18px]">Possible duplicates</h2>
+  <ul class="text-[14px]">
+    <% @duplicates.each do |item| %>
+      <li>
+        <%= item[:kind] %>:
+        <% if item[:reference] %>
+          <%= link_to item[:label], admin_application_path(item[:reference]) %>
+        <% elsif item[:firm_slug] %>
+          <%= link_to item[:label], admin_firm_path(item[:firm_slug]) %>
+        <% else %>
+          <%= item[:label] %>
+        <% end %>
+        (<%= item[:reason] %>)
+      </li>
+    <% end %>
+  </ul>
+<% end %>

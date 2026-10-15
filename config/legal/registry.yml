@@ -1,0 +1,10 @@
+# Pins for the published legal texts. The last entry of each kind is current.
+# sha256 is the SHA-256 of the file bytes, the same value `shasum -a 256` prints.
+terms:
+  - version: "1.0"
+    file: terms-1.0.md
+    sha256: df2891481b4ed824e2c40efb351bb859f2acd1d315f6afae72afd126647ea653
+privacy:
+  - version: "1.0"
+    file: privacy-1.0.md
+    sha256: b03ac2d0faa33d331aaaf894315075832c9c3ab766015c75fad7126f02afa6e5
