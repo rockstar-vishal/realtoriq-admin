@@ -93,6 +93,9 @@ module Realtoriq
         next if attached_image_checksums.include?(row["checksum"])
 
         into << upload(row, RemoteFile::IMAGE_TYPES, "photo")
+      rescue RemoteFile::TypeError
+        # A sale-plan PDF stored as an image must not drop the rest of the push.
+        Rails.logger.warn("Project photo skipped (#{filename(row, "photo")}): file type is not allowed")
       end
     end
 
