@@ -9,6 +9,8 @@ module Realtoriq
   # job, not in the webhook.
   class RemoteFile
     class Error < StandardError; end
+    # A permanent refusal. Callers skip the file. Other errors are retried.
+    class TypeError < Error; end
 
     MAX_BYTES = 20.megabytes
     MAX_REDIRECTS = 3
@@ -72,7 +74,7 @@ module Realtoriq
         type = response["content-type"].to_s.split(";").first.to_s.strip.downcase
         unless content_types.include?(type)
           body.close! if body.respond_to?(:close!)
-          raise Error, "file type is not allowed"
+          raise TypeError, "file type is not allowed"
         end
 
         return body

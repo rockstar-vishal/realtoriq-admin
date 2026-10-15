@@ -110,6 +110,31 @@ RSpec.describe Realtoriq::SyncProjectAssets do
     end
   end
 
+  it "skips a photo whose type is not allowed and still stores the rest" do
+    bytes = "new-photo"
+    brochure = "brochure-bytes"
+    allow(Realtoriq::RemoteFile).to receive(:fetch) do |url, **|
+      raise Realtoriq::RemoteFile::TypeError, "file type is not allowed" if url.end_with?(".pdf") && url.exclude?("brochure")
+
+      url.include?("brochure") ? brochure : bytes
+    end
+
+    described_class.call(
+      project:,
+      images: [
+        { "url" => "https://launch.example/plans.pdf", "checksum" => checksum("pdf"), "filename" => "plans.pdf" },
+        { "url" => "https://launch.example/new.jpg", "checksum" => checksum(bytes), "filename" => "new.jpg" }
+      ],
+      brochure: { "url" => "https://launch.example/brochure.pdf", "checksum" => checksum(brochure), "filename" => "brochure.pdf" }
+    )
+
+    Current.set(firm_scope_bypassed: true) do
+      project.reload
+      expect(project.photos.blobs.map(&:checksum)).to eq([ checksum(bytes) ])
+      expect(project.brochure.blob.checksum).to eq(checksum(brochure))
+    end
+  end
+
   it "downloads a file whose checksum is new" do
     bytes = "new-photo"
     allow(Realtoriq::RemoteFile).to receive(:fetch).and_return(bytes)

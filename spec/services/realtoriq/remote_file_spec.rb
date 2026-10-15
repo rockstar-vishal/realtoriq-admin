@@ -40,7 +40,7 @@ RSpec.describe Realtoriq::RemoteFile do
     stub_const("Realtoriq::RemoteFile::MAX_BYTES", 20.megabytes)
     stub_http(response(code: "200", type: "text/html", body: "nope"))
     expect { described_class.fetch("https://launch.example/a.jpg", content_types: described_class::IMAGE_TYPES) }
-      .to raise_error(described_class::Error, "file type is not allowed")
+      .to raise_error(described_class::TypeError, "file type is not allowed")
   end
 
   it "follows a redirect onto the S3 host" do

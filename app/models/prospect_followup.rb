@@ -7,7 +7,9 @@ class ProspectFollowup < ApplicationRecord
 
   OUTCOMES = %w[retry not_sure interested not_interested].freeze
 
-  enum :outcome, OUTCOMES.index_by(&:itself), validate: true
+  # `prefix` so `not_interested` does not clash with the negative scope Rails
+  # generates for `interested`. Stored values and the API stay the same.
+  enum :outcome, OUTCOMES.index_by(&:itself), prefix: :outcome, validate: true
 
   belongs_to :prospect, -> { unscope(where: :firm_id) }
   belongs_to :user, -> { unscope(where: :firm_id) }, optional: true
