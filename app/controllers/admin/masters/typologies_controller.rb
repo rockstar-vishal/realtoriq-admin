@@ -40,6 +40,7 @@ module Admin
         original = row.label
         row.typology = target
         row.needs_review = false
+        row.review_note = nil
         row.save!
         remember_review_alias(original, target)
         redirect_to review_admin_masters_typologies_path, notice: "Configuration updated."

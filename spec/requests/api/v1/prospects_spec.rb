@@ -165,6 +165,48 @@ RSpec.describe "API v1 prospects" do
       expect(response.parsed_body.dig("prospect", "lead_accessible")).to be(true)
     end
 
+    it "keeps a commercial project category and the requirement area the client sent" do
+      shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+      project = create(:project, firm:, city: locality.city, locality:, starting_budget: 12_000_000)
+      create(:project_typology, project:, typology:)
+      create(:project_typology, project:, typology: shop, starting_price: 4_000_000)
+      create(:lead, :matchable, firm:, lead_status:, mobile: prospect.mobile, transaction_type: "sale",
+        property_type:)
+
+      post "/api/v1/prospects/#{prospect.id}/followups",
+        params: {
+          connected: true, notes: "A shop", disposition: "interested",
+          lead: {
+            mode: "project", project_id: project.id, category: "commercial",
+            property_type_id: property_type.id
+          }
+        },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      opened = prospect.reload.lead
+      expect(opened.category).to eq("commercial")
+      expect(opened.typologies).to contain_exactly(shop)
+
+      buyer = create(:prospect, firm:, mobile: "+919876543211")
+      post "/api/v1/prospects/#{buyer.id}/followups",
+        params: {
+          connected: true, notes: "Area", disposition: "interested",
+          lead: requirements.merge(
+            typology_ids: [ shop.id ], area_min: 800, area_max: 1_200,
+            area_unit: "sqft", prefers_pre_leased: true
+          )
+        },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:created)
+      sized = buyer.reload.lead
+      expect(sized.category).to eq("commercial")
+      expect(sized.area_min_sqft).to eq(800)
+      expect(sized.area_max_sqft).to eq(1_200)
+      expect(sized.prefers_pre_leased).to be(true)
+    end
+
     it "does not change the prospect when that number already has a live sale lead" do
       create(:lead, :matchable, firm:, lead_status:, mobile: prospect.mobile, transaction_type: "sale",
         property_type:)

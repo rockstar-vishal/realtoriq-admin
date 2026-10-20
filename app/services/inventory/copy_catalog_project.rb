@@ -125,7 +125,12 @@ module Inventory
         project.project_typologies.create!(
           typology_id: row.typology_id,
           starting_price: row.starting_price,
-          starting_carpet_sqft: row.starting_carpet_sqft
+          starting_carpet_sqft: row.starting_carpet_sqft,
+          label: row.label,
+          area_value: row.area_value,
+          area_unit: row.area_unit,
+          needs_review: row.needs_review,
+          review_note: row.review_note
         )
       end
 

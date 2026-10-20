@@ -564,7 +564,7 @@ disabled. An agent receives only themselves.
 > sale lead` with nothing pointing at the real cause. See
 > [Traps](#traps-worth-knowing).
 
-One **live** lead per `(firm, mobile, transaction_type)`. A dead lead does not hold that slot, so the same number can be created again. Same number may exist once as `sale` and once as `rent`. A second create of the same type is **`422 duplicate_lead`** with `details.lead_id` and `details.transaction_type` so you can open the existing card. PATCH `transaction_type` to the other type is the same `422` if that type already exists on the number. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another live lead holds the mobile is the same `422 duplicate_lead`, with the message "A live sale lead already exists for this number." Two revives at once return that error rather than a 500.
+One **open** lead per `(firm, mobile, transaction_type, category)`. A dead lead does not hold that slot, so the same number can be created again. The same number may be open once as a residential sale and once as a commercial sale, and once as `sale` and once as `rent`. A second create of the same type and category is **`422 duplicate_lead`**. `details.lead_id`, `details.transaction_type` and `details.category` identify the existing card. The message is "A sale Residential lead already exists for this number." (`sale` or `rent`, and Residential, Commercial, or Plot & Land). A PATCH that moves the lead onto a type and category that is already open is the same `422`. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another open lead holds that mobile, type and category is the same `422`. Two revives at once return that error rather than a 500.
 
 Returns `201` with the lead plus `possible_duplicates` — the **other** transaction type on the same number, if any, and only leads the caller can see. Same type is never in this array; it was refused.
 
@@ -608,12 +608,14 @@ signed-in user and starts as New. There is no status or next-action column.
 Sheet rules:
 
 - **Mobile**, **Sale or rent** (`sale` or `rent`) and **Budget** (whole rupees, `12000000` or `1,20,00,000`) are required. A decimal other than `.00`, or text such as `1.2 Cr`, fails the row. A mobile Excel has turned into scientific notation or a decimal fails the row.
-- **Property type** is required for sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank.
-- **Configurations** are typology names (`2 BHK`). Spaces and case do not matter. An empty cell copies them from the linked listings. A filled cell is used instead. An unknown name fails the row.
+- **Possession** (the old header **Property type** is still accepted) is required for a residential or commercial sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank. A Plot & Land row must leave it blank (`Leave Possession blank for Plot & Land.`). The date column is **Possession up to**. On a sheet that still has both **Property type** and **Possession**, Possession remains the date.
+- **Configurations** are typology names (`2 BHK`, `Shop`, `Residential plot`). Spaces and case do not matter. There is no Category column: the category comes from the configurations, or from the linked listings when that cell is empty. Names from more than one category fail the row (`Configurations must be from one category.`). An unknown name fails the row.
+- **Area** is optional. `800-1200 sqft`, `2-4 guntha` or `3 acre`. One number sets the minimum and the maximum. A residential row must leave it blank. A commercial row is sq ft. Plot & Land may use sq ft, sq yd, sq m, guntha, acre or hectare.
+- **Prefers pre-leased** is optional `yes` or `no`. It is kept only for a commercial sale.
 - **Project codes** and **Property codes** take several values separated by commas, at most 20 in one cell. A code is `P-` plus 6 characters for a project and `H-` plus 6 characters for a property, shown on that project or property's list and detail. A cell may also contain the record id. A project cell may contain a LaunchIQ reference (`PR…`): the firm's own active copy is linked, otherwise the active marketplace row. Linking does not copy a marketplace project into My Projects.
 - **Location** is added to the localities on the linked listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
 - A project code on a rent row fails. A property is linked only when its sale/rent matches the row. An unknown code, an archived project, or a sold property fails the row and does not create the lead. A private code from another firm, and a code belonging to a firm that is not active, are reported as unknown. A shared property links only while that firm is active, matching `GET /properties/marketplace`.
-- The same mobile may be imported once as sale and once as rent. A second live row of the same kind fails. When the caller can see that lead, the error includes its code.
+- The same mobile may be imported once per category, and once as sale and once as rent. A second open row of the same kind and category fails. The message names the category (`A sale Commercial lead already exists for this number`). When the caller can see that lead, the error includes its code.
 
 `code` on a project and on a property is this import code. It is not
 `external_ref` and it is not the lead's `L-0001`.
@@ -1067,9 +1069,9 @@ existing lead. `details.lead_id` is included only when the caller can open it.
 
 | Mode | What is copied | What the client sends |
 | --- | --- | --- |
-| `project` | Sale. Starting budget, typologies, and locality, when the project has them | `project_id`. `property_type_id` (Under construction or Ready possession — sale leads require it). Budget, `typology_ids`, and `locality_ids` when the project lacks them |
-| `property` | This firm only. Price, typology, building locality, `listing_for` | `property_id`. Sale asks `property_type_id` (default Ready possession). Rent does not. The property is linked with `lead_properties` |
-| `requirements` | Nothing | `transaction_type` (`sale` or `rent`), `budget` (whole rupees), `typology_ids`, `locality_ids`, and `property_type_id` when sale |
+| `project` | Sale. Starting budget, the configurations of one category, and locality, when the project has them | `project_id`. Optional `category` (`residential`, `commercial`, `land`); omitted uses the project's primary category, which is residential when the project has a home. `property_type_id` (Under construction or Ready possession) for a residential or commercial sale. Plot & Land does not take one. Budget, `typology_ids`, and `locality_ids` when the project lacks them |
+| `property` | This firm only. Price, the property's category and typology, building locality, `listing_for` | `property_id`. Sale of a home or a commercial unit asks `property_type_id` (Ready possession). Rent and Plot & Land do not. The property is linked with `lead_properties` |
+| `requirements` | Nothing. The category is the category of `typology_ids` | `transaction_type` (`sale` or `rent`), `budget` (whole rupees), `typology_ids`, `locality_ids`, and `property_type_id` when the configurations are a residential or commercial sale. Optional `area_min`, `area_max`, `area_unit` and `prefers_pre_leased`, with the same rules as `POST /leads` |
 
 An agent is assigned to themselves by the existing create rules. A manager's
 lead stays unassigned. A project may be this firm's or a marketplace listing.
@@ -1403,8 +1405,8 @@ Anything else is `422 not_marketplace`. `url` is the turbo microsite
 the same broker and project. A double tap returns the same token.
 `503 turbo_origin_missing` when `realtoriq.turbo_public_origin` is not set. An
 enquiry on that link creates a sale lead for the broker, with lead source
-`Builder Microsite`. A live lead for the same mobile is not duplicated; its
-source is left as it was. The owner is emailed from
+`Builder Microsite`, in the project's primary category. An open lead for the
+same mobile, sale and category is not duplicated; its source is left as it was. The owner is emailed from
 `RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>` when they have an email, a
 follow-up is recorded, and the owner gets a `marketplace_enquiry` notification.
 A dead lead does not block a new one. The same `enquiry_id` again is `200` and
@@ -1632,7 +1634,7 @@ greater than 0 and at most 100; omitted leaves the stored percent alone, blank
 clears it), and `brokerage_ladder: { url, checksum, filename }` (copied;
 omitted leaves the image alone). Detail shows all three on a
 marketplace project. `shareable` still omits the percent and the ladder. The
-builder is `developer_name`, not `company_code`.
+builder is `developer_name`, not `company_code`. Each `unit_types` entry is stored as its own configuration row: `label`, `typology_name`, `typology_category` (`residential`, `commercial` or `land`), `typology_slug`, `price_min` (whole rupees), `area_min` and `area_unit` (`sqft` or `sqm`). A home or office sent in sqm is stored in sq ft, converted with 10.7639. A plot keeps the typed sqm.
 
 ### `shareable`
 
@@ -2277,7 +2279,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
-| `duplicate_lead` | 422 | That mobile already has a live lead of this transaction type. Also when reviving a dead lead, changing status through a follow-up, or marking a prospect interested. `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
+| `duplicate_lead` | 422 | That mobile already has an open lead of this transaction type and category. Also when reviving a dead lead, changing status through a follow-up, changing a lead onto a taken category, or marking a prospect interested. The message names the type and the category, for example "A sale Commercial lead already exists for this number." `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, `details.category`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
 | `notes_required` | 422 | A prospect follow-up needs a note |
 | `connected_required` | 422 | A prospect follow-up must say whether the call connected. A missing `connected` is not false |
 | `ncd_required` | 422 | A missed prospect call that stays on the list needs a next dial time |

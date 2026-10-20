@@ -3,6 +3,7 @@
 class ProjectTypology < ApplicationRecord
   LABEL_CLASH = "A configuration can appear twice only with different labels."
   LABEL_INDEX = "index_project_typologies_on_project_typology_and_label"
+  REVIEW_NOTE_LIMIT = 255
 
   belongs_to :project, -> { unscope(where: :firm_id) }
   belongs_to :typology
@@ -14,6 +15,7 @@ class ProjectTypology < ApplicationRecord
   validates :area_value, numericality: { greater_than: 0 }, allow_nil: true
   validates :area_unit, inclusion: { in: AreaUnits::CODES }
   validates :label, length: { maximum: 60 }, allow_nil: true
+  validates :review_note, length: { maximum: REVIEW_NOTE_LIMIT }, allow_nil: true
   validate :one_row_per_label
   validate :area_unit_matches_category
 
@@ -35,6 +37,12 @@ class ProjectTypology < ApplicationRecord
     return label if typology && Realtoriq::NameKey.call(label).include?(Realtoriq::NameKey.call(typology.name))
 
     "#{typology&.name} #{label}".strip
+  end
+
+  # A BHK disagreement has no label left to key an alias on, so the next
+  # push would put the row straight back into review.
+  def bhk_conflict_review?
+    review_note.to_s.include?("disagrees with unit label")
   end
 
   def area_payload

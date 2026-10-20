@@ -108,9 +108,11 @@ plot. `area_value` / `area_unit` are what the broker typed (`sqft`, `sqyd`,
 commercial sale only. Leads store `category`, the same area columns
 (`area_min_value`, `area_max_value`, `area_unit`, `area_min_sqft`,
 `area_max_sqft`) and `prefers_pre_leased`. The open-lead unique index is
-`(firm_id, transaction_type, category, open_identity)`.
+`(firm_id, transaction_type, category, open_identity)`. A `duplicate_lead`
+error names that category in `details.category`.
 `project_typologies.label` lets one configuration appear twice.
-`area_value` / `area_unit` / `needs_review` sit on that row. The unique index
+`area_value` / `area_unit` / `needs_review` / `review_note` sit on that row.
+`review_note` says why a flagged row was sent to review. The unique index
 is `(project_id, typology_id, lower(coalesce(label, '')))`.
 `facebook_lead_forms.category` is null until a mixed project needs one.
 

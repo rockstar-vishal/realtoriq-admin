@@ -8,6 +8,7 @@ RSpec.describe "Turbo marketplace events" do
   let!(:new_status) { create(:lead_status, :new_lead) }
   let!(:dead_status) { create(:lead_status, :dead) }
   let!(:property_type) { create(:property_type, name: "Under construction") }
+  let!(:two_bhk) { create(:typology, name: "2 BHK", code: "2_bhk", bedrooms: 2) }
 
   before do
     allow(Realtoriq::Credentials).to receive(:webhook_secret).and_return(secret)
@@ -68,7 +69,7 @@ RSpec.describe "Turbo marketplace events" do
     expect(project.possession_on).to eq(Date.new(2027, 12, 31))
     expect(project.possession_label).to be_nil
     expect(project.locality.name).to eq("Worli")
-    expect(project.project_typologies.map { |row| row.typology.name }).to eq([ "2BHK" ])
+    expect(project.project_typologies.map { |row| row.typology.name }).to eq([ "2 BHK" ])
     expect(Builder.where(firm_id: nil).pluck(:name)).not_to include("CL00A1B2C3")
 
     Current.firm = nil
@@ -370,16 +371,15 @@ RSpec.describe "Turbo marketplace events" do
   end
 
   it "matches 2BHK to the existing 2 BHK typology" do
-    typology = create(:typology, name: "2 BHK", bedrooms: 2)
     post_event(upsert_payload)
 
     project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
-    expect(project.typologies).to eq([ typology ])
+    expect(project.typologies).to eq([ two_bhk ])
     expect(Typology.where(name: "2BHK")).to be_empty
 
     Current.firm = create(:firm, status: :active)
     lead = create(:lead, firm: Current.firm, lead_status: new_status, budget_max: 16_000_000, transaction_type: "sale")
-    lead.typologies << typology
+    lead.typologies << two_bhk
     lead.localities << project.locality
     expect(Inventory::MatchInventory.new(lead:).call.map { |row| row[:id] }).to include(project.id)
   end

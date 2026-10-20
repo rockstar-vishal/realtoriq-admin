@@ -35,12 +35,14 @@ RSpec.describe "API v1 lead import" do
     expect(response.body).to include("Example lead")
     expect(response.body).to include("Project codes")
 
+    values = {
+      name: "Rhea Kapoor", mobile: "9820155099", transaction_type: "sale",
+      property_type: "Under construction", budget: "1,20,00,000",
+      configurations: "2bhk", location: "Kharghar"
+    }
     csv = CSV.generate do |sheet|
       sheet << Leads::Import::HEADERS.map(&:last)
-      sheet << [
-        "Rhea Kapoor", "9820155099", nil, nil, "sale", "Under construction",
-        "1,20,00,000", "2bhk", "Kharghar", nil, nil, nil, nil, nil, nil
-      ]
+      sheet << Leads::Import::HEADERS.map { |key, _name| values[key] }
     end
 
     expect {

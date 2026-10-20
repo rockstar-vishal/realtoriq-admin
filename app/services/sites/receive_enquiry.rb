@@ -50,12 +50,13 @@ module Sites
       return failure("Could not send that just now.") if source.nil?
 
       property_type = sale_property_type(listing, type)
-      return failure("Could not send that just now.") if type == "sale" && property_type.nil?
+      return failure("Could not send that just now.") if type == "sale" && property_type.nil? && !land_listing?(listing)
 
       attributes = {
         name:,
         mobile: phone,
         transaction_type: type,
+        category: listing_category(listing),
         lead_source_id: source.id,
         source_detail: source_detail(listing),
         notes: message.presence,
@@ -111,6 +112,7 @@ module Sites
 
     def sale_property_type(listing, type)
       return nil unless type == "sale"
+      return nil if land_listing?(listing)
 
       name = if listing.is_a?(Property) || (listing.is_a?(Project) && listing.ready_for_website_sale?)
         "Ready possession"
@@ -118,6 +120,21 @@ module Sites
         "Under construction"
       end
       PropertyType.find_by(name:)
+    end
+
+    def land_listing?(listing)
+      case listing
+      when Property then listing.typology&.land?
+      when Project then listing.primary_category == "land"
+      else false
+      end
+    end
+
+    def listing_category(listing)
+      case listing
+      when Property then listing.typology&.category
+      when Project then listing.primary_category
+      end
     end
 
     def budget_for(listing)

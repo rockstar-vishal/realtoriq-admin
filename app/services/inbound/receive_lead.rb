@@ -74,21 +74,30 @@ module Inbound
       fields = UnlistedFields.call(payload, transaction_type: "sale")
       return failure(fields.error) unless fields.ok?
 
-      deliver_unlisted(fields, property_type_name: "Under construction")
+      name = fields.typology.land? ? nil : "Under construction"
+      deliver_unlisted(fields, property_type_name: name)
     end
 
     def unlisted_property
       fields = UnlistedFields.call(payload, transaction_type: nil)
       return failure(fields.error) unless fields.ok?
 
-      name = fields.transaction_type == "rent" ? nil : "Ready possession"
+      name = if fields.typology.land? || fields.transaction_type == "rent"
+        nil
+      else
+        "Ready possession"
+      end
       deliver_unlisted(fields, property_type_name: name)
     end
 
     def deliver_project(project)
-      type_name = Inventory::PossessionMatch.ready?(project) ? "Ready possession" : "Under construction"
-      type = property_type(type_name)
-      return failure("Sale property types are not configured.", listing: project.name) if type.nil?
+      category = project.primary_category
+      type = nil
+      if category != "land"
+        type_name = Inventory::PossessionMatch.ready?(project) ? "Ready possession" : "Under construction"
+        type = property_type(type_name)
+        return failure("Sale property types are not configured.", listing: project.name) if type.nil?
+      end
 
       phone = indian_mobile
       return failure("Phone must be a 10-digit mobile number.", listing: project.name) if phone.nil?
@@ -99,7 +108,7 @@ module Inbound
       # A savepoint, so a unique-index collision rolls this enquiry back
       # without aborting an outer transaction.
       ActiveRecord::Base.transaction(requires_new: true) do
-        saved, status, error = write_project(project, phone, type)
+        saved, status, error = write_project(project, phone, type, category)
         raise ActiveRecord::Rollback if error
         store_enquiry!(saved)
       end
@@ -110,8 +119,8 @@ module Inbound
       finish_unique(error)
     end
 
-    def write_project(project, phone, type)
-      existing = open_lead(phone, "sale")
+    def write_project(project, phone, type, category)
+      existing = open_lead(phone, "sale", category)
       if existing
         attach_project(existing, project)
         return [ existing, "already_in_pipeline", note_existing(existing, project.name) ]
@@ -119,20 +128,20 @@ module Inbound
 
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(phone, "sale", type, project.code),
+        attributes: lead_attributes(phone, "sale", type, project.code, category:),
         project_id: project.id,
         copy_project_typologies: true,
         copy_project_localities: true,
         require_locality: false
       ).call
       return [ result.lead, "created", nil ] if result.ok?
-      return duplicate_project(project, phone) if result.error_code == "duplicate_lead"
+      return duplicate_project(project, phone, category) if result.error_code == "duplicate_lead"
 
       [ nil, nil, result.error_message.presence || "We could not save this enquiry." ]
     end
 
-    def duplicate_project(project, phone)
-      existing = open_lead(phone, "sale")
+    def duplicate_project(project, phone, category)
+      existing = open_lead(phone, "sale", category)
       return [ nil, nil, "We could not save this enquiry." ] if existing.nil?
 
       attach_project(existing, project)
@@ -143,9 +152,11 @@ module Inbound
       phone = indian_mobile
       return failure("Phone must be a 10-digit mobile number.", listing: property.code) if phone.nil?
 
-      type = property.for_sale? ? property_type("Ready possession") : nil
-      if property.for_sale? && type.nil?
-        return failure("Sale property types are not configured.", listing: property.code)
+      category = property.typology.category
+      type = nil
+      if property.for_sale? && category != "land"
+        type = property_type("Ready possession")
+        return failure("Sale property types are not configured.", listing: property.code) if type.nil?
       end
 
       saved = nil
@@ -154,7 +165,7 @@ module Inbound
       # A savepoint, so a unique-index collision rolls this enquiry back
       # without aborting an outer transaction.
       ActiveRecord::Base.transaction(requires_new: true) do
-        saved, status, error = write_property(property, phone, type)
+        saved, status, error = write_property(property, phone, type, category)
         raise ActiveRecord::Rollback if error
         store_enquiry!(saved)
       end
@@ -165,8 +176,8 @@ module Inbound
       finish_unique(error)
     end
 
-    def write_property(property, phone, type)
-      existing = open_lead(phone, property.listing_for)
+    def write_property(property, phone, type, category)
+      existing = open_lead(phone, property.listing_for, category)
       if existing
         attach_property(existing, property)
         return [ existing, "already_in_pipeline", note_existing(existing, property.title) ]
@@ -174,13 +185,14 @@ module Inbound
 
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(phone, property.listing_for, type, property.code).merge(budget: property.price),
+        attributes: lead_attributes(phone, property.listing_for, type, property.code, category:)
+          .merge(budget: property.price),
         typology_ids: [ property.typology_id ],
         locality_ids: [ property.building&.locality_id ].compact,
         require_locality: property.building&.locality_id.present?
       ).call
       return finish_new_property(result, property) if result.ok?
-      return duplicate_property(property, phone) if result.error_code == "duplicate_lead"
+      return duplicate_property(property, phone, category) if result.error_code == "duplicate_lead"
 
       [ nil, nil, result.error_message.presence || "We could not save this enquiry." ]
     end
@@ -190,8 +202,8 @@ module Inbound
       [ result.lead, "created", nil ]
     end
 
-    def duplicate_property(property, phone)
-      existing = open_lead(phone, property.listing_for)
+    def duplicate_property(property, phone, category)
+      existing = open_lead(phone, property.listing_for, category)
       return [ nil, nil, "We could not save this enquiry." ] if existing.nil?
 
       attach_property(existing, property)
@@ -222,7 +234,8 @@ module Inbound
     end
 
     def write_unlisted(fields, type)
-      existing = open_lead(fields.phone, fields.transaction_type)
+      category = fields.typology.category
+      existing = open_lead(fields.phone, fields.transaction_type, category)
       if existing
         remember(existing, fields.locality.id, fields.typology.id)
         return [ existing, "already_in_pipeline", note_existing(existing, nil) ]
@@ -230,14 +243,15 @@ module Inbound
 
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(fields.phone, fields.transaction_type, type, nil).merge(budget: fields.budget),
+        attributes: lead_attributes(fields.phone, fields.transaction_type, type, nil, category:)
+          .merge(budget: fields.budget),
         typology_ids: [ fields.typology.id ],
         locality_ids: [ fields.locality.id ]
       ).call
       return [ result.lead, "created", nil ] if result.ok?
 
       if result.error_code == "duplicate_lead"
-        existing = open_lead(fields.phone, fields.transaction_type)
+        existing = open_lead(fields.phone, fields.transaction_type, category)
         return [ nil, nil, "We could not save this enquiry." ] if existing.nil?
 
         remember(existing, fields.locality.id, fields.typology.id)
@@ -247,12 +261,13 @@ module Inbound
       [ nil, nil, result.error_message.presence || "We could not save this enquiry." ]
     end
 
-    def lead_attributes(phone, transaction_type, type, code)
+    def lead_attributes(phone, transaction_type, type, code, category:)
       {
         name: payload["name"].to_s.strip.presence&.slice(0, TEXT_LIMIT),
         mobile: phone,
         email: optional_email,
         transaction_type:,
+        category:,
         property_type_id: type&.id,
         lead_source_id: lead_source&.id,
         source_detail: source_detail(code)
@@ -298,7 +313,7 @@ module Inbound
     def attach_project(lead, project)
       lead.lead_projects.create!(project:, firm:) unless lead.lead_projects.exists?(project_id: project.id)
       remember(lead, project.locality_id, nil)
-      project.typology_ids.each { |id| remember_typology(lead, id) }
+      project.typology_ids_for(lead.category).each { |id| remember_typology(lead, id) }
     end
 
     def attach_property(lead, property)
@@ -346,8 +361,8 @@ module Inbound
       InboundEnquiry.across_firms.exists?(firm_id: firm.id, channel:, external_id: enquiry_id)
     end
 
-    def open_lead(phone, transaction_type)
-      Lead.unscoped.find_by(firm_id: firm.id, transaction_type:, open_identity: phone)
+    def open_lead(phone, transaction_type, category)
+      Lead.unscoped.find_by(firm_id: firm.id, transaction_type:, category:, open_identity: phone)
     end
 
     def indian_mobile

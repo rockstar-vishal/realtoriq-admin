@@ -27,12 +27,19 @@
             <td><%= row.label.presence || "—" %></td>
             <td><%= row.typology&.name %></td>
             <td colspan="2">
-              <%= form_with url: remap_admin_masters_typologies_path, method: :post, class: "flex items-center gap-2" do %>
-                <%= hidden_field_tag :project_typology_id, row.id %>
-                <%= select_tag :typology_id, options_for_select(@targets.map { |typology|
-                      [ typology.active? ? typology.name : "#{typology.name} (hidden)", typology.id ]
-                    }, row.typology_id), class: "input" %>
-                <%= submit_tag "Save", class: "btn btn-primary" %>
+              <% if row.bhk_conflict_review? %>
+                <p class="text-[14px] text-[var(--color-neutral-700)]"><%= row.review_note %></p>
+              <% else %>
+                <%= form_with url: remap_admin_masters_typologies_path, method: :post, class: "flex items-center gap-2" do %>
+                  <%= hidden_field_tag :project_typology_id, row.id %>
+                  <%= select_tag :typology_id, options_for_select(@targets.map { |typology|
+                        [ typology.active? ? typology.name : "#{typology.name} (hidden)", typology.id ]
+                      }, row.typology_id), class: "input" %>
+                  <%= submit_tag "Save", class: "btn btn-primary" %>
+                <% end %>
+                <% if row.review_note.present? %>
+                  <p class="mt-2 text-[14px] text-[var(--color-neutral-700)]"><%= row.review_note %></p>
+                <% end %>
               <% end %>
             </td>
           </tr>

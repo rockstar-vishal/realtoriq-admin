@@ -103,6 +103,7 @@ module Api
           raise ActiveRecord::Rollback if @emi_rejected
 
           replace_typologies if params.key?(:typology_ids)
+          apply_category_from_configurations
           replace_localities if params.key?(:locality_ids)
           ensure_match_fields
           saved = @lead.errors.empty? && @lead.save
@@ -180,9 +181,9 @@ module Api
         if existing
           return render_error(
             "duplicate_lead",
-            "A #{lead.transaction_type} lead already exists for this number.",
+            lead.open_duplicate_message,
             status: :unprocessable_content,
-            details: { lead_id: existing.id, transaction_type: lead.transaction_type }
+            details: lead.open_duplicate_details(existing)
           )
         end
 
@@ -370,6 +371,28 @@ module Api
         Array(params[:typology_ids]).compact_blank.each do |id|
           @lead.lead_typologies.build(typology_id: id)
         end
+      end
+
+      # The configurations pick the category. An explicit category that
+      # disagrees is refused, and the switch rules on Lead then clear the
+      # fields that no longer apply.
+      def apply_category_from_configurations
+        return unless params.key?(:typology_ids)
+
+        categories = Typology.where(id: Array(params[:typology_ids]).compact_blank).distinct.pluck(:category)
+        if categories.many?
+          @lead.errors.add(:base, "Pick configurations from one category.")
+          return
+        end
+        return if categories.empty?
+
+        chosen = categories.first
+        if params.key?(:category) && params[:category].to_s != chosen
+          @lead.errors.add(:base, "Pick configurations from one category.")
+          return
+        end
+
+        @lead.category = chosen
       end
 
       def replace_localities

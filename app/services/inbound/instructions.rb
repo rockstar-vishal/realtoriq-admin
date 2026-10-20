@@ -51,7 +51,7 @@ module Inbound
 
         { "name": "Rahul Sharma", "mobile": "9876543210", "listing": "#{project_hint}" }
 
-        We fill the budget, location and configuration from that project. Do not send sale, rent, budget or location.
+        We fill the budget, location and configuration from that project. Do not send sale, rent, budget or location. Configurations include Shop, Office, Residential plot and the rest. Plot & Land is sale only.
 
         Property enquiries
         POST #{properties_url}
@@ -70,9 +70,9 @@ module Inbound
       return "" if Channels.portal?(channel)
 
       <<~TEXT.strip
-        If you do not have a project, send budget, city, locality and configuration instead of listing. The lead is saved as a sale under construction.
+        If you do not have a project, send budget, city, locality and configuration instead of listing. The lead is saved as a sale under construction. Configurations include Shop, Office, Residential plot and the rest. Plot & Land is sale only.
 
-        If you do not have a property, send budget, city, locality, configuration and transaction_type ("sale" or "rent"). Budget is whole rupees, for example 12000000.
+        If you do not have a property, send budget, city, locality, configuration and transaction_type ("sale" or "rent"). A land configuration is sale only. Budget is whole rupees, for example 12000000.
       TEXT
     end
     private_class_method :portal, :message, :extra

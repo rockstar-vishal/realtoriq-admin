@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_20_183000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -962,6 +962,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_20_183000) do
     t.decimal "area_value", precision: 14, scale: 4
     t.string "area_unit", default: "sqft", null: false
     t.boolean "needs_review", default: false, null: false
+    t.string "review_note", limit: 255
     t.index "project_id, typology_id, lower((COALESCE(label, ''::character varying))::text)", name: "index_project_typologies_on_project_typology_and_label", unique: true
     t.index ["project_id"], name: "index_project_typologies_on_project_id"
     t.index ["typology_id"], name: "index_project_typologies_on_typology_id"

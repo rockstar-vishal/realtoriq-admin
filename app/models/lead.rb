@@ -5,6 +5,12 @@ class Lead < ApplicationRecord
   include FirmScoped
 
   TRANSACTION_TYPES = %w[sale rent].freeze
+  # Both names, for the deploy where the code and the index swap are briefly
+  # out of step. A second category must come back as duplicate_lead, not a 500.
+  DUPLICATE_INDEXES = %w[
+    index_leads_on_firm_type_category_open_identity
+    index_leads_on_firm_type_and_open_identity
+  ].freeze
   # Convenience for the Hot / Negotiation card. Same as status[]=hot&status[]=negotiation.
   DERIVED_STATUS_HOT_NEGOTIATION = "hot_negotiation"
   HOT_NEGOTIATION_CODES = %w[hot negotiation].freeze
@@ -395,6 +401,21 @@ class Lead < ApplicationRecord
 
   def duplicate_on_mobile_and_type
     duplicate_open_lead
+  end
+
+  def self.duplicate_index_violation?(error)
+    message = error.respond_to?(:message) ? error.message : error.to_s
+    DUPLICATE_INDEXES.any? { |name| message.include?(name) }
+  end
+
+  def open_duplicate_message
+    "A #{transaction_type} #{category_label} lead already exists for this number."
+  end
+
+  def open_duplicate_details(existing)
+    return if existing.nil?
+
+    { lead_id: existing.id, transaction_type:, category: }
   end
 
   # One rule for the backfill and for a merge. A single category is adopted.
