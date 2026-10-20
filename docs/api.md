@@ -216,16 +216,28 @@ Every dropdown in one call — cache it and refresh on app start.
 cities[]         id, name, state, state_code
 localities[]     id, city_id, name, pincode      ← flat, filter by city_id yourself
 builders[]       id, name, global
-typologies[]     id, name, code, bedrooms
+typologies[]     id, name, code, bedrooms, category, area_kind, uses_floor_band, details[]
 lead_sources[]   id, name, code, category
 lead_statuses[]  id, name, code, is_dead, is_booked, is_terminal
-property_types[] id, name, code
+property_types[] id, name, code                  ← possession options; the key stays property_types
+categories[]     code, name                      ← residential, commercial, land
+area_units[]     code, label, sqft               ← sqft factor is a decimal string
+pre_leased_details[]  key, label, type, options
+tenant_types[]   code, name
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
 prospect_statuses[]  code, name                  ← fixed: new, following, interested, not_interested
 ```
 
 `localities` is a **flat list carrying `city_id`**, not nested under cities.
+`typologies` is the configurations a broker can pick: active, and not merged
+into another configuration. `category` is `residential`, `commercial`, or
+`land`. `area_kind` is `carpet` or `plot`. `uses_floor_band` is false for
+villa, row house, plots, and commercial configurations other than office.
+`bedrooms` is still a JSON number. `details[]` is that configuration's
+optional fields: `key`, `label`, `type` (`select`, `integer`, `decimal`,
+`boolean`, `date`), `options` (`code` and `label`), `min`, `max` and `unit`.
+A configuration with no spec has `details: []`.
 
 Seeded values today: statuses `new`, `hot`, `followup`, `visit_planned`,
 `negotiation`, `booked`, `dead` · sources `portal_housing`, `portal_99acres`,
@@ -422,6 +434,7 @@ Shared filters, all optional:
 | `source_id` | Repeat or comma-separate |
 | `source_missing` | `true` adds leads with no source. With `source_id`, the list is those sources **plus** no source |
 | `assigned_user_id` | Repeat or comma-separate. Narrows the leads the caller can already see. An agent cannot widen it to someone else's leads |
+| `category` | `residential`, `commercial`, or `land`. Blank is every category. Anything else is `422 invalid`. Bookings and revenue follow the booking's lead |
 
 `GET /reports/source_status` and `GET /reports/dead_leads` are every role.
 An agent sees `Lead.visible_to` (their assigned leads). A manager or super
@@ -525,7 +538,11 @@ disabled. An agent receives only themselves.
 | --- | --- | --- | --- |
 | `mobile` | string | **required** | Normalised to E.164 |
 | `transaction_type` | enum | **required** | `sale` · `rent` |
-| `property_type_id` | **string** | conditional | **Required for `sale`, forbidden for `rent`** |
+| `property_type_id` | **string** | conditional | **Required for a residential or commercial `sale`, forbidden for `rent`, and cleared for Plot & Land** |
+| `category` | enum | optional | `residential` (default) · `commercial` · `land`. When sent with configurations from another category: `422 invalid`, "Pick configurations from one category." Omitting it leaves the stored category, which stays `residential` for older clients |
+| `area_min`, `area_max` | number | optional | Commercial and Plot & Land only. Stored on `area_min_value` / `area_max_value`. A residential lead clears them. Commercial area is sq ft |
+| `area_unit` | enum | optional | `sqft` (default) · `sqyd` · `sqm` · `guntha` · `acre` · `hectare`. Commercial must be `sqft` |
+| `prefers_pre_leased` | boolean | optional | Kept only for a commercial sale. Every other lead stores false |
 | `name` | string | optional | Nullable by design — brokers capture a number first |
 | `alt_mobile` | string | optional | |
 | `email` | string | optional | |
@@ -621,6 +638,7 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
 | `possession_from`, `possession_to` | Drawer |
 | `typology_ids[]` | Drawer. Repeat the key |
+| `category` | `residential` · `commercial` · `land`. Not a drawer field, so it still applies with `q` |
 | `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` |
 | `page`, `per_page` | |
 
@@ -1183,13 +1201,24 @@ the same way, in their own list. The same name may exist once in each.
 | `promo_text`, `promo_ends_on` | string / date | optional | `promo_text` has no length limit |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
-| `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft }`. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row |
+| `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft, label, area_value, area_unit }`. `label`, `area_value` and `area_unit` are optional. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row. The same configuration can appear twice only with different labels |
 
 **Derived, never sent and never stored**: `price_band`, `area_band` (min/max
 across the typologies), per-config `rate_per_sqft`, and list/detail **`avg_psf`**
 (unweighted mean of those rates; integer; half-up once; `null` if none). A stored
 band can end up disagreeing with the rows it came from. `starting_budget` is not
 recomputed from configurations.
+
+Each typology row also returns `label`, `display_name`, `category`, `area`
+(`value`, `unit`, `sqft`, `kind`) and `needs_review`. `name` stays the
+configuration's own name. The project returns `categories` (residential, then
+commercial, then land — only those it has), `starting_prices`
+(`{ residential, commercial, land }`, null when that category has no positive
+price) and `price_summary`. One category is `From ₹X` from `starting_budget`.
+A mix is `Homes from ₹90 L · Commercial from ₹40 L`. `GET /projects?category=`
+limits the list to projects that have that category and sets
+`display_starting_price` and `price_summary` to that category only. The filter
+is a subquery, so a project is not repeated once per row.
 
 **`promo` is an object and appears only while the promo is live** —
 `{ text, ends_on }`, or absent. An expired promo is omitted entirely rather than
@@ -1207,6 +1236,7 @@ sent with a past date for you to check.
 | `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range |
 | `possession_before` | date. Not a drawer field; still applies alongside `q` |
 | `typology_ids[]` | Drawer. Repeat the key |
+| `category` | `residential` · `commercial` · `land`. Projects with at least one configuration in that category. Not a drawer field |
 | `source` | `catalog` lists the marketplace (active shared projects only). Omit it for My Projects |
 | `sort` | **`name`** (default, A–Z) · `recent` (newest first) · `relevant` (marketplace browse; see below) |
 | `page`, `per_page` | 25 per page by default |
@@ -1307,7 +1337,8 @@ Buildings: `name` (**required**), `city_id`, `locality_id`, `address`, `lat`,
 dropdown.
 
 Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
-`price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
+`price`, `carpet_area_sqft`, `area_value`, `area_unit`, `details`, `pre_leased`,
+`floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`,
 `listed_on_marketplace` (boolean, default true). Turning it off hides the
 listing from other firms' matches and from `marketplace_firms`. A mapping
@@ -1315,6 +1346,20 @@ already saved stays.
 (`available` · `booked` · `sold_out`). Any role may create. List and detail
 include `created_by: { id, name }` (or `null` on older rows) — show it when
 `permissions.manage_projects` is true.
+
+`carpet_area_sqft` is the area in square feet (carpet for a home or a
+commercial unit, plot area converted to sq ft for land). Send `area_value`
+and `area_unit` for guntha, acre and the rest. When only `carpet_area_sqft`
+is sent, it is stored as that many sq ft. A home or commercial unit must use
+`sqft`. Plot & Land is sale only. Floor band is cleared for villa, row house,
+plots, and commercial units other than office. `pre_leased` is kept only on a
+commercial sale, and then `details.lease_monthly_rent` is required.
+
+List and detail add `category`, `area` (`value`, `unit`, `sqft`, `kind`),
+`details`, `pre_leased`, `lease` (or `null`) and `rate_per_unit`
+(`{ amount, unit }`). `carpet_area_sqft` and `rate_per_sqft` stay.
+`GET /properties` also takes `category`, `area_min` and `area_max`.
+`carpet_min` and `carpet_max` remain aliases of that area filter.
 
 `POST /builders` is superadmin only. `{ name, website }`. A name that already
 exists on the **master** list is `422 invalid` — pick the master row instead of
@@ -1660,6 +1705,7 @@ by rupees from what the reports sum.
 | `use_existing` | boolean | optional | Catalog booking name clash — reuse the existing My Projects row |
 | `new_name` | string | optional | Catalog booking name clash — copy under this name instead |
 | `carpet_area_sqft`, `other_details` | | optional | |
+| `area_kind` | | response | `carpet`, or `plot` when the lead's category is land. Not a write field |
 | `registration_done_on` | date | optional | |
 | `client_paid_percent` | integer | optional | 0–100 |
 

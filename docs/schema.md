@@ -93,7 +93,26 @@ console session.
 Maharashtra — the center used for nearby matching; blank until geocoded or
 edited in Admin → Masters), `builders`, `typologies` (decimal `bedrooms` for 2.5 BHK),
 `lead_sources`, `lead_statuses` (`is_dead` / `is_booked` are what make the
-reports writable without hardcoding names in SQL), `property_types`.
+reports writable without hardcoding names in SQL), `property_types`
+(possession: under construction or ready). `typologies.category` is
+`residential`, `commercial`, or `land`. `needs_review` and `merged_into_id`
+mark a configuration that import could not place, or one that was folded into
+a canonical row. `category_confirmed_at` is set when seeds, the backfill, or
+the admin form chooses the category. Until then an in-use row may still be
+recategorised once. `configuration_aliases` remembers a merged or reviewed
+name (`key` unique, `source` merge / review / seed).
+
+`properties.carpet_area_sqft` is the area in whole square feet, carpet or
+plot. `area_value` / `area_unit` are what the broker typed (`sqft`, `sqyd`,
+`sqm`, `guntha`, `acre`, `hectare`). `details` is jsonb. `pre_leased` is
+commercial sale only. Leads store `category`, the same area columns
+(`area_min_value`, `area_max_value`, `area_unit`, `area_min_sqft`,
+`area_max_sqft`) and `prefers_pre_leased`. The open-lead unique index is
+`(firm_id, transaction_type, category, open_identity)`.
+`project_typologies.label` lets one configuration appear twice.
+`area_value` / `area_unit` / `needs_review` sit on that row. The unique index
+is `(project_id, typology_id, lower(coalesce(label, '')))`.
+`facebook_lead_forms.category` is null until a mixed project needs one.
 
 **Buildings are deliberately not here** — see Phase 2.
 

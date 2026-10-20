@@ -9,4 +9,13 @@ class LeadTypology < ApplicationRecord
   belongs_to :typology
 
   validates :typology_id, uniqueness: { scope: :lead_id }
+  validate :configuration_matches_lead_category
+
+  private
+
+  def configuration_matches_lead_category
+    return if typology.nil? || lead.nil? || typology.category == lead.category
+
+    errors.add(:base, "Configurations must all be #{lead.category_label}")
+  end
 end

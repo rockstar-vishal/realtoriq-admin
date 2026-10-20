@@ -63,6 +63,7 @@ class Project < ApplicationRecord
   validate :has_a_possession_date_or_a_label
   validate :builder_is_available_to_this_firm
   validate :name_unique_within_source
+  validate :configuration_labels_are_unique
 
   # Search box: name, builder, city, locality, RERA. The street address is not
   # searched — location means the city and locality on the card.
@@ -265,7 +266,96 @@ class Project < ApplicationRecord
     (rates.sum.to_d / rates.size).round(0, :half_up).to_i
   end
 
+  def categories
+    Typology::CATEGORY_ORDER & project_typologies.filter_map { |row| row.typology&.category }
+  end
+
+  def primary_category
+    found = categories
+    return if found.empty?
+    return "residential" if found.include?("residential")
+
+    project_typologies.min_by { |row| [ row.created_at || Time.current, row.id.to_s ] }&.typology&.category
+  end
+
+  def typology_ids_for(category)
+    project_typologies.filter_map { |row|
+      row.typology_id if row.typology&.category == category
+    }.uniq
+  end
+
+  def starting_price_for(category)
+    prices = project_typologies.filter_map { |row|
+      row.starting_price if row.typology&.category == category && row.starting_price.to_i.positive?
+    }
+    prices.min
+  end
+
+  def starting_prices
+    Typology::CATEGORY_ORDER.index_with { |code| starting_price_for(code) }
+  end
+
+  # One category uses the project-wide starting budget. A mix names each
+  # category that has a price, Homes then Commercial then Plots.
+  def price_summary(category: nil)
+    if category.present?
+      amount = starting_price_for(category)
+      return if amount.nil?
+
+      return "#{Typology::PRICE_NAMES[category]} from #{self.class.compact_rupees(amount)}"
+    end
+
+    if categories.size > 1
+      parts = categories.filter_map { |code|
+        amount = starting_price_for(code)
+        next if amount.nil?
+
+        "#{Typology::PRICE_NAMES[code]} from #{self.class.compact_rupees(amount)}"
+      }
+      return parts.join(" · ") if parts.any?
+    end
+
+    return if starting_budget.blank?
+
+    "From #{self.class.compact_rupees(starting_budget)}"
+  end
+
+  def self.compact_rupees(amount)
+    value = amount.to_i.to_d
+    crore = BigDecimal("10000000")
+    lakh = BigDecimal("100000")
+    if value >= crore
+      rupee_unit(value / crore, "Cr")
+    elsif value >= lakh
+      rupee_unit(value / lakh, "L")
+    else
+      "₹#{amount.to_i}"
+    end
+  end
+
+  def self.rupee_unit(quantity, suffix)
+    text = quantity.round(2, :half_up).to_s("F").sub(/\.?0+\z/, "")
+    "₹#{text} #{suffix}"
+  end
+  private_class_method :rupee_unit
+
   private
+
+  # Saved rows are checked again on ProjectTypology. Two new rows in one
+  # request are both unsaved, so only this grouping sees the clash before
+  # Postgres raises.
+  def configuration_labels_are_unique
+    link = association(:project_typologies)
+    already_loaded = link.loaded?
+    rows = project_typologies.reject(&:marked_for_destruction?)
+    link.reset unless already_loaded
+    clash = rows.group_by { |row|
+      [ row.typology_id, ProjectTypology.stored_label(row.label, row.typology)&.downcase ]
+    }.any? { |_key, group| group.size > 1 }
+    return unless clash
+
+    errors.add(:base, ProjectTypology::LABEL_CLASH)
+  end
 
   def has_a_possession_date_or_a_label
     return if possession_on.present? || possession_label.present?

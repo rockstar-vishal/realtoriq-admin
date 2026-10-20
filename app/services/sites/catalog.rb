@@ -100,6 +100,8 @@ module Sites
         city: project.city&.name,
         locality: project.locality&.name,
         starting_budget: project.starting_budget,
+        categories: project.categories,
+        price_summary: project.price_summary,
         possession_display: project.possession_display,
         configuration_names: project.project_typologies.filter_map { |row| row.typology&.name },
         cover_url: cover && Api::V1::BlobUrl.call(cover)
@@ -123,7 +125,8 @@ module Sites
 
     def configuration(row)
       {
-        name: row.typology&.name,
+        name: row.display_name,
+        category: row.typology&.category,
         starting_price: row.starting_price,
         starting_carpet_sqft: row.starting_carpet_sqft
       }

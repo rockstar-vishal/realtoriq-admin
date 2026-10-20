@@ -71,10 +71,21 @@ class Lead < ApplicationRecord
   validate :budget_range_is_ordered
   validate :property_type_matches_transaction_type
   validate :mobile_unique_per_transaction_type
+  validate :configurations_match_category
+  validate :land_is_for_sale
+  validate :area_is_ordered
+
+  validates :category, inclusion: { in: Typology::CATEGORIES }
+  validates :area_unit, inclusion: { in: AreaUnits::CODES }
+  validates :area_min_value, :area_max_value, numericality: { greater_than: 0 }, allow_nil: true
 
   before_validation :normalise_contact_details
+  before_validation :normalise_requirement
   before_validation :sync_open_identity
   before_validation :assign_code, on: :create
+  after_update :record_category_switch
+
+  attr_accessor :skip_category_switch_note, :category_from_client
 
   # — visibility —
   #
@@ -320,10 +331,27 @@ class Lead < ApplicationRecord
   # still have a min and a null max.
   def budget_amount = budget_max.presence || budget_min
 
-  # The two seeded codes are the product. Anything else on a sale lead is
-  # treated as under construction by the matchers.
+  # Possession is a sale question, and plot leads do not ask it.
+  def possession_applies?
+    sale? && category != "land"
+  end
+
   def ready_possession?
-    sale? && property_type&.code == "ready_possession"
+    possession_applies? && property_type&.code == "ready_possession"
+  end
+
+  def category_label
+    Typology.label_for(category)
+  end
+
+  def area_payload
+    {
+      min: AreaUnits.display_quantity(area_min_value),
+      max: AreaUnits.display_quantity(area_max_value),
+      unit: area_unit,
+      min_sqft: area_min_sqft,
+      max_sqft: area_max_sqft
+    }
   end
 
   def site_visit_stats(join_model, site_key)
@@ -356,12 +384,41 @@ class Lead < ApplicationRecord
     self.class.where(mobile:).where.not(id:).order(created_at: :desc)
   end
 
-  # The other live lead that occupies (firm, mobile, transaction_type). A dead
-  # lead does not count: the same number can enter the pipeline again.
-  def duplicate_on_mobile_and_type
-    return if mobile.blank? || transaction_type.blank? || firm_id.blank?
+  # The other live lead on this mobile, transaction type and category.
+  # A dead lead does not count. `duplicate_on_mobile_and_type` is the old
+  # name, kept for one release.
+  def duplicate_open_lead
+    return if mobile.blank? || transaction_type.blank? || firm_id.blank? || category.blank?
 
-    self.class.unscoped.where(firm_id:, transaction_type:, open_identity: mobile).where.not(id:).first
+    self.class.unscoped.where(firm_id:, transaction_type:, category:, open_identity: mobile).where.not(id:).first
+  end
+
+  def duplicate_on_mobile_and_type
+    duplicate_open_lead
+  end
+
+  # One rule for the backfill and for a merge. A single category is adopted.
+  # A mix that includes Residential keeps those configurations and notes the
+  # rest. Any other mix is left for someone to split by hand.
+  def adopt_category_from_configurations!
+    lead_typologies.reset
+    association(:typologies).reset
+    types = typologies.to_a
+    categories = types.map(&:category).uniq
+    if categories.many? && categories.include?("residential")
+      remove_non_residential_configurations(types)
+      :trimmed
+    elsif categories.one?
+      return :unchanged if category == categories.first
+
+      self.skip_category_switch_note = true
+      update!(category: categories.first)
+      :recategorised
+    elsif categories.many?
+      :unresolved
+    else
+      :unchanged
+    end
   end
 
   private
@@ -402,20 +459,104 @@ class Lead < ApplicationRecord
   def mobile_unique_per_transaction_type
     return if duplicate_on_mobile_and_type.nil?
 
-    errors.add(:mobile, "already has a #{transaction_type} lead")
+    errors.add(:mobile, "already has an open #{transaction_type} #{category_label} lead")
   end
 
-  # The design asks for a property type on sale leads and drops the question
-  # entirely for rentals, so a rental carrying one means the client sent
-  # something the user never chose.
-  # Tests the association, not the foreign key: an unsaved property type is
-  # present as an object while its id is still nil, and checking the id would
-  # call that missing.
+  # Plot leads do not ask possession. A rental still must not carry one.
   def property_type_matches_transaction_type
+    return if category == "land"
+
     if sale? && property_type.blank?
       errors.add(:property_type_id, "is required for a sale lead")
     elsif rent? && property_type.present?
       errors.add(:property_type_id, "is not asked for a rental lead")
     end
+  end
+
+  def normalise_requirement
+    self.category = "residential" if category.blank?
+    if category == "land"
+      self.property_type = nil
+      self.possession_by = nil
+    end
+    if category == "residential"
+      self.area_min_value = nil
+      self.area_max_value = nil
+      self.area_min_sqft = nil
+      self.area_max_sqft = nil
+    end
+    self.prefers_pre_leased = false unless category == "commercial" && sale?
+    write_area_sqft
+  end
+
+  def write_area_sqft
+    self.area_unit = "sqft" if area_unit.blank?
+    if category == "commercial" && area_unit != "sqft" && (area_min_value.present? || area_max_value.present?)
+      errors.add(:area_unit, "must be sq ft for a commercial lead")
+      return
+    end
+    return unless AreaUnits::CODES.include?(area_unit)
+
+    self.area_min_sqft = area_min_value.present? ? AreaUnits.to_sqft(area_min_value, area_unit) : nil
+    self.area_max_sqft = area_max_value.present? ? AreaUnits.to_sqft(area_max_value, area_unit) : nil
+  end
+
+  def area_is_ordered
+    return if area_min_value.blank? || area_max_value.blank?
+    return if area_min_value.to_d <= area_max_value.to_d
+
+    errors.add(:area_max_value, "must be greater than or equal to the minimum")
+  end
+
+  def land_is_for_sale
+    return unless category == "land" && rent?
+
+    errors.add(:base, "Plot & Land can only be listed for sale.")
+  end
+
+  def configurations_match_category
+    rows = lead_typologies.reject(&:marked_for_destruction?)
+    types = rows.filter_map(&:typology)
+    return if types.empty?
+    return if types.all? { |typology| typology.category == category }
+
+    if category_from_client
+      errors.add(:base, "Pick configurations from one category.")
+    else
+      errors.add(:base, "Configurations must all be #{category_label}")
+    end
+  end
+
+  def record_category_switch
+    return unless saved_change_to_category?
+    return if skip_category_switch_note
+
+    from, to = saved_change_to_category
+    names = lead_typologies.filter_map { |row| row.typology&.name }
+    suffix = names.any? ? " (#{names.join(', ')})" : ""
+    lead_activities.create!(
+      kind: "note", firm_id:, user: Current.user,
+      body: "Requirement changed from #{Typology.label_for(from)} to #{Typology.label_for(to)}#{suffix}."
+    )
+    AuditEvent.record!(
+      subject: self, action: "lead.category_changed", actor: Current.user, firm:,
+      metadata: { from:, to: }
+    )
+  end
+
+  def remove_non_residential_configurations(types)
+    dropped = types.reject(&:residential?)
+    lead_typologies.where(typology_id: dropped.map(&:id)).delete_all
+    lead_typologies.reset
+    association(:typologies).reset
+    labels = dropped.map(&:category_label).uniq
+    lead_activities.create!(
+      kind: "note", firm_id:,
+      body: "Removed #{labels.join(' and ')} configurations when this enquiry was filed as Residential."
+    )
+    return if category == "residential"
+
+    self.skip_category_switch_note = true
+    update!(category: "residential")
   end
 end

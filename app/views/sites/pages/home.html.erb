@@ -150,7 +150,9 @@
               <% if !project[:cover_url] && project[:possession_display].present? %>
                 <span class="badge">Possession <%= project[:possession_display] %></span>
               <% end %>
-              <% if project[:starting_budget] %>
+              <% if project[:categories].to_a.size > 1 && project[:price_summary] %>
+                <p class="card-price"><%= project[:price_summary] %></p>
+              <% elsif project[:starting_budget] %>
                 <p class="card-price"><span class="label">Starting</span> <%= inr(project[:starting_budget]) %></p>
               <% end %>
               <h3 class="card-title"><%= project[:name] %></h3>

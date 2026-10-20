@@ -5,7 +5,9 @@ module Reports
   # booking does not move the lead, so the money reports ignore it.
   class Filters
     TRANSACTION_TYPES = %w[sale rent].freeze
+    CATEGORIES = Typology::CATEGORIES
     INVALID_TYPE = "transaction_type must be sale or rent."
+    INVALID_CATEGORY = "category must be residential, commercial, or land."
 
     def initialize(params, today: Date.current)
       @params = params
@@ -17,6 +19,7 @@ module Reports
     def error
       return window.error if window.error
       return INVALID_TYPE if transaction_type == :invalid
+      return INVALID_CATEGORY if category == :invalid
 
       nil
     end
@@ -24,6 +27,7 @@ module Reports
     def lead_scope(user:, money: false, created: false, status: false)
       scope = money ? Lead.all : Lead.visible_to(user)
       scope = scope.where(transaction_type:) if transaction_type
+      scope = scope.where(category:) if category
       types = id_list(:property_type_id)
       scope = scope.where(property_type_id: types) if types.any?
       scope = scope.with_sources(id_list(:source_id), missing: source_missing?)
@@ -60,6 +64,14 @@ module Reports
       value = params[:transaction_type].to_s.strip
       return nil if value.blank?
       return value if TRANSACTION_TYPES.include?(value)
+
+      :invalid
+    end
+
+    def category
+      value = params[:category].to_s.strip
+      return nil if value.blank?
+      return value if CATEGORIES.include?(value)
 
       :invalid
     end

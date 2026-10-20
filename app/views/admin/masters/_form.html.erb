@@ -28,7 +28,8 @@
             <%= f.collection_select col[:key], col[:collection].call, :id, col[:display],
                   { include_blank: "Select" }, class: "input #{'input-invalid' if invalid}" %>
           <% when :select %>
-            <%= f.select col[:key], options_for_select(col[:options].map { |o| [o.humanize, o] }, record.public_send(col[:key])),
+            <% choices = col[:options].map { |option| option.is_a?(Array) ? option : [ option.to_s.humanize, option ] } %>
+            <%= f.select col[:key], options_for_select(choices, record.public_send(col[:key])),
                   {}, class: "input #{'input-invalid' if invalid}" %>
           <% when :number %>
             <%= f.number_field col[:key], class: "input #{'input-invalid' if invalid}" %>

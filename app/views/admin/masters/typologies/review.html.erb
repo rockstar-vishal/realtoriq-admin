@@ -1,0 +1,77 @@
+<% content_for :title, "Review configurations · RealtorIQ Admin" %>
+
+<div class="flex items-baseline gap-3 mb-6">
+  <h1 class="text-[32px]">Review</h1>
+  <%= link_to "Back to configurations", admin_masters_typologies_path, class: "btn btn-ghost" %>
+</div>
+
+<hr class="rule">
+
+<section class="mb-10">
+  <h2 class="section-title mb-3">Project rows</h2>
+  <% if @project_rows.any? %>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Label</th>
+          <th>Current guess</th>
+          <th>Configuration</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @project_rows.each do |row| %>
+          <tr>
+            <td><%= row.project&.name %></td>
+            <td><%= row.label.presence || "—" %></td>
+            <td><%= row.typology&.name %></td>
+            <td colspan="2">
+              <%= form_with url: remap_admin_masters_typologies_path, method: :post, class: "flex items-center gap-2" do %>
+                <%= hidden_field_tag :project_typology_id, row.id %>
+                <%= select_tag :typology_id, options_for_select(@targets.map { |typology|
+                      [ typology.active? ? typology.name : "#{typology.name} (hidden)", typology.id ]
+                    }, row.typology_id), class: "input" %>
+                <%= submit_tag "Save", class: "btn btn-primary" %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="py-4 text-[14px] text-[var(--color-neutral-700)]">No project rows need review.</p>
+  <% end %>
+</section>
+
+<section>
+  <h2 class="section-title mb-3">Configurations</h2>
+  <% if @configurations.any? %>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Configuration</th>
+          <th>Merge into</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @configurations.each do |typology| %>
+          <tr>
+            <td><%= typology.name %></td>
+            <td colspan="2">
+              <%= form_with url: merge_admin_masters_typology_path(typology), method: :post, class: "flex items-center gap-2" do %>
+                <%= select_tag :target_id, options_for_select(@targets.reject { |target| target.id == typology.id }.map { |target|
+                      [ target.active? ? target.name : "#{target.name} (hidden)", target.id ]
+                    }), include_blank: "Choose", class: "input" %>
+                <%= submit_tag "Merge", class: "btn btn-primary" %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% else %>
+    <p class="py-4 text-[14px] text-[var(--color-neutral-700)]">No configurations need review.</p>
+  <% end %>
+</section>

@@ -68,14 +68,11 @@ end
 [ "Aurum Developers", "Nirvana Realty", "Skyline Group", "Trident Estates", "Vaayu Infra" ]
   .each { |name| Builder.find_or_create_by!(name:) }
 
-# The design's TYPOLOGIES. bedrooms is what budget matching sorts on; villas and
-# penthouses have no meaningful count, so they stay null.
-[
-  [ "1 RK", 1.0 ], [ "1 BHK", 1.0 ], [ "1.5 BHK", 1.5 ], [ "2 BHK", 2.0 ],
-  [ "2.5 BHK", 2.5 ], [ "3 BHK", 3.0 ], [ "3.5 BHK", 3.5 ],
-  [ "Villa", nil ], [ "Penthouse", nil ]
-].each_with_index do |(name, bedrooms), index|
-  Typology.find_or_create_by!(name:) { |t| t.bedrooms = bedrooms }.update!(sort_order: index)
+# Development and test create every configuration active, including Commercial
+# and Plot & Land. Production uses `bin/rails categories:backfill`, which
+# leaves those new rows inactive until `categories:activate`.
+Typology::CANONICAL.each do |row|
+  Typology.upsert_canonical!(row, active_on_create: true)
 end
 
 # The design's SOURCES. `category` groups the two portals so the source report

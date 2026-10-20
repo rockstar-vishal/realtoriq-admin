@@ -24,9 +24,10 @@ module Api
       # is identical for everyone, so this is the one thing that costs us the
       # shared cache entry.
       def cache_key
-        [ "api/v1/reference/v3", current_firm.id,
+        [ "api/v1/reference/v4", current_firm.id,
           City.maximum(:updated_at), Locality.maximum(:updated_at),
           builders.maximum(:updated_at), Typology.maximum(:updated_at),
+          ConfigurationAlias.maximum(:updated_at),
           LeadSource.maximum(:updated_at), LeadStatus.maximum(:updated_at),
           PropertyType.maximum(:updated_at) ].map(&:to_s).join("/")
       end
@@ -44,8 +45,10 @@ module Api
           builders: builders.active.alphabetical.map { |b|
             { id: b.id, name: b.name, global: b.global? }
           },
-          typologies: Typology.active.ordered.map { |t|
-            { id: t.id, name: t.name, code: t.code, bedrooms: t.bedrooms&.to_f }
+          typologies: Typology.pickable.ordered.map { |t|
+            { id: t.id, name: t.name, code: t.code, bedrooms: t.bedrooms&.to_f,
+              category: t.category, area_kind: t.area_kind, uses_floor_band: t.uses_floor_band?,
+              details: Inventory::DetailSpecs.reference_for(t.code) }
           },
           lead_sources: LeadSource.active.ordered.map { |s|
             { id: s.id, name: s.name, code: s.code, category: s.category }
@@ -57,6 +60,10 @@ module Api
           property_types: PropertyType.active.ordered.map { |t|
             { id: t.id, name: t.name, code: t.code }
           },
+          categories: Typology::CATEGORY_ORDER.map { |code| { code:, name: Typology.label_for(code) } },
+          area_units: AreaUnits.reference,
+          pre_leased_details: Inventory::DetailSpecs.pre_leased_reference,
+          tenant_types: Inventory::DetailSpecs::TENANT_TYPES.map { |code| { code:, name: code.humanize } },
           # Fixed enums the app needs but which aren't worth a table.
           transaction_types: [ { code: "sale", name: "Sale" }, { code: "rent", name: "Rent" } ],
           floor_bands: %w[lower middle higher].map { |c| { code: c, name: c.humanize } },

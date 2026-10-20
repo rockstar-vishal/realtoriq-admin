@@ -150,7 +150,7 @@ def review_demo_masters
   locality = Locality.find_by!(city:, name: "Kharghar")
   plan = Plan.active.find_by(name: "Growth") || Plan.active.ordered.first
   builder = Builder.global.order(:name).first
-  typology = Typology.order(:name).first
+  typology = Typology.pickable.where(category: "residential").order(:sort_order).first
   property_type = PropertyType.active.ordered.first
   lead_source = LeadSource.order(:name).first
   missing = []

@@ -19,9 +19,11 @@ class FacebookLeadForm < ApplicationRecord
   has_many :facebook_lead_imports, -> { unscope(where: :firm_id) }, dependent: :nullify
 
   validates :form_id, :form_name, presence: true
+  validates :category, inclusion: { in: Typology::CATEGORIES }, allow_nil: true
   validate :form_id_is_globally_unique
   validate :one_listing
   validate :lead_source_is_active, if: :lead_source_id_changed?
+  validate :category_matches_mapped_project
 
   scope :active_forms, -> { where(active: true) }
 
@@ -151,5 +153,18 @@ class FacebookLeadForm < ApplicationRecord
     return if lead_source&.active?
 
     errors.add(:base, "The chosen lead source is turned off")
+  end
+
+  def category_matches_mapped_project
+    return if project.nil?
+
+    offered = project.categories
+    if category.blank?
+      return if offered.size < 2
+
+      errors.add(:category, "is required when the project has more than one category")
+    elsif offered.any? && offered.exclude?(category)
+      errors.add(:category, "must be one of this project's categories")
+    end
   end
 end

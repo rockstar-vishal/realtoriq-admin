@@ -88,6 +88,47 @@ RSpec.describe "API v1 inventory" do
       }.merge(overrides), headers: auth, as: :json
     end
 
+    it "rejects two unlabelled rows of one configuration and keeps the saved rows" do
+      create_project
+      project_id = response.parsed_body.dig("project", "id")
+      before = ProjectTypology.where(project_id:).order(:id).pluck(:id, :typology_id, :label)
+
+      patch "/api/v1/projects/#{project_id}", params: {
+        typologies: [
+          { typology_id: typology.id, starting_price: 14_200_000 },
+          { typology_id: typology.id, starting_price: 15_000_000 }
+        ]
+      }, headers: auth, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to include(
+        "A configuration can appear twice only with different labels."
+      )
+      expect(ProjectTypology.where(project_id:).order(:id).pluck(:id, :typology_id, :label)).to eq(before)
+
+      expect {
+        create_project(name: "Duplicate Vista", typologies: [
+          { typology_id: typology.id, starting_price: 14_200_000 },
+          { typology_id: typology.id, starting_price: 15_000_000 }
+        ])
+      }.not_to change(Project, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to include(
+        "A configuration can appear twice only with different labels."
+      )
+    end
+
+    it "saves two rows of one configuration when the labels differ" do
+      create_project(typologies: [
+        { typology_id: typology.id, starting_price: 14_200_000, label: "Ultima" },
+        { typology_id: typology.id, starting_price: 16_000_000, label: "Optima" }
+      ])
+
+      expect(response).to have_http_status(:created)
+      labels = response.parsed_body.dig("project", "typologies").map { |row| row["label"] }
+      expect(labels).to contain_exactly("Ultima", "Optima")
+    end
+
     it "creates the project with its typologies in one call" do
       create_project
 
@@ -527,6 +568,19 @@ RSpec.describe "API v1 inventory" do
 
       patch "/api/v1/properties/#{id}", params: { status: "available" }, headers: auth, as: :json
       expect(response.parsed_body.dig("property", "status")).to eq("available")
+    end
+
+    it "keeps a carpet-only edit after the listing already has an area" do
+      create_property(carpet_area_sqft: 690)
+      id = response.parsed_body.dig("property", "id")
+
+      patch "/api/v1/properties/#{id}", params: { carpet_area_sqft: 750 }, headers: auth, as: :json
+
+      body = response.parsed_body["property"]
+      expect(response).to have_http_status(:ok)
+      expect(body["carpet_area_sqft"]).to eq(750)
+      expect(body.dig("area", "value")).to eq("750")
+      expect(body.dig("area", "unit")).to eq("sqft")
     end
 
     it "filters by carpet area and drops listings with none" do

@@ -34,7 +34,9 @@
       <% if meta.any? %>
         <p class="listing-meta"><%= meta.join(" · ") %></p>
       <% end %>
-      <% if @listing[:starting_budget] %>
+      <% if @listing[:categories].to_a.size > 1 && @listing[:price_summary] %>
+        <p class="listing-price"><%= @listing[:price_summary] %></p>
+      <% elsif @listing[:starting_budget] %>
         <p class="listing-price"><span class="label">Starting</span> <%= inr(@listing[:starting_budget]) %></p>
       <% end %>
 
@@ -103,7 +105,9 @@
     </article>
 
     <aside class="detail-side">
-      <% if @listing[:starting_budget] %>
+      <% if @listing[:categories].to_a.size > 1 && @listing[:price_summary] %>
+        <p class="side-price"><%= @listing[:price_summary] %></p>
+      <% elsif @listing[:starting_budget] %>
         <p class="side-price"><span class="label">Starting</span> <%= inr(@listing[:starting_budget]) %></p>
       <% end %>
       <%= render "sites/pages/contact", compact: true %>

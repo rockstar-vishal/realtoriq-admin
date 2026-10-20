@@ -51,7 +51,7 @@ module Api
 
         result = ::Leads::Create.new(
           firm: current_firm, actor: current_user,
-          attributes: lead_params, typology_ids: params[:typology_ids],
+          attributes: lead_write_attributes, typology_ids: params[:typology_ids],
           copy_project_typologies: !params.key?(:typology_ids),
           locality_ids: params[:locality_ids],
           copy_project_localities: !params.key?(:locality_ids),
@@ -96,6 +96,8 @@ module Api
           raise ActiveRecord::Rollback if assignment_error
 
           @lead.assign_attributes(update_params)
+          apply_area
+          @lead.category_from_client = params.key?(:category)
           apply_budget_write
           apply_emi
           raise ActiveRecord::Rollback if @emi_rejected
@@ -252,6 +254,9 @@ module Api
           .with_sources(params[:source_id], missing: ActiveModel::Type::Boolean.new.cast(params[:source_missing]))
 
         scope = scope.where(transaction_type: params[:transaction_type]) if params[:transaction_type].present?
+        if Typology::CATEGORIES.include?(params[:category].to_s)
+          scope = scope.where(category: params[:category])
+        end
         property_types = ::Reports::Filters.list(params[:property_type_id])
         scope = scope.where(property_type_id: property_types) if property_types.any?
         # Agents are already narrowed to themselves; for them this can only
@@ -403,6 +408,7 @@ module Api
           :name, :mobile, :alt_mobile, :email, :transaction_type, :property_type_id,
           :budget, :possession_by, :lead_source_id, :source_detail,
           :assigned_user_id, :notes, :unqualified,
+          :category, :area_unit, :prefers_pre_leased,
           emi: %i[loan_amount annual_rate tenure_years]
         )
       end
@@ -425,6 +431,21 @@ module Api
       # `emi` is permitted so the development log does not call it unpermitted,
       # then stripped: it is not a column, and assign_attributes would 500.
       def update_params = lead_params.except(:assigned_user_id, :budget, :emi)
+
+      # area_min and area_max are the API names. The columns are area_min_value
+      # and area_max_value, so they never go through assign_attributes under
+      # the public names.
+      def lead_write_attributes
+        attrs = lead_params.to_h
+        attrs["area_min_value"] = params[:area_min] if params.key?(:area_min)
+        attrs["area_max_value"] = params[:area_max] if params.key?(:area_max)
+        attrs
+      end
+
+      def apply_area
+        @lead.area_min_value = params[:area_min] if params.key?(:area_min)
+        @lead.area_max_value = params[:area_max] if params.key?(:area_max)
+      end
     end
   end
 end

@@ -45,7 +45,7 @@ module Api
         @pagy, records = pagy(scope, limit: per_page)
 
         render json: {
-          projects: records.map { |p| ProjectSerializer.list(p) },
+          projects: records.map { |p| ProjectSerializer.list(p, category: list_category) },
           meta: pagination_meta(@pagy)
         }, status: :ok
       end
@@ -152,6 +152,10 @@ module Api
         end
 
         render json: { project: ProjectSerializer.detail(result.project) }, status: :created
+      rescue ActiveRecord::RecordNotUnique => e
+        raise unless duplicate_label_index?(e)
+
+        render_error("invalid", ProjectTypology::LABEL_CLASH, status: :unprocessable_content)
       end
 
       def update
@@ -197,6 +201,10 @@ module Api
         return render_validation_errors(@project.errors) unless saved
 
         render json: { project: ProjectSerializer.detail(@project.reload) }, status: :ok
+      rescue ActiveRecord::RecordNotUnique => e
+        raise unless duplicate_label_index?(e)
+
+        render_error("invalid", ProjectTypology::LABEL_CLASH, status: :unprocessable_content)
       end
 
       # Photos live on the detail screen rather than the create form — the
@@ -257,11 +265,19 @@ module Api
         scope = scope.where(builder_id: params[:builder_id]) if params[:builder_id].present?
         scope = scope.where(city_id: params[:city_id]) if params[:city_id].present?
         scope = scope.where(locality_id: params[:locality_id]) if params[:locality_id].present?
+        if list_category
+          scope = scope.where(id: ProjectTypology.joins(:typology).where(typologies: { category: list_category }).select(:project_id))
+        end
         unless params[:source].to_s == "catalog" || params[:status].to_s == "all"
           scope = scope.where(status: params[:status].presence || "active")
         end
 
         apply_sort(scope)
+      end
+
+      def list_category
+        value = params[:category].to_s
+        value if Typology::CATEGORIES.include?(value)
       end
 
       def drawer_filters_present?
@@ -318,7 +334,7 @@ module Api
       def replace_typologies
         @project.project_typologies.destroy_all
         Array(params[:typologies]).each do |row|
-          attrs = row.permit(:typology_id, :starting_price, :starting_carpet_sqft)
+          attrs = row.permit(:typology_id, :starting_price, :starting_carpet_sqft, :label, :area_value, :area_unit)
           @project.project_typologies.build(attrs)
         end
       end
@@ -329,6 +345,10 @@ module Api
 
       def apply_brokerage_ladder(blob)
         blob.present? ? @project.brokerage_ladder.attach(blob) : @project.brokerage_ladder.purge_later
+      end
+
+      def duplicate_label_index?(error)
+        error.message.include?(ProjectTypology::LABEL_INDEX)
       end
 
       def render_validation_errors(errors)
