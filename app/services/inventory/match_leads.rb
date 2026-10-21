@@ -52,8 +52,27 @@ module Inventory
         .where(transaction_type:)
         .matchable
         .where(id: candidate_lead_ids)
+      scope = Fit.leads_for_listing(
+        scope, categories: listing_categories, typology_ids_by_category: typology_ids_by_category
+      )
+      property_type_scope(scope)
         .includes(:typologies, :localities, :lead_projects, :lead_properties, :property_type, :lead_status)
-      property_type_scope(scope).to_a
+        .to_a
+    end
+
+    def listing_categories
+      property ? [ property.typology&.category ].compact : project.categories
+    end
+
+    def typology_ids_by_category
+      if property
+        category = property.typology&.category
+        return {} if category.blank?
+
+        { category => [ property.typology_id ] }
+      else
+        project.categories.index_with { |category| project.typology_ids_for(category) }
+      end
     end
 
     def candidate_lead_ids
@@ -110,12 +129,19 @@ module Inventory
       project ? project.city_id : listing_building&.city_id
     end
 
+    # Land leads store a null property_type_id. `NOT IN` drops those rows,
+    # so the land arm is written out instead of being left to the null.
     def property_type_scope(scope)
-      ready_ids = PropertyType.where(code: "ready_possession").select(:id)
       if property&.for_sale?
-        scope.where(property_type_id: ready_ids)
+        scope.where(<<~SQL.squish)
+          leads.category = 'land'
+          OR leads.property_type_id IN (SELECT id FROM property_types WHERE code = 'ready_possession')
+        SQL
       elsif project && !PossessionMatch.ready?(project)
-        scope.where.not(property_type_id: ready_ids)
+        scope.where(<<~SQL.squish)
+          leads.category = 'land'
+          OR leads.property_type_id NOT IN (SELECT id FROM property_types WHERE code = 'ready_possession')
+        SQL
       else
         scope
       end
@@ -139,12 +165,18 @@ module Inventory
       )
       return unless decision
 
+      chosen = offers_for(lead)
+      return if chosen.empty?
+
       breakdown = MatchScore.for_offers(
         budget: lead.budget_amount,
-        offers:,
+        offers: chosen,
         lead_keys: lead.typologies.map { |typology| ConfigurationKey.call(typology.name) },
-        fallback_price: project&.starting_budget,
-        location_points: decision.location_points
+        fallback_price: Fit.fallback_price(lead, project),
+        location_points: decision.location_points,
+        fit: lead.category == "residential" ? :configuration : :area,
+        bonus: Fit.pre_leased_bonus(lead, listing_for(lead)),
+        lead:
       )
       {
         kind: "lead",
@@ -162,7 +194,7 @@ module Inventory
           is_booked: lead.lead_status.is_booked
         },
         score: breakdown[:score],
-        score_breakdown: breakdown.slice(:location, :price, :configuration),
+        score_breakdown: breakdown.slice(*MatchScore::BREAKDOWN_KEYS),
         matched_price: breakdown[:matched_price],
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped?(lead),
@@ -170,27 +202,43 @@ module Inventory
         distance_m: decision.distance_m,
         group: decision.group,
         near_shortlist: decision.near_shortlist,
-        sort: CandidateRank.sort_key(ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.display_name)
+        category: lead.category,
+        area_sqft: breakdown[:matched_area_sqft],
+        area_unit: breakdown[:matched_area_unit],
+        area_value: AreaUnits.display_quantity(breakdown[:matched_area_value]),
+        pre_leased: breakdown[:matched_pre_leased] == true,
+        area: {
+          value: AreaUnits.display_quantity(breakdown[:matched_area_value]),
+          unit: breakdown[:matched_area_unit],
+          sqft: breakdown[:matched_area_sqft],
+          kind: lead.category == "land" ? "plot" : "carpet"
+        },
+        sort: CandidateRank.sort_key(
+          ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.display_name,
+          pre_leased_first: Fit.pre_leased_first?(lead, listing_for(lead))
+        )
       }
     end
 
-    def offers
-      @offers ||= if project
-        project.project_typologies.includes(:typology).map do |row|
-          MatchScore::Offer.new(
-            price: row.starting_price,
-            name: row.typology&.name,
-            key: ConfigurationKey.call(row.typology&.name)
-          )
-        end
+    def listing_for(_lead)
+      property
+    end
+
+    def configuration_rows
+      @configuration_rows ||= project ? project.project_typologies.includes(:typology).to_a : []
+    end
+
+    def offers_for(lead)
+      if project
+        configuration_rows.filter_map { |row|
+          next unless Fit.row_in_scope?(lead, row.typology)
+
+          MatchScore.offer_for_row(row)
+        }
+      elsif Fit.row_in_scope?(lead, property.typology)
+        [ MatchScore.offer_for_property(property) ]
       else
-        [
-          MatchScore::Offer.new(
-            price: property.price,
-            name: property.typology&.name,
-            key: ConfigurationKey.call(property.typology&.name)
-          )
-        ]
+        []
       end
     end
 

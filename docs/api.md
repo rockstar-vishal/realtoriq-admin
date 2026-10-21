@@ -820,6 +820,29 @@ when both are active; the catalog row has `source: "catalog"` and
 `marketplace: true`, with `listed_by` set to the builder. Another firm's shared
 property has `marketplace: true` and `listed_by` set to that firm's name.
 
+A listing is scored only inside the lead's category. Commercial and Plot & Land
+also require the configuration the lead chose. Residential still scores every
+configuration in the category: a smart match is 20 and any other configuration
+is 0. Plot & Land does not ask possession, so a plot lead sees plot properties
+and plotted projects of any possession date. A ready commercial buyer does not
+see an under-construction project.
+
+Commercial and Plot & Land score area instead of configuration. Both sides need
+an area, otherwise area is 0. The lead's range is compared in square feet. An
+area inside 90% of the minimum and 110% of the maximum is 20. An area inside
+75% and 125% is 10. A missing maximum is open and a missing minimum is 0.
+`matched_on` includes `area` only when those points are 20.
+
+A commercial sale lead can prefer pre-leased stock. A pre-leased listing then
+scores 10 more, and the total is capped at 100. Among equal scores the
+pre-leased listing sorts first. With the preference off, that tie-break does
+not move anything. `matched_on` includes `pre_leased` when the bonus was earned.
+
+A project with more than one category shows that category's starting price as
+`starting_budget`. A home buyer does not see the shop price. When that category
+has no priced row, `starting_budget` and the price points are empty. A
+single-category project still uses `starting_budget`.
+
 The score is 100 points and is not stored:
 
 | Points | When |
@@ -830,7 +853,9 @@ The score is 100 points and is not stored:
 | 30 | That band was missed, and the price is at or under the budget plus 15% |
 | 20 | Both of those were missed, and the price is at or under the budget plus 25% |
 | 0 | The price is above the budget plus 25% |
-| 20 | A configuration smart-matches, otherwise 0 |
+| 20 | Residential only. A configuration smart-matches, otherwise 0 |
+| 20 or 10 | Commercial and Plot & Land only. The listing area is inside the inner band, or only the outer band. Otherwise 0 |
+| 10 | A commercial sale lead prefers pre-leased stock and the listing is pre-leased. The total is then capped at 100 |
 
 Price tiers do not stack. The budget is one amount: `budget_max`, or leftover
 `budget_min` when max is null. Comparisons use decimal arithmetic, inclusive
@@ -841,15 +866,19 @@ points stay 0. A project with no configuration price uses `starting_budget`.
 
 "2 BHK", "2BHK Ultima" and "2 BHK Compact" all match. "2.5 BHK" does not match
 "2 BHK". "1 RK" does not match "1 BHK". Villa and Penthouse match those words
-in the name.
+in the name. Commercial and Plot & Land do not use that smart match: the lead's
+chosen configuration is the only one scored.
 
 ```json
 { "matches": [
   { "kind": "project", "id": "…", "name": "Aurum Vista", "source": "catalog",
     "marketplace": true, "listed_by": "Aurum Developers",
     "city": "Thane", "locality": "Kolshet", "starting_budget": 14200000,
+    "category": "residential", "area_sqft": 720, "area_unit": "sqft", "area_value": "720",
+    "pre_leased": false,
+    "area": { "value": "720", "unit": "sqft", "sqft": 720, "kind": "carpet" },
     "score": 100,
-    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "score_breakdown": { "location": 30, "price": 50, "fit": 20, "configuration": 20, "area": null, "bonus": 0 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"],
     "distance_m": 800, "group": "locality", "near_shortlist": false }
@@ -860,8 +889,15 @@ in the name.
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
 title), `price`, and `listing_for` instead of `source` and `starting_budget`.
-`matched_on` lists the dimensions that scored: `locality` or `nearby`, then
-`price` and `configuration` when those points are above 0. `group` is
+`category` is the lead's category. `area` is the row that was scored: `kind`
+is `plot` for Plot & Land and `carpet` otherwise. `area_sqft`, `area_unit` and
+`area_value` repeat that area. `pre_leased` is true only for a pre-leased
+commercial sale listing. `score_breakdown.fit` is the configuration points for
+a home and the area points for commercial and Plot & Land. `configuration` is
+null outside residential. `area` is null for a home. `bonus` is the pre-leased
+points, or 0. `matched_on` lists the dimensions that scored: `locality` or
+`nearby`, then `price`, `configuration` when those points are above 0, `area`
+when the area points are 20, and `pre_leased` when the bonus was earned. `group` is
 `locality` when the row's locality is one the lead named, otherwise `nearby`.
 A pin-circle row in a named locality stays `group: "locality"` and sets
 `near_shortlist` to true. `distance_m` is metres to the hook in use: the
@@ -912,6 +948,9 @@ hours later. `generated_at` is when this list was built.
 same as the live match call). `new_count` is how many of those were not on
 the previous list. The page shows at most 30 leads and 30 listings, highest
 score first. A quiet scan still returns the rows and does not notify.
+`bin/rails matches:rebaseline` rewrites every eligible firm's digest under the
+same lock and does not notify, so a scoring change can land without pinging
+brokers. It does not turn nearby matching on.
 `listing_items[].kind` is `project` or `property`. A property row includes
 `listing_for` (`sale` or `rent`) so two listings with the same title can be
 told apart. A project row omits it. Unqualified leads are
@@ -1446,9 +1485,12 @@ group. A high-scoring dead lead can sit above a live one inside the same group.
   { "kind": "lead", "id": "…", "code": "L-0001", "name": "Meera Shah",
     "mobile": "+919820144210",
     "budget": 16000000, "typologies": ["2 BHK"], "localities": ["Kolshet"],
+    "category": "residential", "area_sqft": 720, "area_unit": "sqft", "area_value": "720",
+    "pre_leased": false,
+    "area": { "value": "720", "unit": "sqft", "sqft": 720, "kind": "carpet" },
     "status": { "code": "dead", "name": "Dead", "is_dead": true, "is_booked": false },
     "score": 100,
-    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "score_breakdown": { "location": 30, "price": 50, "fit": 20, "configuration": 20, "area": null, "bonus": 0 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"],
     "distance_m": null, "group": "locality", "near_shortlist": false }
@@ -1485,7 +1527,10 @@ Match a phone number on that id. Firm names are not unique.
 `code` is that firm's own lead code, so the other broker can find the client.
 `localities` is the shared locality. `configurations` is that lead's
 typology names. There is no lead id, name, phone, budget, or score.
-An under-construction lead is not included on a sale listing. An unqualified
+An under-construction home or commercial lead is not included on a sale listing.
+A plot lead is included: Plot & Land does not ask possession. The lead's
+category must match the listing, and commercial and Plot & Land also require
+the configuration the lead chose. An unqualified
 lead is not included. A booked lead is not included. A dead lead still is. At most 50.
 Until nearby matching is on, highest score first, then firm name, then lead code.
 After that, the pin, named-locality, and neighbor groups come first, and firm

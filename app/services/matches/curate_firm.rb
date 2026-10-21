@@ -111,20 +111,28 @@ module Matches
       unless lead.rent?
         chosen.concat(pool[:projects].select { |item| show_project?(lead, item, hooks) })
       end
-      unless lead.sale? && !lead.ready_possession?
+      if show_properties?(lead)
         chosen.concat(pool[:properties].select { |item| show_property?(lead, item, hooks) })
       end
       chosen
     end
 
+    def show_properties?(lead)
+      !(Inventory::Fit.possession_applies?(lead) && !lead.ready_possession?)
+    end
+
     def show_project?(lead, item, hooks)
-      decision = decision_for(hooks, item)
-      decision && (!lead.ready_possession? || item.ready)
+      decision_for(hooks, item) && (!lead.ready_possession? || item.ready) && scoped_offers(lead, item).any?
     end
 
     def show_property?(lead, item, hooks)
-      decision = decision_for(hooks, item)
-      decision && item.listing_for == lead.transaction_type
+      decision_for(hooks, item) && item.listing_for == lead.transaction_type && scoped_offers(lead, item).any?
+    end
+
+    def scoped_offers(lead, item)
+      item.offers.select { |offer|
+        Inventory::Fit.row_in_scope?(lead, Inventory::Fit::Ref.new(id: offer.typology_id, category: offer.category))
+      }
     end
 
     def decision_for(hooks, item)
@@ -146,19 +154,26 @@ module Matches
       decision = decision_for(hooks, item)
       return unless decision
 
+      offers = scoped_offers(lead, item)
+      return if offers.empty?
+
       breakdown = Inventory::MatchScore.for_offers(
         budget: lead.budget_amount,
-        offers: item.offers,
+        offers:,
         lead_keys: keys,
-        fallback_price: item.fallback_price,
-        location_points: decision.location_points
+        fallback_price: Inventory::Fit.fallback_price(lead, item.price_source),
+        location_points: decision.location_points,
+        fit: lead.category == "residential" ? :configuration : :area,
+        bonus: Inventory::Fit.pre_leased_bonus(lead, item),
+        lead:
       )
       return unless breakdown[:score] > item.floor
 
       {
         item:, score: breakdown[:score], decision:,
         sort: Inventory::CandidateRank.sort_key(
-          ranking: hooks.ranking?, decision:, score: breakdown[:score], name: item.name
+          ranking: hooks.ranking?, decision:, score: breakdown[:score], name: item.name,
+          pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
         )
       }
     end
@@ -207,7 +222,8 @@ module Matches
         "listing_for" => item.listing_for, "leads" => []
       }
       buyer_sort = Inventory::CandidateRank.sort_key(
-        ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name
+        ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name,
+        pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
       )
       bucket["leads"] << {
         "lead_id" => lead.id, "name" => lead.display_name, "score" => row[:score], "_sort" => buyer_sort

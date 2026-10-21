@@ -358,8 +358,13 @@ lapsed is not scanned. The row is deleted with the firm. `properties.listed_on_m
 every other active firm's shared available properties as that safe card. A lead
 maps one of those listings only while that firm is still active. `lead_localities` holds the lead's
 preferred localities (no `firm_id`; the lead is the tenant). Price is one of
-50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
-20. See `docs/api.md`.
+50 / 30 / 20 / 0 against the lead's budget. A home scores a smart configuration
+match at 20. Commercial and Plot & Land score the chosen configuration only,
+and score area at 20 or 10 instead. A pre-leased commercial sale listing scores
+10 more, capped at 100, and sorts first when the scores tie. A project with
+more than one category is priced from that category. `bin/rails matches:rebaseline`
+rewrites every eligible firm's digest without notifying and without turning
+nearby matching on. See `docs/api.md`.
 
 ### Bookings and money — **built**
 

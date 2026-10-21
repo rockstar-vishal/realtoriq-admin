@@ -55,9 +55,27 @@ module Inventory
         .where(transaction_type: property.listing_for)
         .matchable
         .where(id: candidate_lead_ids)
-        .includes(:firm, :typologies, :localities)
-      scope = scope.joins(:property_type).where(property_types: { code: "ready_possession" }) if property.for_sale?
-      scope.to_a
+      scope = ready_or_land(scope) if property.for_sale?
+      scope = Fit.leads_for_listing(
+        scope, categories: listing_categories, typology_ids_by_category: typology_ids_by_category
+      )
+      scope.includes(:firm, :typologies, :localities).to_a
+    end
+
+    def ready_or_land(scope)
+      ready_ids = PropertyType.where(code: "ready_possession").select(:id)
+      scope.where(category: "land").or(scope.where(property_type_id: ready_ids))
+    end
+
+    def listing_categories
+      [ property.typology&.category ].compact
+    end
+
+    def typology_ids_by_category
+      category = property.typology&.category
+      return {} if category.blank?
+
+      { category => [ property.typology_id ] }
     end
 
     def candidate_lead_ids
@@ -103,30 +121,28 @@ module Inventory
       )
       return unless decision
 
+      return unless Fit.row_in_scope?(lead, property.typology)
+
       breakdown = MatchScore.for_offers(
         budget: lead.budget_amount,
         offers:,
         lead_keys: lead.typologies.map { |typology| ConfigurationKey.call(typology.name) },
-        location_points: decision.location_points
+        location_points: decision.location_points,
+        fit: lead.category == "residential" ? :configuration : :area,
+        bonus: Fit.pre_leased_bonus(lead, property),
+        lead:
       )
       return unless breakdown[:score] > MatchInventory::MARKETPLACE_FLOOR
 
-      sort = if hooks.ranking?
-        CandidateRank.sort_key(ranking: true, decision:, score: breakdown[:score], name: lead.firm&.name)
-      else
-        [ -breakdown[:score] ]
-      end
+      sort = CandidateRank.sort_key(
+        ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.firm&.name,
+        pre_leased_first: Fit.pre_leased_first?(lead, property)
+      )
       [ sort, row(lead).merge(distance_m: decision.distance_m, group: decision.group) ]
     end
 
     def offers
-      @offers ||= [
-        MatchScore::Offer.new(
-          price: property.price,
-          name: property.typology&.name,
-          key: ConfigurationKey.call(property.typology&.name)
-        )
-      ]
+      @offers ||= [ MatchScore.offer_for_property(property) ]
     end
 
     def row(lead)
