@@ -63,7 +63,7 @@ module Api
           categories: Typology::CATEGORY_ORDER.map { |code| { code:, name: Typology.label_for(code) } },
           area_units: AreaUnits.reference,
           pre_leased_details: Inventory::DetailSpecs.pre_leased_reference,
-          tenant_types: Inventory::DetailSpecs::TENANT_TYPES.map { |code| { code:, name: code.humanize } },
+          tenant_types: Inventory::DetailSpecs.tenant_type_rows,
           # Fixed enums the app needs but which aren't worth a table.
           transaction_types: [ { code: "sale", name: "Sale" }, { code: "rent", name: "Rent" } ],
           floor_bands: %w[lower middle higher].map { |c| { code: c, name: c.humanize } },

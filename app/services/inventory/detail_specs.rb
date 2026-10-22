@@ -142,7 +142,13 @@ module Inventory
       "not_na" => "Not NA",
       "borewell" => "Borewell",
       "well" => "Well",
-      "canal_river" => "Canal / river"
+      "canal_river" => "Canal / river",
+      "bank" => "Bank",
+      "retail_brand" => "Retail brand",
+      "fb" => "F&B",
+      "clinic" => "Clinic",
+      "office_tenant" => "Office tenant",
+      "other" => "Other"
     }.freeze
 
     Result = Struct.new(:values, :errors, keyword_init: true)
@@ -202,7 +208,11 @@ module Inventory
     end
 
     def self.pre_leased_reference
-      LEASE.map { |spec| { key: spec.key, label: spec.label, type: spec.type.to_s, options: spec.options } }
+      LEASE.map { |spec| reference_field(spec) }
+    end
+
+    def self.tenant_type_rows
+      TENANT_TYPES.map { |code| { code:, name: option_label(code) } }
     end
 
     def self.blank?(value)

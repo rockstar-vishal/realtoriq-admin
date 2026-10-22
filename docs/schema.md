@@ -344,7 +344,9 @@ row per firm (`firm_id` unique), overwritten about every 12 hours.
 `lead_items` and `listing_items` are JSON. `notification_pending` means a
 night scan found something new and the morning ping has not been sent.
 `fingerprint` is the hash of the ids actually stored, so a change that never
-reaches the capped list does not notify. A lead lists inventory, and a
+reaches the capped list does not notify. Adding `category`, `area`, and
+`prefers_pre_leased` on a lead row, or `categories` on a listing row, does
+not change that hash. A lead lists inventory, and a
 project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
 project or another firm's shared property. Once nearby matching is on, a
@@ -355,7 +357,9 @@ stay in that list. Booked leads are left out of the live match call and of
 this list. A firm whose subscription has
 lapsed is not scanned. The row is deleted with the firm. `properties.listed_on_marketplace`
 (default true) is that share switch. `GET /properties/marketplace` lists
-every other active firm's shared available properties as that safe card. A lead
+every other active firm's shared available properties as that safe card
+(`category` and `pre_leased`, still no area, photo, or building). The other
+firm's detail adds `area` and `lease`. A lead
 maps one of those listings only while that firm is still active. `lead_localities` holds the lead's
 preferred localities (no `firm_id`; the lead is the tenant). Price is one of
 50 / 30 / 20 / 0 against the lead's budget. A home scores a smart configuration

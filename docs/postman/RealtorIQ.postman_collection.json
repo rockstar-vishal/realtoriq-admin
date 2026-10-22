@@ -402,7 +402,7 @@
                 "reference"
               ]
             },
-            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums. `typologies[].details` lists each configuration's fields (`key`, `label`, `type`, `options` with `code` and `label`, `min`, `max`, `unit`). A configuration with no spec has an empty `details` array.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
+            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums. `typologies[].details` lists each configuration's fields (`key`, `label`, `type`, `options` with `code` and `label`, `min`, `max`, `unit`). A configuration with no spec has an empty `details` array. `pre_leased_details[]` uses the same shape, so tenant options are `{ code, label }`. `tenant_types[].name` is Bank, Retail brand, F&B, Clinic, Office tenant, or Other.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
           },
           "event": [
             {
@@ -673,7 +673,7 @@
             "method": "GET",
             "header": [],
             "url": "{{api_base}}/match_digest",
-            "description": "Super admin only. lead_items and listing_items are the current unlinked matches. new_count is how many of those were not on the previous list. generated_at is when the list was built, in the response timestamp."
+            "description": "Super admin only. lead_items and listing_items are the current unlinked matches. A lead row adds category, area, and prefers_pre_leased. A listing row adds categories. Digests written before matches:rebaseline omit those keys. new_count is how many of those were not on the previous list. generated_at is when the list was built, in the response timestamp."
           }
         }
       ]
@@ -3871,7 +3871,7 @@
               "path": ["properties", "marketplace"],
               "query": [{ "key": "q", "value": "2bhk" }]
             },
-            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card: no carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
+            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card with category and pre_leased, and still no area, carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
           }
         },
         {
@@ -3884,7 +3884,7 @@
               "host": ["{{api_base}}"],
               "path": ["properties", "{{property_id}}", "marketplace"]
             },
-            "description": "Another firm's safe view of a shared available listing: title, configuration, locality, city, price, carpet, and the firm's phone lines. No address, building name, or confidential note. The owning firm receives 404."
+            "description": "Another firm's safe view of a shared available listing: title, configuration, category, locality, city, price, carpet, area, pre_leased, lease, and the firm's phone lines. No note, address, pin, floor, photos, building name, or confidential note. The owning firm receives 404."
           }
         },
         {

@@ -48,6 +48,11 @@ RSpec.describe "Shared property marketplace" do
     expect(response).to have_http_status(:ok)
     body = response.parsed_body["property"]
     expect(body["title"]).to eq("2 BHK in Worli")
+    expect(body["category"]).to eq("residential")
+    expect(body["pre_leased"]).to be(false)
+    expect(body["lease"]).to be_nil
+    expect(body["area"]).to include("unit" => "sqft", "sqft" => 700)
+    expect(body).not_to have_key("description")
     expect(body.dig("firm", "name")).to eq("Mehta Estates")
     expect(body.dig("firm", "mobile")).to eq(mobile.value)
     expect(body.dig("firm", "whatsapp")).to eq(whatsapp.value)
@@ -213,6 +218,27 @@ RSpec.describe "Shared property marketplace" do
       response.parsed_body
     end
 
+    it "shows a pre-leased shop's category, area, and lease without the private fields" do
+      shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+      shared = create(:property, firm: other_firm, typology: shop, price: 8_500_000,
+        carpet_area_sqft: 450, pre_leased: true,
+        details: { "lease_monthly_rent" => 120_000, "tenant_type" => "fb" },
+        building: listing.building)
+
+      get "/api/v1/properties/#{shared.id}/marketplace", headers: auth(broker), as: :json
+
+      body = response.parsed_body["property"]
+      expect(response).to have_http_status(:ok)
+      expect(body["category"]).to eq("commercial")
+      expect(body["pre_leased"]).to be(true)
+      expect(body["area"]).to include("unit" => "sqft", "sqft" => 450)
+      expect(body["lease"]).to include(
+        "monthly_rent" => 120_000, "tenant_type" => "fb", "yield_percent" => "16.94"
+      )
+      expect(body).not_to have_key("floor_band")
+      expect(response.body).not_to include("Sea Face Tower", "Owner is travelling")
+    end
+
     it "lists another firm's shared available property without the private fields" do
       row = browse["properties"].find { |item| item["id"] == listing.id }
 
@@ -224,8 +250,12 @@ RSpec.describe "Shared property marketplace" do
       expect(row.dig("firm", "name")).to eq("Mehta Estates")
       expect(row.dig("firm", "mobile")).to eq(mobile.value)
       expect(row.dig("firm", "whatsapp")).to eq(whatsapp.value)
+      expect(row["category"]).to eq("residential")
+      expect(row["pre_leased"]).to be(false)
+      expect(row).not_to have_key("area")
       expect(row.keys).to contain_exactly(
-        "id", "code", "title", "listing_for", "price", "typology", "locality", "city", "firm"
+        "id", "code", "title", "listing_for", "price", "typology", "locality", "city", "firm",
+        "category", "pre_leased"
       )
       expect(response.body).not_to include("Sea Face Tower", "12 Sea Face", "Owner is travelling", "Sea-facing")
     end

@@ -473,6 +473,27 @@ RSpec.describe "API v1 inventory" do
       }.merge(overrides), headers: auth, as: :json
     end
 
+    it "labels a plot sale as Sale and a home sale as ready possession" do
+      create_property
+      home_id = response.parsed_body.dig("property", "id")
+      plot = create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
+
+      post "/api/v1/properties", params: {
+        building_id: building.id, typology_id: plot.id, listing_for: "sale",
+        price: 4_500_000, area_value: "2", area_unit: "guntha"
+      }, headers: auth, as: :json
+      expect(response).to have_http_status(:created)
+      plot_id = response.parsed_body.dig("property", "id")
+
+      rental = create(:property, firm:, typology:, listing_for: "rent", price: 50_000, building:)
+
+      get "/api/v1/properties", headers: auth
+      rows = response.parsed_body["properties"]
+      expect(rows.find { |row| row["id"] == home_id }["match_label"]).to eq("Sale · Ready possession")
+      expect(rows.find { |row| row["id"] == plot_id }["match_label"]).to eq("Sale")
+      expect(rows.find { |row| row["id"] == rental.id }["match_label"]).to eq("Rent")
+    end
+
     it "creates one and derives its title and rate" do
       create_property
 

@@ -222,7 +222,7 @@ lead_statuses[]  id, name, code, is_dead, is_booked, is_terminal
 property_types[] id, name, code                  ← possession options; the key stays property_types
 categories[]     code, name                      ← residential, commercial, land
 area_units[]     code, label, sqft               ← sqft factor is a decimal string
-pre_leased_details[]  key, label, type, options
+pre_leased_details[]  key, label, type, options, min, max, unit
 tenant_types[]   code, name
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
@@ -238,6 +238,9 @@ villa, row house, plots, and commercial configurations other than office.
 optional fields: `key`, `label`, `type` (`select`, `integer`, `decimal`,
 `boolean`, `date`), `options` (`code` and `label`), `min`, `max` and `unit`.
 A configuration with no spec has `details: []`.
+`pre_leased_details[]` uses that same shape, so a select's `options` are
+`{ code, label }`. Tenant names are Bank, Retail brand, F&B, Clinic,
+Office tenant, and Other.
 
 Seeded values today: statuses `new`, `hot`, `followup`, `visit_planned`,
 `negotiation`, `booked`, `dead` · sources `portal_housing`, `portal_99acres`,
@@ -935,11 +938,15 @@ hours later. `generated_at` is when this list was built.
   "lead_items": [
     { "lead_id": "…", "code": "L-0004", "name": "Asha", "budget": 10000000,
       "typologies": ["2 BHK"], "localities": ["Kharghar"], "dead": false,
-      "match_count": 6, "new_count": 3, "top_score": 100 }
+      "match_count": 6, "new_count": 3, "top_score": 100,
+      "category": "residential",
+      "area": { "min": null, "max": null, "unit": null, "min_sqft": null, "max_sqft": null },
+      "prefers_pre_leased": false }
   ],
   "listing_items": [
     { "kind": "property", "id": "…", "title": "2 BHK in Kharghar",
-      "listing_for": "sale", "match_count": 4, "new_count": 1, "top_score": 80 }
+      "listing_for": "sale", "categories": ["residential"],
+      "match_count": 4, "new_count": 1, "top_score": 80 }
   ]
 } }
 ```
@@ -953,7 +960,12 @@ same lock and does not notify, so a scoring change can land without pinging
 brokers. It does not turn nearby matching on.
 `listing_items[].kind` is `project` or `property`. A property row includes
 `listing_for` (`sale` or `rent`) so two listings with the same title can be
-told apart. A project row omits it. Unqualified leads are
+told apart. A project row omits it. A lead row also carries `category`,
+`area` (`min`, `max`, `unit`, `min_sqft`, `max_sqft`) and
+`prefers_pre_leased`. A listing row carries `categories`, in residential,
+commercial, land order, taken from the configurations that matched.
+Digests written before `matches:rebaseline` omit those keys.
+Unqualified leads are
 left out. Booked leads are left out. Dead leads stay, with `dead: true`.
 A row already linked to that lead or listing is left out. Sold-out and
 booked properties are left out.
@@ -1425,6 +1437,7 @@ carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 
 List and detail also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).
+A Plot & Land sale reads `Sale`.
 The marketplace list includes `code` as well, and still omits private fields.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
@@ -1558,17 +1571,20 @@ case are ignored, so `2bhk` finds `2 BHK`. The building name and the
 description are not searched. A query that is only punctuation returns
 no rows.
 
-Each row is the safe card: `id`, `title`, `listing_for`, `price`,
-`typology`, `locality`, `city`, and `firm: { name, mobile, whatsapp }`.
-There is no carpet, photo, building, address, floor, description, or
+Each row is the safe card: `id`, `code`, `title`, `listing_for`, `price`,
+`typology`, `locality`, `city`, `category`, `pre_leased`, and
+`firm: { name, mobile, whatsapp }`.
+There is no area, carpet, photo, building, address, floor, description, or
 confidential note. Open one row with `GET /properties/:id/marketplace`.
 
 ### `GET /properties/:id/marketplace`
 
 Another firm's view of a shared, available listing. The owning firm receives
 404 and uses `GET /properties/:id`. The body is the title, configuration,
-locality, city, price, carpet, and the firm's name, mobile, and WhatsApp.
-There is no building name, address, pin, floor, description, photos, or
+`category`, locality, city, price, carpet, `area`, `pre_leased`, `lease`
+(rent, lock-in, tenant, and yield; null when the listing is not pre-leased),
+and the firm's name, mobile, and WhatsApp.
+There is no note, building name, address, pin, floor, description, photos, or
 confidential note. A listing that is not shared returns 404.
 
 Mapping that property (`POST /leads/:id/properties`) is allowed for any lead

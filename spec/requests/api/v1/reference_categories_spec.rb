@@ -35,7 +35,10 @@ RSpec.describe "GET /api/v1/reference categories" do
     expect(body["categories"].map { |row| row["code"] }).to eq(%w[residential commercial land])
     expect(body["area_units"].map { |row| row["code"] }).to include("guntha")
     expect(body["pre_leased_details"].map { |row| row["key"] }).to include("lease_monthly_rent")
-    expect(body["tenant_types"].map { |row| row["code"] }).to include("bank")
+    tenant = body["pre_leased_details"].find { |row| row["key"] == "tenant_type" }
+    expect(tenant["options"]).to include("code" => "fb", "label" => "F&B")
+    expect(body["tenant_types"].find { |row| row["code"] == "fb" }).to include("name" => "F&B")
+    expect(body["tenant_types"].find { |row| row["code"] == "bank" }).to include("name" => "Bank")
     expect(two["details"].map { |field| field["key"] }).to include("furnishing")
     furnishing = two["details"].find { |field| field["key"] == "furnishing" }
     expect(furnishing["options"]).to include("code" => "semi", "label" => "Semi-furnished")

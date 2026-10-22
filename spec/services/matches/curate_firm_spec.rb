@@ -48,6 +48,27 @@ RSpec.describe Matches::CurateFirm do
     digest.lead_items.find { |item| item["lead_id"] == lead.id }
   end
 
+  it "ignores the category and area keys when it fingerprints a digest" do
+    bare = {
+      "lead_items" => [ { "lead_id" => "lead-1", "match_ids" => %w[match-b match-a] } ],
+      "listing_items" => [ { "kind" => "property", "id" => "listing-1", "match_ids" => %w[lead-z lead-y] } ]
+    }
+    richer = {
+      "lead_items" => [ {
+        "lead_id" => "lead-1", "match_ids" => %w[match-b match-a],
+        "category" => "commercial", "area" => { "min" => "800", "unit" => "sqft" },
+        "prefers_pre_leased" => true
+      } ],
+      "listing_items" => [ {
+        "kind" => "property", "id" => "listing-1", "match_ids" => %w[lead-z lead-y],
+        "categories" => %w[commercial]
+      } ]
+    }
+
+    expect(described_class.fingerprint(richer["lead_items"], richer["listing_items"]))
+      .to eq(described_class.fingerprint(bare["lead_items"], bare["listing_items"]))
+  end
+
   it "stores the same unlinked matches the live matcher would, and tells the super admin" do
     travel_to zone.local(2026, 10, 8, 11) do
       project = own_project
@@ -77,6 +98,10 @@ RSpec.describe Matches::CurateFirm do
       expect(digest_lead(digest, linked)["match_ids"]).to include("project:#{project.id}", "property:#{listing.id}")
       expect(digest.listing_items.map { |item| item["id"] }).to include(project.id, listing.id)
       expect(digest.listing_items.find { |item| item["id"] == listing.id }["listing_for"]).to eq("sale")
+      expect(digest_lead(digest, lead)["category"]).to eq("residential")
+      expect(digest_lead(digest, lead)["prefers_pre_leased"]).to be(false)
+      expect(digest_lead(digest, lead)["area"].keys).to include("min", "max", "unit", "min_sqft", "max_sqft")
+      expect(digest.listing_items.find { |item| item["id"] == listing.id }["categories"]).to eq([ "residential" ])
       expect(digest.listing_items.find { |item| item["id"] == project.id }).not_to have_key("listing_for")
       expect(digest.notification_pending).to be(false)
 

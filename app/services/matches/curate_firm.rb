@@ -219,7 +219,7 @@ module Matches
       key = [ item.kind, item.id ]
       bucket = buckets[key] ||= {
         "kind" => item.kind, "id" => item.id, "title" => item.name,
-        "listing_for" => item.listing_for, "leads" => []
+        "listing_for" => item.listing_for, "categories" => listing_categories(item), "leads" => []
       }
       buyer_sort = Inventory::CandidateRank.sort_key(
         ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name,
@@ -243,7 +243,10 @@ module Matches
         "match_count" => match_ids.size,
         "new_count" => new_count(match_ids, previous&.dig("match_ids")),
         "top_score" => scored.first[:score],
-        "match_ids" => match_ids
+        "match_ids" => match_ids,
+        "category" => lead.category,
+        "area" => lead.area_payload,
+        "prefers_pre_leased" => lead.prefers_pre_leased
       }
     end
 
@@ -276,7 +279,13 @@ module Matches
         "match_ids" => match_ids
       }
       item["listing_for"] = bucket["listing_for"] if bucket["listing_for"].present?
+      item["categories"] = bucket["categories"] if bucket.key?("categories")
       item
+    end
+
+    def listing_categories(item)
+      found = Array(item.offers).filter_map(&:category)
+      Typology::CATEGORY_ORDER & found
     end
 
     def new_count(ids, previous_ids)
