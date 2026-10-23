@@ -192,7 +192,7 @@ module Matches
       ).includes(:locality)
       properties = Property.unscoped.where(
         id: LeadProperty.where(lead_id: matching_leads.select(:id)).select(:property_id)
-      ).to_a
+      ).includes(:locality)
       points = []
       projects.find_each do |project|
         point = Inventory::Geo.listing_point(
@@ -201,16 +201,12 @@ module Matches
         )
         points << point.merge(city_id: project.city_id) if point && project.city_id
       end
-      Inventory::Buildings.attach(properties)
       properties.each do |property|
-        building = property.building
-        next if building.nil?
-
         point = Inventory::Geo.listing_point(
-          lat: building.lat, lng: building.lng,
-          locality_lat: building.locality&.lat, locality_lng: building.locality&.lng
+          lat: property.lat, lng: property.lng,
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
         )
-        points << point.merge(city_id: building.city_id) if point && building.city_id
+        points << point.merge(city_id: property.city_id) if point && property.city_id
       end
       points.uniq { |point| [ point[:city_id], point[:lat], point[:lng] ] }.map { |point|
         box = Inventory::Geo.box(point[:lat], point[:lng])

@@ -10,14 +10,14 @@ module Api
       # several flats share a building, and without it pagination is unstable.
       SORTS = {
         "recent" => -> { order(created_at: :desc, id: :desc) },
-        "name" => -> { joins(:building).order("buildings.name ASC", :id) }
+        "name" => -> { order("properties.building_name ASC", :id) }
       }.freeze
       DEFAULT_SORT = "recent"
 
       # Drawer fields. `status` is a heading pill and must not drop `q`.
       DRAWER_KEYS = %w[
         city_id locality_id typology_id price_min price_max carpet_min carpet_max
-        building_id listing_for
+        listing_for
       ].freeze
 
       include AttachesPhotos
@@ -56,7 +56,6 @@ module Api
       def marketplace_index
         scope = Inventory::MarketplaceListings.new(query: params[:q]).scope
         @pagy, records = pagy(scope, limit: per_page)
-        preload_shared_buildings(records)
         channels = ContactChannel.unscoped
           .where(firm_id: records.map(&:firm_id), kind: %w[mobile whatsapp])
           .group_by(&:firm_id)
@@ -71,7 +70,7 @@ module Api
 
       # Another firm's view of a shared listing. The owning firm uses #show.
       def marketplace
-        property = Property.unscoped.includes(:typology, :firm).find_by(id: params[:id])
+        property = Property.unscoped.includes(:typology, :firm, :city, :locality).find_by(id: params[:id])
         return render_error("not_found", "Property not found", status: :not_found) unless shared_listing_for_caller?(property)
 
         render json: { property: PropertySerializer.marketplace(property) }, status: :ok
@@ -87,13 +86,14 @@ module Api
         property.firm = current_firm
         property.created_by_user = current_user
 
-        return render_validation_errors(property.errors) unless property.save
+        return render_validation_errors(property.errors) unless property.save(context: [ :create, :listing_form ])
 
         render json: { property: PropertySerializer.detail(property) }, status: :created
       end
 
       def update
-        return render_validation_errors(@property.errors) unless @property.update(property_params)
+        @property.assign_attributes(property_params)
+        return render_validation_errors(@property.errors) unless @property.save(context: [ :update, :listing_form ])
 
         render json: { property: PropertySerializer.detail(@property.reload) }, status: :ok
       end
@@ -120,16 +120,6 @@ module Api
 
       private
 
-      def preload_shared_buildings(records)
-        return if records.empty?
-
-        ActiveRecord::Associations::Preloader.new(
-          records: records,
-          associations: { building: %i[locality city] },
-          scope: Building.unscoped
-        ).call
-      end
-
       def set_property
         @property = base_scope.find_by(id: params[:id])
         return if @property
@@ -141,14 +131,9 @@ module Api
       # A shared listing belongs to another firm. Exploring matches still scores
       # only this caller's own leads.
       def assign_shared_listing
-        record = Property.unscoped.includes(:typology).find_by(id: params[:id])
+        record = Property.unscoped.includes(:typology, :city, :locality).find_by(id: params[:id])
         return false unless shared_listing_for_caller?(record)
 
-        # The building's firm scope would hide it from the other firm, and a
-        # preloader scope is merged with that default scope rather than replacing it.
-        building = Building.unscoped.includes(:locality).find_by(id: record.building_id)
-        record.association(:building).target = building
-        record.association(:building).loaded!
         @property = record
         true
       end
@@ -163,7 +148,7 @@ module Api
       end
 
       def base_scope
-        Property.includes(:typology, :created_by_user, building: %i[city locality])
+        Property.includes(:typology, :created_by_user, :city, :locality)
       end
 
       def filtered_scope
@@ -175,7 +160,6 @@ module Api
           .in_locality(params[:locality_id])
 
         scope = scope.where(listing_for: params[:listing_for]) if params[:listing_for].present?
-        scope = scope.where(building_id: params[:building_id]) if params[:building_id].present?
         scope = scope.where(typology_id: params[:typology_id]) if params[:typology_id].present?
         if Typology::CATEGORIES.include?(params[:category].to_s)
           scope = scope.joins(:typology).where(typologies: { category: params[:category] })
@@ -208,14 +192,38 @@ module Api
         requested.clamp(1, 50)
       end
 
+      LOCATION_KEYS = %i[
+        building_name city_id locality_id address lat lng google_place_id has_pool has_gym
+      ].freeze
+
       def property_params
-        permitted = params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
+        permitted = params.permit(:building_id, *LOCATION_KEYS, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :area_value, :area_unit, :pre_leased,
                       :available_from, :description,
                       :confidential_note, :status, :listed_on_marketplace, :on_website)
         # DetailSpecs keeps known keys and drops the rest, so the hash is not
         # a list of column names the client is allowed to set.
         permitted[:details] = params[:details].to_unsafe_h if params[:details].respond_to?(:to_unsafe_h)
+        fill_location_from_building(permitted)
+      end
+
+      # Remove in the location cleanup
+      def fill_location_from_building(permitted)
+        return permitted if LOCATION_KEYS.any? { |key| params.key?(key) }
+        return permitted if permitted[:building_id].blank?
+
+        building = Building.find_by(id: permitted[:building_id])
+        return permitted if building.nil?
+
+        permitted[:building_name] = building.name
+        permitted[:city_id] = building.city_id
+        permitted[:locality_id] = building.locality_id
+        permitted[:address] = building.address
+        permitted[:lat] = building.lat
+        permitted[:lng] = building.lng
+        permitted[:google_place_id] = building.google_place_id
+        permitted[:has_pool] = building.has_pool
+        permitted[:has_gym] = building.has_gym
         permitted
       end
 

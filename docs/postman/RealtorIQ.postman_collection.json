@@ -3641,7 +3641,7 @@
                 "properties"
               ]
             },
-            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description — not the city; dropped if any drawer param is set; `status` does not drop `q`; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `building_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default · `booked` · `sold_out` · `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.**"
+            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description — not the city; dropped if any drawer param is set; `status` does not drop `q`; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default · `booked` · `sold_out` · `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.** List rows also carry `building_name`, `city` and `locality` (`{id, name}`), `address`, `lat`, `lng`, `google_place_id`, `has_pool`, `has_gym`, `has_pin`. `building` is deprecated and built from those fields; its `id` is the old building id."
           },
           "event": [
             {
@@ -3668,7 +3668,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/properties?status=available&listing_for=sale&floor_band=higher&building_id={{building_id}}&typology_id={{typology_id}}&city_id={{city_id}}&locality_id={{locality_id}}&price_min=5000000&price_max=50000000&carpet_min=400&carpet_max=2000&per_page=5&page=1",
+              "raw": "{{api_base}}/properties?status=available&listing_for=sale&floor_band=higher&typology_id={{typology_id}}&city_id={{city_id}}&locality_id={{locality_id}}&price_min=5000000&price_max=50000000&carpet_min=400&carpet_max=2000&per_page=5&page=1",
               "host": [
                 "{{api_base}}"
               ],
@@ -3687,10 +3687,6 @@
                 {
                   "key": "floor_band",
                   "value": "higher"
-                },
-                {
-                  "key": "building_id",
-                  "value": "{{building_id}}"
                 },
                 {
                   "key": "typology_id",
@@ -3779,7 +3775,7 @@
             "description": "Every accepted field. `status` is `available` / `booked` / `sold_out`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`. Mark sold = PATCH `sold_out` (reversible).\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"area_value\": 690,\n  \"area_unit\": \"sqft\",\n  \"pre_leased\": false,\n  \"details\": {},\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
+              "raw": "{\n  \"building_name\": \"Aurum Heights\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"12 Sea Face\",\n  \"lat\": 19.07,\n  \"lng\": 73.02,\n  \"google_place_id\": \"ChIJaurum\",\n  \"has_pool\": false,\n  \"has_gym\": true,\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"area_value\": 690,\n  \"area_unit\": \"sqft\",\n  \"pre_leased\": false,\n  \"details\": {},\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
             }
           },
           "event": [
@@ -3948,7 +3944,7 @@
             "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\",\n  \"on_website\": true\n}"
+              "raw": "{\n  \"building_name\": \"Aurum Heights\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"12 Sea Face\",\n  \"lat\": 19.07,\n  \"lng\": 73.02,\n  \"has_pool\": false,\n  \"has_gym\": true,\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\",\n  \"on_website\": true\n}"
             }
           },
           "event": [

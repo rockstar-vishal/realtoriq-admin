@@ -29,7 +29,7 @@ module Sites
       return missing unless @firm&.website_public?
 
       # The host already named this firm, and the site is up. Firm-owned
-      # associations (a property's building) are invisible without it.
+      # rows are invisible without it.
       # Nothing here reads a firm id from the request body.
       Current.firm = @firm
     end

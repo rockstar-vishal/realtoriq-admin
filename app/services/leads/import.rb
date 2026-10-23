@@ -75,15 +75,6 @@ module Leads
       end
     end
 
-    # A shared listing's building belongs to the other firm. The association
-    # is firm-scoped, so it reads as missing unless we ask across firms.
-    def self.listing_building(property)
-      loaded = property.association(:building)
-      return loaded.target if loaded.loaded? && loaded.target
-
-      Building.across_firms.includes(:locality, :city).find_by(id: property.building_id)
-    end
-
     def initialize(firm:, actor:, io:)
       @firm = firm
       @actor = actor
@@ -632,7 +623,7 @@ module Leads
     end
 
     def resolve_localities(raw, projects, properties)
-      from_listings = projects.filter_map(&:locality_id) + properties.filter_map { |property| self.class.listing_building(property)&.locality_id }
+      from_listings = projects.filter_map(&:locality_id) + properties.filter_map(&:locality_id)
       typed = parse_location_text(raw)
       return typed if typed.is_a?(Rejection)
 

@@ -121,7 +121,7 @@ module Inventory
     def own_properties
       scope = properties_in_category(Property.where(status: "available", listing_for: lead.transaction_type))
       Property.where(id: property_ids(scope))
-        .includes(:typology, building: %i[city locality])
+        .includes(:typology, :city, :locality)
         .to_a
     end
 
@@ -133,8 +133,7 @@ module Inventory
         .where(listed_on_marketplace: true, status: "available", listing_for: lead.transaction_type)
         .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
       scope = properties_in_category(scope)
-      records = Property.unscoped.where(id: property_ids(scope)).includes(:typology, :firm).to_a
-      Buildings.attach(records)
+      records = Property.unscoped.where(id: property_ids(scope)).includes(:typology, :firm, :city, :locality).to_a
       records
     end
 
@@ -148,14 +147,11 @@ module Inventory
     def property_ids(scope)
       return [] if locality_ids.empty? && hooks.pins.empty?
 
-      joined = scope.joins("INNER JOIN buildings ON buildings.id = properties.building_id")
-      ids = locality_ids.empty? ? [] : joined.where(buildings: { locality_id: locality_ids }).pluck(:id)
+      ids = locality_ids.empty? ? [] : scope.where(locality_id: locality_ids).pluck(:id)
       hooks.pins.each do |pin|
         box = Geo.box(pin[:lat], pin[:lng])
-        ids |= joined.where(buildings: { city_id: pin[:city_id] })
-          .where(buildings: { lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng })
-          .pluck(:id)
-        ids |= joined.where(buildings: { locality_id: center_ids(pin, box) }).pluck(:id)
+        ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+        ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
       end
       ids
     end
@@ -214,11 +210,10 @@ module Inventory
       return unless Fit.row_in_scope?(lead, property.typology)
 
       offers = [ MatchScore.offer_for_property(property) ]
-      building = property.building
       ranked = rank_listing(
-        locality_id: building&.locality_id,
-        lat: building&.lat, lng: building&.lng,
-        locality_lat: building&.locality&.lat, locality_lng: building&.locality&.lng,
+        locality_id: property.locality_id,
+        lat: property.lat, lng: property.lng,
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
         offers:, name: property.title, listing: property
       )
       return unless ranked
@@ -234,8 +229,8 @@ module Inventory
         listing_for: property.listing_for,
         marketplace: shared,
         listed_by: shared ? card[:firm_name] : nil,
-        city: shared ? card[:city] : property.building&.city&.name,
-        locality: shared ? card[:locality] : property.building&.locality&.name,
+        city: shared ? card[:city] : property.city&.name,
+        locality: shared ? card[:locality] : property.locality&.name,
         price: property.price,
         score: breakdown[:score],
         score_breakdown: breakdown.slice(*MatchScore::BREAKDOWN_KEYS),

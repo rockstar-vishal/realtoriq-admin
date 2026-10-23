@@ -78,13 +78,9 @@ module Inventory
     def property_points(ids)
       return {} if ids.empty?
 
-      rows = Property.unscoped.where(id: ids).to_a
-      Buildings.attach(rows)
+      rows = Property.unscoped.where(id: ids).includes(:locality).to_a
       rows.each_with_object({}) do |property, points|
-        building = property.building
-        next if building.nil?
-
-        points[property.id] = pin_point(building.lat, building.lng, building.locality, building.city_id)
+        points[property.id] = pin_point(property.lat, property.lng, property.locality, property.city_id)
       end
     end
 

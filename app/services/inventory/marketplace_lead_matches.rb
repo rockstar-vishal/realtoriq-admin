@@ -33,17 +33,13 @@ module Inventory
     attr_reader :property
 
     def locality_id
-      listing_building&.locality_id
-    end
-
-    def listing_building
-      @listing_building ||= Building.unscoped.includes(:locality).find_by(id: property.building_id)
+      property.locality_id
     end
 
     def listing_point
       @listing_point ||= Geo.listing_point(
-        lat: listing_building&.lat, lng: listing_building&.lng,
-        locality_lat: listing_building&.locality&.lat, locality_lng: listing_building&.locality&.lng
+        lat: property.lat, lng: property.lng,
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
       )
     end
 
@@ -93,15 +89,15 @@ module Inventory
     end
 
     def tagged_lead_ids(base)
-      return [] unless nearby_on? && listing_point && listing_building&.city_id
+      return [] unless nearby_on? && listing_point && property.city_id
 
       box = Geo.box(listing_point[:lat], listing_point[:lng])
       center_ids = Geo.center_locality_ids(
-        city_id: listing_building.city_id, min_lat: box.min_lat, max_lat: box.max_lat,
+        city_id: property.city_id, min_lat: box.min_lat, max_lat: box.max_lat,
         min_lng: box.min_lng, max_lng: box.max_lng
       )
       TaggedLeads.ids(
-        box:, city_id: listing_building.city_id, center_ids:, lead_scope: base, unscoped: true
+        box:, city_id: property.city_id, center_ids:, lead_scope: base, unscoped: true
       )
     end
 
@@ -121,8 +117,8 @@ module Inventory
       hooks = LeadHooks.for(lead, index:)
       decision = CandidateRank.decide(
         hooks:, locality_id:,
-        lat: listing_building&.lat, lng: listing_building&.lng,
-        locality_lat: listing_building&.locality&.lat, locality_lng: listing_building&.locality&.lng
+        lat: property.lat, lng: property.lng,
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
       )
       return unless decision
 
@@ -155,7 +151,7 @@ module Inventory
         firm_id: lead.firm_id,
         firm_name: lead.firm&.name,
         code: lead.code,
-        localities: [ property.building.locality&.name ].compact,
+        localities: [ property.locality&.name ].compact,
         configurations: lead.typologies.map(&:name).sort,
         marketplace: true
       }

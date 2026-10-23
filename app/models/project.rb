@@ -4,6 +4,7 @@
 # Distinct from Property, which is resale and rental stock.
 class Project < ApplicationRecord
   include FirmScoped
+  include IndiaPin
   include InventoryCode
   include PortalListingCodes
   include Inventory::PublicSlug
@@ -58,8 +59,11 @@ class Project < ApplicationRecord
   validates :starting_budget, numericality: { greater_than: 0, only_integer: true }
   validates :brokerage_percent,
     numericality: { greater_than: 0, less_than_or_equal_to: 100 }, allow_nil: true
+  PIN_FREE_CHANGES = %w[status on_website].freeze
+
   validates :lat, numericality: { in: -90..90 }, allow_nil: true
   validates :lng, numericality: { in: -180..180 }, allow_nil: true
+  validate :pin_required_on_form, on: :listing_form
   validate :has_a_possession_date_or_a_label
   validate :builder_is_available_to_this_firm
   validate :name_unique_within_source
@@ -340,6 +344,16 @@ class Project < ApplicationRecord
   private_class_method :rupee_unit
 
   private
+
+  # Archiving and the website switch are not the listing form. Catalog rows
+  # never ask for a pin; LaunchIQ ingest saves them without this context.
+  def pin_required_on_form
+    return unless from_own?
+    return if has_pin?
+    return if persisted? && changes.keys.any? && (changes.keys - PIN_FREE_CHANGES).empty?
+
+    errors.add(:base, IndiaPin::PIN_MESSAGE)
+  end
 
   # Saved rows are checked again on ProjectTypology. Two new rows in one
   # request are both unsaved, so only this grouping sees the clash before

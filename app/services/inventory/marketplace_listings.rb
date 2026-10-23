@@ -16,11 +16,10 @@ module Inventory
         .where(listed_on_marketplace: true, status: "available")
         .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
         .joins("INNER JOIN firms ON firms.id = properties.firm_id")
-        .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
-        .joins("INNER JOIN localities ON localities.id = buildings.locality_id")
-        .joins("INNER JOIN cities ON cities.id = buildings.city_id")
+        .joins("INNER JOIN localities ON localities.id = properties.locality_id")
+        .joins("INNER JOIN cities ON cities.id = properties.city_id")
         .joins("INNER JOIN typologies ON typologies.id = properties.typology_id")
-        .includes(:typology, :firm)
+        .includes(:typology, :firm, :locality, :city)
 
       compact = compact_query
       return relation.none if @query.strip.present? && compact.blank?

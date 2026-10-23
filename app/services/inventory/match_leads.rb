@@ -33,7 +33,7 @@ module Inventory
     attr_reader :user, :project, :property
 
     def locality_id
-      project ? project.locality_id : listing_building&.locality_id
+      project ? project.locality_id : property&.locality_id
     end
 
     def transaction_type
@@ -106,28 +106,22 @@ module Inventory
       @nearby_on = NearbyMatching.enabled?
     end
 
-    def listing_building
-      return if property.nil?
-
-      @listing_building ||= Building.unscoped.includes(:locality).find_by(id: property.building_id)
-    end
-
     def listing_point
       @listing_point ||= if project
         Geo.listing_point(
           lat: project.lat, lng: project.lng,
           locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
         )
-      else
+      elsif property
         Geo.listing_point(
-          lat: listing_building&.lat, lng: listing_building&.lng,
-          locality_lat: listing_building&.locality&.lat, locality_lng: listing_building&.locality&.lng
+          lat: property.lat, lng: property.lng,
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
         )
       end
     end
 
     def listing_city_id
-      project ? project.city_id : listing_building&.city_id
+      project ? project.city_id : property&.city_id
     end
 
     # Land leads store a null property_type_id. `NOT IN` drops those rows,
@@ -159,10 +153,10 @@ module Inventory
       decision = CandidateRank.decide(
         hooks:,
         locality_id:,
-        lat: project&.lat || listing_building&.lat,
-        lng: project&.lng || listing_building&.lng,
-        locality_lat: project&.locality&.lat || listing_building&.locality&.lat,
-        locality_lng: project&.locality&.lng || listing_building&.locality&.lng
+        lat: project&.lat || property&.lat,
+        lng: project&.lng || property&.lng,
+        locality_lat: project&.locality&.lat || property&.locality&.lat,
+        locality_lng: project&.locality&.lng || property&.locality&.lng
       )
       return unless decision
 

@@ -67,14 +67,14 @@ module DemoAssets
       raise "missing #{file}" unless file.file?
 
       attach_ordered(property, [ file ], "image/jpeg")
-      puts "#{property.listing_for} #{property.typology.name} #{property.building.locality.name} #{property.price} photos=#{property.photos.count}"
+      puts "#{property.listing_for} #{property.typology.name} #{property.locality.name} #{property.price} photos=#{property.photos.count}"
     end
 
     def find_listing!(file, spec)
       locality = Locality.joins(:city).find_by!(name: spec[:locality], cities: { name: "Mumbai" })
-      matches = firm.properties.joins(:building, :typology).where(
+      matches = firm.properties.joins(:locality, :typology).where(
         listing_for: spec[:listing_for], price: spec[:price],
-        buildings: { locality_id: locality.id }, typologies: { name: spec[:typology] }
+        locality_id: locality.id, typologies: { name: spec[:typology] }
       ).to_a
       raise "expected one #{file}, found #{matches.size}" unless matches.one?
 

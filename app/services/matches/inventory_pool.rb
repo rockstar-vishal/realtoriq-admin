@@ -72,9 +72,8 @@ module Matches
 
     def own_properties
       Property.where(status: "available")
-        .joins(:building)
-        .where(buildings: { locality_id: locality_ids })
-        .includes(:typology, building: :locality)
+        .where(locality_id: locality_ids)
+        .includes(:typology, :locality)
         .map { |property| property_candidate(property, marketplace: false) }
     end
 
@@ -95,15 +94,11 @@ module Matches
     end
 
     def cached_shared_properties(locality_id)
-      Rails.cache.fetch("matches/shared-properties/v3/#{locality_id}", expires_in: CACHE_TTL) do
-        records = Property.unscoped
-          .where(listed_on_marketplace: true, status: "available")
-          .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
-          .where(buildings: { locality_id: })
-          .includes(:typology, :firm)
-          .to_a
-        buildings = Building.unscoped.where(id: records.map(&:building_id)).includes(:locality).index_by(&:id)
-        records.map { |property| property_payload(property, buildings[property.building_id]) }
+      Rails.cache.fetch("matches/shared-properties/v4/#{locality_id}", expires_in: CACHE_TTL) do
+        Property.unscoped
+          .where(listed_on_marketplace: true, status: "available", locality_id:)
+          .includes(:typology, :firm, :locality)
+          .map { |property| property_payload(property) }
       end
     end
 
@@ -126,23 +121,23 @@ module Matches
     def box_properties
       return [] if boxes.empty?
 
-      near = buildings_near
-      own = Property.where(status: "available", building_id: near)
-        .includes(:typology, building: :locality)
+      near = properties_near
+      own = Property.where(status: "available", id: near)
+        .includes(:typology, :locality)
         .map { |property| property_candidate(property, marketplace: false) }
       eligible = Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id)
       shared_scope = Property.unscoped.where(
-        listed_on_marketplace: true, status: "available", building_id: near, firm_id: eligible
+        listed_on_marketplace: true, status: "available", id: near, firm_id: eligible
       )
       shared_scope = shared_scope.where(price: ..price_cap) if price_cap
-      records = shared_scope.includes(:typology, :firm).to_a
-      Inventory::Buildings.attach(records)
-      shared = records.map { |property| property_candidate(property, marketplace: true) }
+      shared = shared_scope.includes(:typology, :firm, :locality).map { |property|
+        property_candidate(property, marketplace: true)
+      }
       own + shared
     end
 
-    def buildings_near
-      table = Building.arel_table
+    def properties_near
+      table = Property.arel_table
       boxes_pred = boxes.map { |box|
         table[:city_id].eq(box[:city_id])
           .and(table[:lat].between(box[:min_lat]..box[:max_lat]))
@@ -153,7 +148,7 @@ module Matches
         centers = table[:locality_id].in(center_locality_ids)
         predicate = predicate.or(centers)
       end
-      Building.unscoped.where(predicate).select(:id)
+      Property.unscoped.where(predicate).select(:id)
     end
 
     def projects_from(scope, boxed)
@@ -225,15 +220,15 @@ module Matches
         kind: "property",
         id: property.id,
         name: property_title(property, shared: marketplace),
-        locality_id: property.building&.locality_id,
+        locality_id: property.locality_id,
         marketplace:,
         listing_for: property.listing_for,
         ready: nil,
         offers: [ Inventory::MatchScore.offer_for_property(property) ],
         fallback_price: nil,
         floor: marketplace ? Inventory::MatchInventory::MARKETPLACE_FLOOR : Inventory::MatchInventory::OWN_FLOOR,
-        lat: property.building&.lat, lng: property.building&.lng,
-        locality_lat: property.building&.locality&.lat, locality_lng: property.building&.locality&.lng
+        lat: property.lat, lng: property.lng,
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
       )
     end
 
@@ -288,16 +283,16 @@ module Matches
       }
     end
 
-    def property_payload(property, building)
+    def property_payload(property)
       {
         "id" => property.id,
         "firm_id" => property.firm_id,
-        "name" => property_title(property, building, shared: true),
-        "locality_id" => building&.locality_id,
+        "name" => property_title(property, shared: true),
+        "locality_id" => property.locality_id,
         "listing_for" => property.listing_for,
         "price" => property.price,
-        "lat" => building&.lat, "lng" => building&.lng,
-        "locality_lat" => building&.locality&.lat, "locality_lng" => building&.locality&.lng,
+        "lat" => property.lat, "lng" => property.lng,
+        "locality_lat" => property.locality&.lat, "locality_lng" => property.locality&.lng,
         "offers" => [ offer_payload(Inventory::MatchScore.offer_for_property(property)) ]
       }
     end
@@ -330,9 +325,9 @@ module Matches
       end
     end
 
-    def property_title(property, building = property.building, shared:)
-      [ property.typology&.name, building&.locality&.name ].compact_blank.join(" in ").presence ||
-        (shared ? "Listing" : building&.name) ||
+    def property_title(property, shared:)
+      [ property.typology&.name, property.locality&.name ].compact_blank.join(" in ").presence ||
+        (shared ? nil : property.building_name).presence ||
         "Listing"
     end
 

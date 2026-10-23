@@ -6,6 +6,7 @@ class Property < ApplicationRecord
   include InventoryCode
   include PortalListingCodes
   include Inventory::PublicSlug
+  include IndiaPin
   self.inventory_code_prefix = "H"
   self.inventory_code_index = "index_properties_on_code"
 
@@ -16,7 +17,10 @@ class Property < ApplicationRecord
   enum :listing_for, LISTING_FOR.index_by(&:itself), prefix: :for
   enum :status, STATUSES.index_by(&:itself), validate: true
 
-  belongs_to :building
+  # The old grouping. New listings leave it blank. Nothing in this model reads it.
+  belongs_to :building, optional: true
+  belongs_to :city
+  belongs_to :locality
   belongs_to :typology
   belongs_to :created_by_user, -> { unscope(where: :firm_id) },
     class_name: "User", optional: true
@@ -27,9 +31,14 @@ class Property < ApplicationRecord
 
   has_many_attached :photos
 
+  PIN_FREE_CHANGES = %w[status listed_on_marketplace on_website].freeze
+
+  validates :building_name, presence: true, length: { maximum: 160 }
   validates :listing_for, inclusion: { in: LISTING_FOR }
   validates :floor_band, inclusion: { in: FLOOR_BANDS }, allow_blank: true
   validates :price, numericality: { greater_than: 0, only_integer: true }
+  validates :lat, numericality: { in: -90..90 }, allow_nil: true
+  validates :lng, numericality: { in: -180..180 }, allow_nil: true
   validates :carpet_area_sqft,
     numericality: { greater_than: 0, only_integer: true }, allow_nil: true
   validates :area_value, numericality: { greater_than: 0 }, allow_nil: true
@@ -37,6 +46,8 @@ class Property < ApplicationRecord
   validate :plot_is_for_sale
   validate :area_unit_matches_category
   validate :details_match_configuration
+  validate :locality_belongs_to_the_chosen_city
+  validate :pin_required_on_form, on: :listing_form
 
   before_validation :sync_area
   before_validation :normalise_listing
@@ -48,8 +59,8 @@ class Property < ApplicationRecord
     next all if term.blank?
 
     pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    left_joins(:typology, building: :locality).where(<<~SQL.squish, q: pattern)
-      buildings.name ILIKE :q
+    left_joins(:typology, :locality).where(<<~SQL.squish, q: pattern)
+      properties.building_name ILIKE :q
       OR properties.description ILIKE :q
       OR typologies.name ILIKE :q
       OR localities.name ILIKE :q
@@ -77,13 +88,13 @@ class Property < ApplicationRecord
   scope :in_city, ->(city_id) {
     next all if city_id.blank?
 
-    joins(:building).where(buildings: { city_id: })
+    where(city_id:)
   }
 
   scope :in_locality, ->(locality_id) {
     next all if locality_id.blank?
 
-    joins(:building).where(buildings: { locality_id: })
+    where(locality_id:)
   }
 
   scope :newest_first, -> { order(created_at: :desc) }
@@ -91,13 +102,13 @@ class Property < ApplicationRecord
   # Homes stay "{configuration} in {locality}". Commercial and plot titles
   # put the area between the configuration and the place.
   def title
-    place = building&.locality&.name
+    place = locality&.name
     head = if typology.nil? || typology.residential?
       typology&.name
     else
       [ typology.name, area_phrase ].compact_blank.join(" · ")
     end
-    [ head, place ].compact_blank.join(" in ").presence || building&.name
+    [ head, place ].compact_blank.join(" in ").presence || building_name
   end
 
   # Derived, not stored: the two would drift the moment a price is corrected.
@@ -148,10 +159,28 @@ class Property < ApplicationRecord
   def rental? = for_rent?
 
   def public_slug_source
-    title.presence || building&.name
+    title.presence || building_name
   end
 
   private
+
+  # Compares the associations, not the foreign keys: an unsaved city is present
+  # as an object while its id is still nil, and comparing ids would call two
+  # different cities equal because both are nil.
+  def locality_belongs_to_the_chosen_city
+    return if locality.blank? || city.blank? || locality.city == city
+
+    errors.add(:locality_id, "is not in the selected city")
+  end
+
+  # Status, the marketplace switch, and the website switch are not the form.
+  # A booking that only marks the listing booked must not demand a pin.
+  def pin_required_on_form
+    return if has_pin?
+    return if persisted? && changes.keys.any? && (changes.keys - PIN_FREE_CHANGES).empty?
+
+    errors.add(:base, IndiaPin::PIN_MESSAGE)
+  end
 
   # An old client still sends carpet_area_sqft and nothing else. Once the
   # backfill has filled area_value, recomputing from that stale value would

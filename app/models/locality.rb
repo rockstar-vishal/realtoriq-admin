@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-# Global master. Localities belong to a city; buildings (which are firm-owned)
-# point at these.
+# Global master. Localities belong to a city; properties and projects point at these.
 class Locality < ApplicationRecord
   belongs_to :city
 

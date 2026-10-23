@@ -22,7 +22,7 @@ module Sites
     def properties
       rows = Property.unscoped
         .where(firm_id: firm.id, status: "available", on_website: true)
-        .includes(:typology, building: [ :city, :locality ])
+        .includes(:typology, :city, :locality)
         .order(:created_at, :id)
       covers = covers_for("Property", rows.map(&:id))
       rows.map { |property| property_card(property, covers[property.id]) }
@@ -72,8 +72,8 @@ module Sites
         area_text: area_text(record.area_value, record.area_unit, record.carpet_area_sqft),
         details: public_details(record),
         lease: public_lease(record),
-        has_pool: record.building&.has_pool,
-        has_gym: record.building&.has_gym
+        has_pool: record.has_pool,
+        has_gym: record.has_gym
       )
     end
 
@@ -91,7 +91,7 @@ module Sites
     def visible_property(conditions)
       return nil unless Host.code?(conditions[:code].to_s) || conditions[:slug].present?
 
-      Property.unscoped.includes(:typology, building: [ :city, :locality ])
+      Property.unscoped.includes(:typology, :city, :locality)
         .find_by({ firm_id: firm.id, status: "available", on_website: true }.merge(conditions))
     end
 
@@ -121,9 +121,9 @@ module Sites
         title: property.title,
         listing_for: property.listing_for,
         price: property.price,
-        building_name: property.building&.name,
-        locality: property.building&.locality&.name,
-        city: property.building&.city&.name,
+        building_name: property.building_name,
+        locality: property.locality&.name,
+        city: property.city&.name,
         category: property.typology&.category,
         cover_url: cover && Api::V1::BlobUrl.call(cover)
       }

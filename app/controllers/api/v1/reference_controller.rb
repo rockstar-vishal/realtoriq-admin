@@ -24,7 +24,7 @@ module Api
       # is identical for everyone, so this is the one thing that costs us the
       # shared cache entry.
       def cache_key
-        [ "api/v1/reference/v4", current_firm.id,
+        [ "api/v1/reference/v5", current_firm.id,
           City.maximum(:updated_at), Locality.maximum(:updated_at),
           builders.maximum(:updated_at), Typology.maximum(:updated_at),
           ConfigurationAlias.maximum(:updated_at),
@@ -40,7 +40,8 @@ module Api
             { id: c.id, name: c.name, state: c.state, state_code: c.state_code }
           },
           localities: Locality.active.alphabetical.map { |l|
-            { id: l.id, city_id: l.city_id, name: l.name, pincode: l.pincode }
+            { id: l.id, city_id: l.city_id, name: l.name, pincode: l.pincode,
+              lat: l.lat&.to_f, lng: l.lng&.to_f }
           },
           builders: builders.active.alphabetical.map { |b|
             { id: b.id, name: b.name, global: b.global? }
