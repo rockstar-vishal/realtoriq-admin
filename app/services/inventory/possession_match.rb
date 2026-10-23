@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Inventory
-  # A project is Ready possession when its month is the current month in
-  # India or one of the next two. A past month stays an under-construction
-  # match. A label that is only the word Ready, with no date, counts as ready.
+  # A project is Ready possession when its possession month is this month in
+  # India, at most two months ahead, or any past month. A label with no date
+  # that starts with the word Ready, such as "Ready to move", counts as ready.
   class PossessionMatch
     WINDOW = 2
 
@@ -25,11 +25,11 @@ module Inventory
     def self.within?(date, today)
       index = date.year * 12 + date.month
       now = today.year * 12 + today.month
-      (index - now).between?(0, WINDOW)
+      index - now <= WINDOW
     end
 
     def self.ready_label?(label)
-      label.to_s.strip.match?(/\Aready\z/i)
+      label.to_s.strip.match?(/\Aready\b/i)
     end
 
     def self.parse_label(label)

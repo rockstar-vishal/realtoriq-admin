@@ -6,8 +6,8 @@ module Api
       def self.call(digest)
         {
           generated_at: digest.generated_at,
-          lead_items: without_ids(digest.lead_items),
-          listing_items: without_ids(digest.listing_items)
+          lead_items: without_ids(digest.lead_items).first(Matches::CurateFirm::LEAD_CAP),
+          listing_items: without_ids(digest.listing_items).first(Matches::CurateFirm::LISTING_CAP)
         }
       end
 

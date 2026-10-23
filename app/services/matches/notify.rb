@@ -49,11 +49,19 @@ module Matches
     end
 
     def lead_new
-      @lead_new ||= Array(digest.lead_items).count { |item| item["new_count"].to_i.positive? }
+      @lead_new ||= shown(digest.lead_items, CurateFirm::LEAD_CAP)
+        .count { |item| item["new_count"].to_i.positive? }
     end
 
     def listing_new
-      @listing_new ||= Array(digest.listing_items).count { |item| item["new_count"].to_i.positive? }
+      @listing_new ||= shown(digest.listing_items, CurateFirm::LISTING_CAP)
+        .count { |item| item["new_count"].to_i.positive? }
+    end
+
+    # The page shows the first 30. A ping that counted the rest would name
+    # rows the broker cannot see.
+    def shown(items, cap)
+      Array(items).first(cap)
     end
   end
 end

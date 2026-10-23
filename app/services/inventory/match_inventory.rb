@@ -36,7 +36,7 @@ module Inventory
 
     def visible_rows
       return [] if lead.unqualified? || lead.lead_status&.is_booked?
-      return [] if locality_ids.empty?
+      return [] if locality_ids.empty? && hooks.pins.empty?
 
       (project_rows + property_rows).select { |row| row[:score] > row[:floor] && !row[:mapped] }
     end
@@ -269,9 +269,11 @@ module Inventory
       }
     end
 
+    # A query that is present but compacts to nothing ("-", "@") is a search
+    # with no needle. Returning every row would also skip the cap in #result.
     def filter_query(rows, query)
       needle = compact_text(query)
-      return rows if needle.blank?
+      return [] if needle.blank?
 
       rows.select { |row| compact_text(search_text(row)).include?(needle) }
     end
@@ -303,7 +305,7 @@ module Inventory
         near_shortlist: decision.near_shortlist,
         sort: CandidateRank.sort_key(
           ranking: hooks.ranking?, decision:, score: breakdown[:score], name:,
-          pre_leased_first: Fit.pre_leased_first?(lead, listing)
+          pre_leased_first: Fit.pre_leased_first?(lead, listing), tie: listing.id
         )
       }
     end

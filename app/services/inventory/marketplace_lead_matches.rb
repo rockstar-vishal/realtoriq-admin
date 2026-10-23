@@ -13,13 +13,18 @@ module Inventory
     end
 
     def call
+      scored_rows.first(LIMIT)
+    end
+
+    # Every scored row, in the same order as #call, with no cap. Firms to
+    # contact are taken from this list, so a firm past the cap still appears.
+    def scored_rows
       return [] unless property.listed_on_marketplace? && property.available?
       return [] if locality_id.blank? && listing_point.nil?
       return [] if Current.firm&.review_demo? || property.firm&.review_demo?
 
       scored
         .sort_by { |sort, row| sort + [ row[:firm_name].to_s.downcase, row[:code].to_s ] }
-        .first(LIMIT)
         .map(&:last)
     end
 
@@ -136,7 +141,7 @@ module Inventory
 
       sort = CandidateRank.sort_key(
         ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.firm&.name,
-        pre_leased_first: Fit.pre_leased_first?(lead, property)
+        pre_leased_first: Fit.pre_leased_first?(lead, property), tie: lead.id
       )
       [ sort, row(lead).merge(distance_m: decision.distance_m, group: decision.group) ]
     end

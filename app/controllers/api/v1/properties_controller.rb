@@ -72,9 +72,7 @@ module Api
       # Another firm's view of a shared listing. The owning firm uses #show.
       def marketplace
         property = Property.unscoped.includes(:typology, :firm).find_by(id: params[:id])
-        visible = property&.listed_on_marketplace? && property.available? && property.firm_id != current_firm.id
-        visible &&= !current_firm.review_demo? && !property.firm.review_demo?
-        return render_error("not_found", "Property not found", status: :not_found) unless visible
+        return render_error("not_found", "Property not found", status: :not_found) unless shared_listing_for_caller?(property)
 
         render json: { property: PropertySerializer.marketplace(property) }, status: :ok
       end
@@ -144,7 +142,7 @@ module Api
       # only this caller's own leads.
       def assign_shared_listing
         record = Property.unscoped.includes(:typology).find_by(id: params[:id])
-        return false unless record&.listed_on_marketplace? && record.available? && record.firm_id != current_firm.id
+        return false unless shared_listing_for_caller?(record)
 
         # The building's firm scope would hide it from the other firm, and a
         # preloader scope is merged with that default scope rather than replacing it.
@@ -153,6 +151,15 @@ module Api
         record.association(:building).loaded!
         @property = record
         true
+      end
+
+      # The owner must still be allowed to share, and the review demo is
+      # neither a viewer nor a source.
+      def shared_listing_for_caller?(record)
+        return false unless record&.listed_on_marketplace? && record.available?
+        return false if record.firm_id == current_firm.id || current_firm.review_demo?
+
+        Firm.marketplace_eligible.exists?(id: record.firm_id)
       end
 
       def base_scope

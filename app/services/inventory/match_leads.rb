@@ -25,6 +25,7 @@ module Inventory
         .select { |row| row[:score] > floor }
         .sort_by { |row| row[:sort] }
         .first(LIMIT)
+        .map { |row| row.except(:sort) }
     end
 
     private
@@ -215,7 +216,7 @@ module Inventory
         },
         sort: CandidateRank.sort_key(
           ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.display_name,
-          pre_leased_first: Fit.pre_leased_first?(lead, listing_for(lead))
+          pre_leased_first: Fit.pre_leased_first?(lead, listing_for(lead)), tie: lead.id
         )
       }
     end

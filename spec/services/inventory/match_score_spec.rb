@@ -40,6 +40,28 @@ RSpec.describe Inventory::MatchScore do
     expect(described_class.price_points(8_000_000, 10_000_000)).to eq(50)
   end
 
+  it "gives a lead with no budget 25 price points and does not call it a price match" do
+    expect(described_class.price_points(12_000_000, nil)).to eq(25)
+    expect(described_class.price_points(12_000_000, 0)).to eq(25)
+    expect(described_class.price_points(nil, nil)).to eq(25)
+
+    bare = described_class.for_offers(
+      budget: nil,
+      lead_keys: [ "2bhk" ],
+      offers: [ offer(10_000_000, "2 BHK") ]
+    )
+    within = described_class.for_offers(
+      budget: 10_000_000,
+      lead_keys: [ "2bhk" ],
+      offers: [ offer(10_000_000, "2 BHK") ]
+    )
+
+    expect(bare[:price]).to eq(25)
+    expect(described_class.matched_on(bare)).not_to include("price")
+    expect(described_class.matched_on(within)).to include("price")
+    expect(within[:score]).to be > bare[:score]
+  end
+
   it "uses the smart-matched configuration with the best price tier" do
     budget = 10_000_000
     result = described_class.for_offers(
@@ -128,5 +150,27 @@ RSpec.describe Inventory::MatchInventory do
     expect(rows.map { |row| row[:id] }).to eq([ rental.id ])
     expect(rows.first[:kind]).to eq("property")
     expect(rows.first[:score]).to eq(100)
+  end
+
+  it "ranks a lead within budget above a lead with no budget on the same listing" do
+    within = lead_in(locality)
+    within.update!(name: "Zara")
+    bare = create(:lead, firm:, lead_status: status, budget_max: nil, budget_min: nil,
+      transaction_type: "sale", name: "Aaron")
+    bare.typologies << two_bhk
+    bare.localities << locality
+    project = create(:project, firm:, city:, locality:, name: "Shared Vista", starting_budget: 10_000_000,
+      possession_on: Date.new(2027, 6, 1), possession_label: nil)
+    create(:project_typology, project:, typology: two_bhk, starting_price: 10_000_000)
+    user = create(:user, :super_admin, firm:)
+
+    rows = Inventory::MatchLeads.new(user:, project:).call
+    bare_row = rows.find { |row| row[:id] == bare.id }
+
+    expect(rows.map { |row| row[:id] }).to eq([ within.id, bare.id ])
+    expect(bare_row[:score_breakdown][:price]).to eq(25)
+    expect(bare_row[:matched_on]).not_to include("price")
+    expect(bare_row).not_to have_key(:sort)
+    expect(rows.first[:score]).to be > bare_row[:score]
   end
 end

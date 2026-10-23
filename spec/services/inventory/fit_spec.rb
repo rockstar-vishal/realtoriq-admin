@@ -84,14 +84,35 @@ RSpec.describe Inventory::CandidateRank do
     preferred = decision(:preferred, distance_m: 40)
     neighbor = decision(:neighbor, distance_m: 80)
 
-    expect(described_class.sort_key(ranking: false, decision: preferred, score: 100, name: "Beta", pre_leased_first: true))
-      .to eq([ -100, 0, "beta" ])
-    expect(described_class.sort_key(ranking: true, decision: pin, score: 80, name: "Beta", pre_leased_first: false))
-      .to eq([ 0, 10, -80, 1, "beta" ])
-    expect(described_class.sort_key(ranking: true, decision: preferred, score: 80, name: "Beta", pre_leased_first: true))
-      .to eq([ 1, 0, -80, 0, 40, "beta" ])
-    expect(described_class.sort_key(ranking: true, decision: neighbor, score: 80, name: "Beta", pre_leased_first: true))
-      .to eq([ 1, 1, 80, -80, 0, "beta" ])
+    expect(described_class.sort_key(ranking: false, decision: preferred, score: 100, name: "Beta", pre_leased_first: true, tie: "id-1"))
+      .to eq([ -100, 0, "beta", "id-1" ])
+    expect(described_class.sort_key(ranking: true, decision: pin, score: 80, name: "Beta", pre_leased_first: false, tie: "id-1"))
+      .to eq([ 0, 10, -80, 1, "beta", "id-1" ])
+    expect(described_class.sort_key(ranking: true, decision: preferred, score: 80, name: "Beta", pre_leased_first: true, tie: "id-1"))
+      .to eq([ 1, 0, -80, 0, 40, "beta", "id-1" ])
+    expect(described_class.sort_key(ranking: true, decision: neighbor, score: 80, name: "Beta", pre_leased_first: true, tie: "id-1"))
+      .to eq([ 1, 1, 80, -80, 0, "beta", "id-1" ])
+  end
+
+  it "orders two listings with the same name and score by id, whatever the input order" do
+    bands = [
+      [ false, decision(:preferred, distance_m: 40) ],
+      [ true, decision(:pin) ],
+      [ true, decision(:preferred, distance_m: 40) ],
+      [ true, decision(:neighbor, distance_m: 80) ]
+    ]
+
+    bands.each do |ranking, chosen|
+      [ %w[b a], %w[a b] ].each do |input|
+        rows = input.map { |id|
+          {
+            id:,
+            sort: described_class.sort_key(ranking:, decision: chosen, score: 80, name: "Same", tie: id)
+          }
+        }
+        expect(rows.sort_by { |row| row[:sort] }.map { |row| row[:id] }).to eq(%w[a b])
+      end
+    end
   end
 end
 

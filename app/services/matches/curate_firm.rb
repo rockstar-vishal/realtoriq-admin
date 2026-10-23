@@ -41,8 +41,10 @@ module Matches
     def write_digest
       previous = MatchDigest.find_by(firm_id: firm.id)
       lead_items, listing_items = items_for(previous)
-      fingerprint = self.class.fingerprint(lead_items, listing_items)
-      save(previous, lead_items, listing_items, fingerprint, announce:)
+      shown_leads = lead_items.first(LEAD_CAP)
+      shown_listings = listing_items.first(LISTING_CAP)
+      fingerprint = self.class.fingerprint(shown_leads, shown_listings)
+      save(lead_items, listing_items, shown_leads, shown_listings, fingerprint, announce:)
     end
 
     def items_for(previous)
@@ -83,7 +85,11 @@ module Matches
       ).call
     end
 
+    # One lead with no budget lifts the ceiling. Otherwise that lead never
+    # sees a marketplace listing above the dearest stored budget.
     def price_cap
+      return if matching_leads.where("COALESCE(budget_max, budget_min, 0) = 0").exists?
+
       max = matching_leads.pick(Arel.sql("MAX(COALESCE(budget_max, budget_min))"))
       return if max.nil?
 
@@ -91,7 +97,7 @@ module Matches
     end
 
     def score_lead(lead, pool, hooks)
-      return [] if hooks.preferred_ids.empty?
+      return [] if hooks.preferred_ids.empty? && hooks.pins.empty?
 
       @decisions = {}
       keys = lead.typologies.map { |typology| Inventory::ConfigurationKey.call(typology.name) }
@@ -173,7 +179,7 @@ module Matches
         item:, score: breakdown[:score], decision:,
         sort: Inventory::CandidateRank.sort_key(
           ranking: hooks.ranking?, decision:, score: breakdown[:score], name: item.name,
-          pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
+          pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item), tie: item.id
         )
       }
     end
@@ -223,7 +229,7 @@ module Matches
       }
       buyer_sort = Inventory::CandidateRank.sort_key(
         ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name,
-        pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
+        pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item), tie: lead.id
       )
       bucket["leads"] << {
         "lead_id" => lead.id, "name" => lead.display_name, "score" => row[:score], "_sort" => buyer_sort
@@ -242,7 +248,7 @@ module Matches
         "dead" => lead.lead_status&.is_dead? == true,
         "match_count" => match_ids.size,
         "new_count" => new_count(match_ids, previous&.dig("match_ids")),
-        "top_score" => scored.first[:score],
+        "top_score" => scored.max_by { |row| row[:score] }[:score],
         "match_ids" => match_ids,
         "category" => lead.category,
         "area" => lead.area_payload,
@@ -250,15 +256,15 @@ module Matches
       }
     end
 
+    # Every match, in the order the page uses. The 30-row cap is applied
+    # only when the list is shown, fingerprinted, or announced.
     def top_leads(items)
       items.sort_by { |item| [ -item["top_score"], item["name"].to_s.downcase, item["lead_id"].to_s ] }
-        .first(LEAD_CAP)
     end
 
     def top_listings(buckets, previous_listings)
       buckets.values.filter_map { |bucket| listing_item(bucket, previous_listings) }
         .sort_by { |item| [ -item["top_score"], item["title"].to_s.downcase, item["id"].to_s ] }
-        .first(LISTING_CAP)
     end
 
     def listing_item(bucket, previous_listings)
@@ -275,7 +281,7 @@ module Matches
         "title" => bucket["title"],
         "match_count" => match_ids.size,
         "new_count" => new_count(match_ids, previous&.dig("match_ids")),
-        "top_score" => leads.first["score"],
+        "top_score" => leads.max_by { |row| row["score"] }["score"],
         "match_ids" => match_ids
       }
       item["listing_for"] = bucket["listing_for"] if bucket["listing_for"].present?
@@ -306,23 +312,32 @@ module Matches
       Array(items).index_by { |item| [ item["kind"], item["id"] ] }
     end
 
-    # `previous` is the row this scan started with. The morning release can
-    # send that ping and clear the flag while scoring is still running, so the
-    # decision re-reads the row under a lock. Writing the stale flag back is
-    # what queued a second ping for a list that had already been sent.
-    def save(_previous, lead_items, listing_items, fingerprint, announce:)
+    # The morning release can send the ping and clear the flag while scoring
+    # is still running, so the decision re-reads the row under a lock.
+    # Writing the stale flag back is what queued a second ping for a list
+    # that had already been sent. Notify runs after the commit: a duplicate
+    # dedupe key, or a push that raises, must not roll the saved list back,
+    # and the push must not sit on the row lock.
+    def save(lead_items, listing_items, shown_leads, shown_listings, fingerprint, announce:)
       attempts = 0
+      saved = nil
+      notify = false
       begin
-        MatchDigest.transaction do
+        saved = MatchDigest.transaction do
           current = MatchDigest.lock.find_by(firm_id: firm.id)
-          should_announce = announce && announce?(lead_items, listing_items, current)
+          should_announce = announce && announce?(shown_leads, shown_listings, current)
           digest = current || MatchDigest.new(firm:)
           digest.assign_attributes(generated_at: Time.current, fingerprint:, lead_items:, listing_items:)
           if announce
-            apply_notification(digest, current, should_announce)
+            # One reading. A second call can cross 21:00 or 08:00 and leave
+            # the pending flag and the push on opposite sides of the night.
+            quiet = Slot.quiet?
+            apply_notification(digest, current, should_announce, quiet:)
+            notify = should_announce && !quiet
           else
             digest.notification_pending = false
             digest.notified_fingerprint = fingerprint
+            notify = false
           end
           digest.save!
           digest
@@ -333,6 +348,14 @@ module Matches
 
         raise
       end
+      deliver_notification(saved) if notify
+      saved
+    end
+
+    def deliver_notification(digest)
+      Notify.call(digest:)
+    rescue StandardError => error
+      Rails.logger.error("[matches] notify failed for firm #{digest.firm_id}: #{error.class}: #{error.message}")
     end
 
     def announce?(lead_items, listing_items, previous)
@@ -346,11 +369,10 @@ module Matches
       (lead_items + listing_items).sum { |item| item["new_count"].to_i }
     end
 
-    def apply_notification(digest, previous, announce)
-      if announce && Slot.quiet?
+    def apply_notification(digest, previous, announce, quiet:)
+      if announce && quiet
         digest.notification_pending = true
       elsif announce
-        Notify.call(digest:)
         digest.notification_pending = false
         digest.notified_fingerprint = digest.fingerprint
       else
