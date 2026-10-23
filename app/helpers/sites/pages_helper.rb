@@ -85,6 +85,16 @@ module Sites
       { lead:, blocks:, fold: about_fold(blocks) }
     end
 
+    def site_categories(projects, properties)
+      codes = Array(projects).flat_map { |row| row[:categories] }
+      codes += Array(properties).filter_map { |row| row[:category] }
+      Typology::CATEGORY_ORDER & codes.compact
+    end
+
+    def site_category_label(code)
+      Typology.label_for(code)
+    end
+
     # Localities across the listings on show, the most listed first.
     def site_areas(*groups)
       names = groups.flatten.filter_map { |listing| listing[:locality].presence }

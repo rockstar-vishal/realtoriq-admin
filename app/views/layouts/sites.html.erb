@@ -100,6 +100,18 @@
       .jump::-webkit-scrollbar { display: none; }
       .jump a { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; font-size: 0.9rem; font-weight: 600; text-decoration: none; color: var(--ink); background: var(--card); }
       .jump a span { color: var(--muted); font-weight: 500; }
+      .category-tabs { position: relative; }
+      .category-tabs input { position: absolute; opacity: 0; pointer-events: none; }
+      .cat-bar { display: flex; gap: 8px; overflow-x: auto; margin: 8px 0 0; scrollbar-width: none; }
+      .cat-bar::-webkit-scrollbar { display: none; }
+      .cat-bar label { flex: none; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; font-size: 0.9rem; font-weight: 600; color: var(--ink); background: var(--card); cursor: pointer; }
+      #site-cat-all:checked ~ .cat-bar label[for="site-cat-all"],
+      #site-cat-residential:checked ~ .cat-bar label[for="site-cat-residential"],
+      #site-cat-commercial:checked ~ .cat-bar label[for="site-cat-commercial"],
+      #site-cat-land:checked ~ .cat-bar label[for="site-cat-land"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+      main.container:has(#site-cat-residential:checked) .card:not(.cat-residential),
+      main.container:has(#site-cat-commercial:checked) .card:not(.cat-commercial),
+      main.container:has(#site-cat-land:checked) .card:not(.cat-land) { display: none; }
       .topbar { background: var(--card); border-bottom: 1px solid var(--line); }
       .topbar-inner { display: flex; align-items: center; gap: 6px; min-height: 60px; }
       .back { display: grid; place-items: center; width: 40px; height: 40px; margin-left: -8px; border-radius: 10px; color: var(--ink); }

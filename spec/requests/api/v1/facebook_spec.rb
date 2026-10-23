@@ -429,6 +429,43 @@ RSpec.describe "API v1 Facebook Lead Ads" do
       expect(saved.explicit_mappings?).to be true
     end
 
+    it "asks for a category only when someone saves a mixed project" do
+      headers = auth(owner)
+      home = create(:typology, name: "2 BHK", code: "2_bhk")
+      shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+      mixed = create(:project, firm:)
+      create(:project_typology, project: mixed, typology: home, starting_price: 9_000_000)
+      create(:project_typology, project: mixed, typology: shop, starting_price: 4_000_000)
+      mixed_form = create(:facebook_lead_form, firm:, facebook_page: page, project: mixed)
+
+      get "/api/v1/facebook/forms/#{mixed_form.id}", headers:, as: :json
+      expect(response.parsed_body.dig("form", "category")).to be_nil
+      expect(response.parsed_body.dig("form", "project_categories")).to eq(%w[residential commercial])
+
+      patch "/api/v1/facebook/forms/#{mixed_form.id}",
+        params: { project_id: mixed.id, active: true }, headers:, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid_form")
+      expect(response.parsed_body.dig("error", "message")).to eq(
+        "Category is required when the project has more than one category"
+      )
+      expect(mixed_form.reload.category).to be_nil
+
+      patch "/api/v1/facebook/forms/#{mixed_form.id}",
+        params: { project_id: mixed.id, category: "commercial", active: true }, headers:, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("form", "category")).to eq("commercial")
+      expect(response.parsed_body.dig("form", "project_categories")).to eq(%w[residential commercial])
+
+      homes = create(:project, firm:)
+      create(:project_typology, project: homes, typology: home)
+      patch "/api/v1/facebook/forms/#{mixed_form.id}",
+        params: { project_id: homes.id, active: true }, headers:, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(mixed_form.reload.category).to be_nil
+      expect(response.parsed_body.dig("form", "project_categories")).to eq([ "residential" ])
+    end
+
     it "rejects a newly chosen lead source that is turned off" do
       headers = auth(owner)
       chosen = create(:lead_source, name: "Old ads", active: true)

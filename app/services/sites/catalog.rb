@@ -67,6 +67,11 @@ module Sites
         description: record.description,
         floor_band: record.floor_band,
         carpet_area_sqft: record.carpet_area_sqft,
+        category_label: Typology.label_for(record.typology&.category),
+        area_label: area_label(record),
+        area_text: area_text(record.area_value, record.area_unit, record.carpet_area_sqft),
+        details: public_details(record),
+        lease: public_lease(record),
         has_pool: record.building&.has_pool,
         has_gym: record.building&.has_gym
       )
@@ -103,7 +108,7 @@ module Sites
         categories: project.categories,
         price_summary: project.price_summary,
         possession_display: project.possession_display,
-        configuration_names: project.project_typologies.filter_map { |row| row.typology&.name },
+        configuration_names: project.project_typologies.filter_map { |row| row.display_name }.uniq,
         cover_url: cover && Api::V1::BlobUrl.call(cover)
       }
     end
@@ -119,6 +124,7 @@ module Sites
         building_name: property.building&.name,
         locality: property.building&.locality&.name,
         city: property.building&.city&.name,
+        category: property.typology&.category,
         cover_url: cover && Api::V1::BlobUrl.call(cover)
       }
     end
@@ -128,7 +134,72 @@ module Sites
         name: row.display_name,
         category: row.typology&.category,
         starting_price: row.starting_price,
-        starting_carpet_sqft: row.starting_carpet_sqft
+        starting_carpet_sqft: row.starting_carpet_sqft,
+        area_text: area_text(row.area_value, row.area_unit, row.starting_carpet_sqft)
+      }
+    end
+
+    def area_label(property)
+      property.typology&.land? ? "Plot area" : "Carpet"
+    end
+
+    def area_text(value, unit, sqft)
+      unit = unit.presence || "sqft"
+      quantity = AreaUnits.display_quantity(value)
+      label = AreaUnits::LABELS.fetch(unit, unit)
+      sqft_text = sqft.present? ? "#{grouped_number(sqft)} sq ft" : nil
+      if unit == "sqft" || quantity.blank?
+        return sqft_text if sqft_text
+        return "#{quantity} #{label}" if quantity.present?
+
+        return nil
+      end
+
+      own = "#{quantity} #{label}"
+      sqft_text && sqft_text != "#{quantity} sq ft" ? "#{own} (#{sqft_text})" : own
+    end
+
+    def grouped_number(number)
+      digits = number.to_i.abs.to_s
+      return digits if digits.length <= 3
+
+      head = digits[0...-3].reverse.gsub(/(\d{2})(?=\d)/, '\\1,').reverse
+      "#{head},#{digits[-3..]}"
+    end
+
+    def public_details(property)
+      specs = Inventory::DetailSpecs.fields_for(property.typology&.code, pre_leased: false)
+      values = property.details.to_h
+      specs.filter_map { |spec|
+        raw = values[spec.key]
+        next if raw.nil? || raw == ""
+
+        { label: spec.label, value: detail_value(spec, raw) }
+      }
+    end
+
+    def detail_value(spec, raw)
+      case spec.type
+      when :boolean
+        ActiveModel::Type::Boolean.new.cast(raw) ? "Yes" : "No"
+      when :select
+        Inventory::DetailSpecs.option_label(raw.to_s)
+      else
+        text = raw.is_a?(Numeric) ? AreaUnits.display_quantity(raw) : raw.to_s
+        spec.unit.present? ? "#{text} #{spec.unit}" : text
+      end
+    end
+
+    def public_lease(property)
+      payload = property.lease_payload
+      return nil if payload.nil?
+
+      tenant = payload[:tenant_type].presence
+      {
+        monthly_rent: payload[:monthly_rent],
+        lock_in_until: payload[:lock_in_until],
+        tenant: tenant && Inventory::DetailSpecs.option_label(tenant),
+        yield_percent: payload[:yield_percent]
       }
     end
 

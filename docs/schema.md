@@ -115,6 +115,11 @@ error names that category in `details.category`.
 `review_note` says why a flagged row was sent to review. The unique index
 is `(project_id, typology_id, lower(coalesce(label, '')))`.
 `facebook_lead_forms.category` is null until a mixed project needs one.
+The category check runs only when the form is saved through `PATCH /facebook/forms/:id`.
+A sync or an import can save a mixed project's form that still has no category.
+Remapping to a project that does not offer the stored category clears it.
+The importer uses that category only while the project still offers it, and
+otherwise uses the project's primary category.
 
 **Buildings are deliberately not here** — see Phase 2.
 
@@ -139,7 +144,7 @@ is no longer a hold. At most one connection per firm has `status = 'active'`.
 | --- | --- |
 | `facebook_connections` | One Facebook login. `access_token` is encrypted. `token_kind`: user_access / system_access. `status`: active / invalid / disconnected. Disconnect keeps the row and clears the token. |
 | `facebook_pages` | A Page granted to this firm. `page_id` is unique across firms. Held only with a page token or `subscribed`. `page_access_token` is encrypted. `status`: active / unsubscribed / error. New pages start unsubscribed. |
-| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. |
+| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. `category` is null, or one of the mapped project's categories. The mixed-project requirement is enforced on the API save, not on sync or import. |
 | `facebook_lead_imports` | One `leadgen_id` in the whole database. `status`: pending / processing / created / failed / dead / duplicate. `raw_payload` and `fetched_payload` are jsonb. |
 | `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. |
 | `facebook_import_alert_states` | One row per firm. Clocks for the failure digest and the duplicate notice. |

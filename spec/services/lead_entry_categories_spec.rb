@@ -69,6 +69,16 @@ RSpec.describe "lead entry categories" do
       expect(Lead.unscoped.where(firm:, mobile: "+919876500100").count).to eq(2)
     end
 
+    it "falls back to the project's primary category when the form category is no longer offered" do
+      form.update_columns(category: "land")
+
+      created = import_lead("9876500199")
+
+      expect(created.status).to eq(:created), created.error.to_s
+      expect(created.lead.category).to eq("residential")
+      expect(created.lead.typologies).to contain_exactly(home)
+    end
+
     it "takes a property's category and skips possession on a plot" do
       building = create(:building, firm:, city:, locality:)
       property = create(:property, firm:, building:, typology: plot, listing_for: "sale", price: 5_000_000)
