@@ -17,11 +17,11 @@ module Inventory
           Project.unscoped.where(locality_id: center_ids).select(:id), lead_scope
         )
       end
-      found |= lead_ids(properties, :property_id, properties_for(buildings_in_box(box, city_id)), lead_scope)
+      found |= lead_ids(properties, :property_id, properties_in_box(box, city_id), lead_scope)
       if center_ids.any?
         found |= lead_ids(
           properties, :property_id,
-          properties_for(Building.unscoped.where(locality_id: center_ids).select(:id)), lead_scope
+          Property.unscoped.where(locality_id: center_ids).select(:id), lead_scope
         )
       end
       found
@@ -37,15 +37,11 @@ module Inventory
       ).select(:id)
     end
 
-    def buildings_in_box(box, city_id)
-      Building.unscoped.where(
+    def properties_in_box(box, city_id)
+      Property.unscoped.where(
         city_id:, lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng
       ).select(:id)
     end
-
-    def properties_for(buildings)
-      Property.unscoped.where(building_id: buildings).select(:id)
-    end
-    private_class_method :lead_ids, :projects_in_box, :buildings_in_box, :properties_for
+    private_class_method :lead_ids, :projects_in_box, :properties_in_box
   end
 end

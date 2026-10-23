@@ -11,7 +11,7 @@ RSpec.describe "API v1 brand website" do
   let!(:mobile) { create(:contact_channel, :mobile, :verified, firm:) }
   let(:city) { create(:city) }
   let(:locality) { create(:locality, city:) }
-  let!(:project) { create(:project, firm:, city:, locality:, name: "Aurum Vista") }
+  let!(:project) { create(:project, firm:, city:, locality:, name: "Aurum Vista", lat: 19.07, lng: 73.02) }
   let!(:project_typology) { create(:project_typology, project:) }
   let!(:property) { create(:property, firm:) }
 

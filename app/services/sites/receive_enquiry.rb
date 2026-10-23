@@ -151,7 +151,7 @@ module Sites
     end
 
     def locality_ids(listing)
-      id = listing.is_a?(Property) ? listing.building&.locality_id : nil
+      id = listing.is_a?(Property) ? listing.locality_id : nil
       id.present? ? [ id ] : []
     end
 
@@ -185,7 +185,7 @@ module Sites
       return if lead.lead_properties.exists?(property_id: listing.id)
 
       lead.lead_properties.create!(property: listing, firm:)
-      remember_locality(lead, listing.building&.locality_id)
+      remember_locality(lead, listing.locality_id)
     end
 
     def remember_locality(lead, locality_id)

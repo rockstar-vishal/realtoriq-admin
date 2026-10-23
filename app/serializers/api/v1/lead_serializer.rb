@@ -67,7 +67,7 @@ module Api
           lead.localities.includes(:city).load
           lead.lead_visit_passes.includes(:project).load
           lead.lead_projects.includes(project: %i[builder city locality]).load
-          lead.lead_properties.includes(property: [ :typology, { building: %i[city locality] } ]).load
+          lead.lead_properties.includes(property: %i[typology city locality]).load
 
           detail(
             lead,
@@ -174,7 +174,7 @@ module Api
                           listing_for: property.listing_for,
                           status: property.status,
                           price: property.price,
-                          building: property.building && { id: property.building_id, name: property.building.name }
+                          building: property.building_name.present? ? { id: property.building_id, name: property.building_name } : nil
                         }
                       end
           }

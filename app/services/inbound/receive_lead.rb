@@ -188,8 +188,8 @@ module Inbound
         attributes: lead_attributes(phone, property.listing_for, type, property.code, category:)
           .merge(budget: property.price),
         typology_ids: [ property.typology_id ],
-        locality_ids: [ property.building&.locality_id ].compact,
-        require_locality: property.building&.locality_id.present?
+        locality_ids: [ property.locality_id ].compact,
+        require_locality: property.locality_id.present?
       ).call
       return finish_new_property(result, property) if result.ok?
       return duplicate_property(property, phone, category) if result.error_code == "duplicate_lead"
@@ -292,13 +292,13 @@ module Inbound
     def find_property(listing)
       scope = Property.unscoped.where(firm_id: firm.id)
       if listing.match?(PROPERTY_CODE)
-        return scope.includes(building: :locality).find_by("upper(code) = ?", listing.upcase)
+        return scope.includes(:locality).find_by("upper(code) = ?", listing.upcase)
       end
 
       column = Channels.column(channel)
       return if column.nil?
 
-      portal_code_match(scope.includes(building: :locality), channel, listing)
+      portal_code_match(scope.includes(:locality), channel, listing)
     end
 
     def portal_code_match(scope, channel, listing)
@@ -320,7 +320,7 @@ module Inbound
       unless lead.lead_properties.exists?(property_id: property.id)
         lead.lead_properties.create!(property:, firm:)
       end
-      remember(lead, property.building&.locality_id, property.typology_id)
+      remember(lead, property.locality_id, property.typology_id)
     end
 
     def remember(lead, locality_id, typology_id)

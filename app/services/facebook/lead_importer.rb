@@ -144,8 +144,8 @@ module Facebook
         attributes: lead_attributes(fields, property.listing_for, type, source, assignee_id, category:)
           .merge(budget: property.price),
         typology_ids: [ property.typology_id ],
-        locality_ids: [ property.building&.locality_id ].compact,
-        require_locality: property.building&.locality_id.present?
+        locality_ids: [ property.locality_id ].compact,
+        require_locality: property.locality_id.present?
       ).call
       return finish_property(result, property) if result.ok?
       return duplicate_result(fields.mobile, property.listing_for, category) if result.error_code == "duplicate_lead"

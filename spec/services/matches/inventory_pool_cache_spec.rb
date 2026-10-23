@@ -30,7 +30,7 @@ RSpec.describe Matches::InventoryPool do
     described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)
 
     projects_key = "matches/marketplace-projects/v3/#{locality.id}"
-    properties_key = "matches/shared-properties/v3/#{locality.id}"
+    properties_key = "matches/shared-properties/v4/#{locality.id}"
     expect(memory.exist?(projects_key)).to be(true)
     expect(memory.exist?(properties_key)).to be(true)
     expect(memory.exist?("matches/marketplace-projects/v2/#{locality.id}")).to be(false)

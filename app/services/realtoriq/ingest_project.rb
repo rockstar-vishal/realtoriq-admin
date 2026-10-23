@@ -196,6 +196,13 @@ module Realtoriq
       # The PDF stays on LaunchIQ. A blank brochure clears the link.
       # A URL on any other host leaves the stored link alone.
       attrs[:brochure_source_url] = remote_brochure_url unless remote_brochure_url == :omit
+      # An out-of-India pin, or only one coordinate, leaves whatever is stored.
+      lat = Project.coordinate(payload["lat"])
+      lng = Project.coordinate(payload["lng"])
+      if Project.pin_inside_india?(lat, lng)
+        attrs[:lat] = lat
+        attrs[:lng] = lng
+      end
       attrs
     end
 
@@ -425,7 +432,11 @@ module Realtoriq
 
     def repoint_copies(project, previous_builder_id)
       Project.unscoped.where(external_ref: project.external_ref, source: "own").update_all(
-        builder_id: project.builder_id, updated_at: Time.current
+        builder_id: project.builder_id,
+        address: project.address,
+        lat: project.lat,
+        lng: project.lng,
+        updated_at: Time.current
       )
       return if previous_builder_id.blank? || previous_builder_id == project.builder_id
 

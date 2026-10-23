@@ -46,7 +46,7 @@ RSpec.describe "GET /api/v1/reference categories" do
     controller = Api::V1::ReferenceController.new
     allow(controller).to receive(:current_firm).and_return(firm)
     before_key = controller.send(:cache_key)
-    expect(before_key).to start_with("api/v1/reference/v4/#{firm.id}")
+    expect(before_key).to start_with("api/v1/reference/v5/#{firm.id}")
 
     ConfigurationAlias.create!(key: "twobhk", typology: home, source: "seed")
     later = Api::V1::ReferenceController.new

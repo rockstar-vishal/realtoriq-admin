@@ -80,7 +80,7 @@ module Prospects
       property = Inventory.property_by_id(lead[:property_id])
       return failure(property_message(property)) unless property.is_a?(Property)
 
-      locality_id = property.building&.locality_id
+      locality_id = property.locality_id
       type_id = property.for_sale? && !property.typology&.land? ? lead[:property_type_id] : nil
       {
         lead: base_lead(property.listing_for, type_id, budget: property.price)

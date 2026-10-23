@@ -267,20 +267,13 @@ namespace :demo do
       end
     end
 
-    # Buildings are firm-owned, so these belong to this demo firm alone.
-    buildings = {
+    places = {
       "Aurum Heights" => "Kharghar",
       "Trident Bay Towers" => "Airoli",
       "Neelkanth Apex" => "Vashi",
       "Vaayu Residency" => "Ulwe",
       "Estella Grande" => "Panvel"
-    }.to_h do |name, locality_name|
-      found = locality.call(locality_name)
-      [ name, firm.buildings.create!(
-        name:, city: found.city, locality: found,
-        has_pool: [ true, false ].sample, has_gym: true
-      ) ]
-    end
+    }
 
     [
       [ "Aurum Heights", "2 BHK", "sale", 11_800_000, 690, "middle",
@@ -298,8 +291,11 @@ namespace :demo do
       found = typology.call(typology_name)
       next if found.nil?
 
+      place = locality.call(places.fetch(building_name))
       firm.properties.create!(
-        building: buildings.fetch(building_name), typology: found,
+        building_name:, city: place.city, locality: place,
+        has_pool: [ true, false ].sample, has_gym: true,
+        typology: found,
         listing_for:, price:, carpet_area_sqft: carpet, floor_band: floor,
         description:, confidential_note: confidential,
         available_from: 1.month.from_now.to_date

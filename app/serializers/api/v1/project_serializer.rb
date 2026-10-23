@@ -34,6 +34,7 @@ module Api
             configurations: configuration_names(project),
             cover_photo_url: cover_photo_url(project),
             photo_count: photo_attachments(project).size,
+            has_pin: project.has_pin?,
             created_at: project.created_at
           }
         end
@@ -80,6 +81,7 @@ module Api
             locality_id: project.locality_id,
             city: project.city&.name,
             city_id: project.city_id,
+            has_pin: project.has_pin?,
             match_label: Inventory::PossessionMatch.match_label(project)
           }
         end

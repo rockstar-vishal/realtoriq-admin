@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -1030,7 +1030,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
 
   create_table "properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
-    t.uuid "building_id", null: false
+    t.uuid "building_id"
     t.uuid "typology_id", null: false
     t.string "listing_for", null: false
     t.string "floor_band"
@@ -1054,18 +1054,30 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.string "area_unit", default: "sqft", null: false
     t.jsonb "details", default: {}, null: false
     t.boolean "pre_leased", default: false, null: false
+    t.string "building_name", null: false
+    t.uuid "city_id", null: false
+    t.uuid "locality_id", null: false
+    t.string "address"
+    t.decimal "lat", precision: 10, scale: 7
+    t.decimal "lng", precision: 10, scale: 7
+    t.string "google_place_id"
+    t.boolean "has_pool", default: false, null: false
+    t.boolean "has_gym", default: false, null: false
     t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_properties_firm_portal_99acres_code", unique: true, where: "(portal_99acres_code IS NOT NULL)"
     t.index "firm_id, lower((portal_housing_code)::text)", name: "index_properties_firm_portal_housing_code", unique: true, where: "(portal_housing_code IS NOT NULL)"
     t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_properties_firm_portal_magicbricks_code", unique: true, where: "(portal_magicbricks_code IS NOT NULL)"
     t.index ["building_id"], name: "index_properties_on_building_id"
+    t.index ["city_id", "lat", "lng"], name: "index_properties_on_city_and_pin", where: "((lat IS NOT NULL) AND (lng IS NOT NULL))"
     t.index ["code"], name: "index_properties_on_code", unique: true
     t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
     t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
+    t.index ["firm_id", "locality_id"], name: "index_properties_on_firm_id_and_locality_id"
     t.index ["firm_id", "slug"], name: "index_properties_on_firm_id_and_slug", unique: true
     t.index ["firm_id", "status"], name: "index_properties_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_properties_on_firm_id"
     t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
+    t.index ["locality_id"], name: "index_properties_on_locality_id"
     t.index ["typology_id"], name: "index_properties_on_typology_id"
     t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying, 'sqyd'::character varying, 'sqm'::character varying, 'guntha'::character varying, 'acre'::character varying, 'hectare'::character varying]::text[])", name: "properties_area_unit_check"
     t.check_constraint "code::text ~ '^H-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "properties_code_format"
@@ -1376,7 +1388,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
   add_foreign_key "projects", "firms"
   add_foreign_key "projects", "localities"
   add_foreign_key "properties", "buildings"
+  add_foreign_key "properties", "cities"
   add_foreign_key "properties", "firms"
+  add_foreign_key "properties", "localities"
   add_foreign_key "properties", "typologies"
   add_foreign_key "properties", "users", column: "created_by_user_id", on_delete: :nullify
   add_foreign_key "prospect_followups", "firms"

@@ -286,6 +286,12 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
   broker's typo must not reach every other firm's dropdown. The accepted cost is
   duplication across firms.
+- **`properties` own their location.** `building_name` (required, 160),
+  `city_id`, `locality_id`, `address`, `lat`, `lng` (`decimal(10,7)`),
+  `google_place_id`, `has_pool`, and `has_gym` were copied from `buildings`.
+  `building_id` stays nullable for the old grouping. Indexes:
+  `(firm_id, locality_id)`, `(locality_id)`, and
+  `(city_id, lat, lng)` where both coordinates are present.
 - **`properties.status`** is `available` · `booked` · `sold_out`. Any status may
   be patched to any other. Default list is `available`; `status=all` returns
   every row.

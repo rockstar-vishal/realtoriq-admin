@@ -214,7 +214,7 @@ Every dropdown in one call — cache it and refresh on app start.
 
 ```
 cities[]         id, name, state, state_code
-localities[]     id, city_id, name, pincode      ← flat, filter by city_id yourself
+localities[]     id, city_id, name, pincode, lat, lng   ← lat and lng are null until a centre is known
 builders[]       id, name, global
 typologies[]     id, name, code, bedrooms, category, area_kind, uses_floor_band, details[]
 lead_sources[]   id, name, code, category
@@ -230,6 +230,7 @@ prospect_statuses[]  code, name                  ← fixed: new, following, inte
 ```
 
 `localities` is a **flat list carrying `city_id`**, not nested under cities.
+`lat` and `lng` are the locality centre, or null when it has not been placed.
 `typologies` is the configurations a broker can pick: active, and not merged
 into another configuration. `category` is `residential`, `commercial`, or
 `land`. `area_kind` is `carpet` or `plot`. `uses_floor_band` is false for
@@ -1264,7 +1265,7 @@ the same way, in their own list. The same name may exist once in each.
 | `brokerage_percent` | number | optional | Starting brokerage, 0–100 |
 | `brokerage_ladder_signed_id` | string | optional | Image of the brokerage ladder. Detail returns `brokerage_ladder_url`. Omitted from `shareable` |
 | `rera_number`, `address`, `google_place_id` | string | optional | |
-| `lat` / `lng` | number | optional | −90..90 / −180..180 |
+| `lat` / `lng` | number | required on an own project's form | −90..90 / −180..180, and inside India (lat 6–37, lng 68–98). Missing on that form is `422` with "Place the pin on the map". Catalog rows and a status-only save do not require one. List, detail, and search include `has_pin` |
 | `promo_text`, `promo_ends_on` | string / date | optional | `promo_text` has no length limit |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
@@ -1374,6 +1375,7 @@ from web pages — are cleaned up first.
       "builder": { "id": "01a0…", "name": "Lodha Group" },
       "locality": "Kolshet", "locality_id": "01a0…",
       "city": "Thane", "city_id": "01a0…",
+      "has_pin": false,
       "match_label": "Sale · Under construction"
     }
   ],
@@ -1403,11 +1405,17 @@ Buildings: `name` (**required**), `city_id`, `locality_id`, `address`, `lat`,
 **(firm, name, locality)** — one broker's typo must not reach another firm's
 dropdown.
 
-Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
+Properties: `building_name` (**required**), `city_id`, `locality_id`, `address`,
+`lat`, `lng`, `google_place_id`, `has_pool`, `has_gym`, `typology_id`,
+`listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `area_value`, `area_unit`, `details`, `pre_leased`,
 `floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`,
-`listed_on_marketplace` (boolean, default true). Turning it off hides the
+`listed_on_marketplace` (boolean, default true). A create or update that sends
+`building_id` and none of those location fields still fills them from that
+building. That path is temporary. `lat` and `lng` are required on this form
+("Place the pin on the map"). A pin outside India (lat 6–37, lng 68–98) is
+rejected. Turning `listed_on_marketplace` off hides the
 listing from other firms' matches and from `marketplace_firms`. A mapping
 already saved stays.
 (`available` · `booked` · `sold_out`). Any role may create. List and detail
@@ -1444,12 +1452,16 @@ title, the building name, or the description — **not the city**. Ignored when 
 **drawer** param is set; `status` does not drop `q`. Omitting `status` is
 `available`, so a search does not return booked or sold-out listings unless
 `status` asks for them), `listing_for`, `city_id`, `locality_id`, `typology_id`,
-`building_id`, `price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL
+`price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL
 carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 `locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
-`carpet_max`, `building_id`, `listing_for`.
+`carpet_max`, `listing_for`.
 
-List and detail also include `code`, `listed_on_marketplace` and `match_label`
+List and detail add `building_name`, `city` and `locality` (each `{ id, name }`),
+`address`, `lat`, `lng`, `google_place_id`, `has_pool`, `has_gym`, and
+`has_pin`. `building` is still present and **deprecated**: it is built from
+those fields, and its `id` is the old `building_id` (null on a new listing).
+They also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).
 A Plot & Land sale reads `Sale`.
 The marketplace list includes `code` as well, and still omits private fields.

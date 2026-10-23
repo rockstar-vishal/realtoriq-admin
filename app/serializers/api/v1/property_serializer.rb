@@ -30,7 +30,8 @@ module Api
             floor_band: property.floor_band,
             available_from: property.available_from,
             typology: property.typology && { id: property.typology_id, name: property.typology.name },
-            building: building_summary(property.building),
+            **location_fields(property),
+            building: building_summary(property),
             cover_photo_url: photo_urls(property).first,
             photo_count: property.photos.attachments.size,
             created_by: named_user(property.created_by_user),
@@ -80,7 +81,7 @@ module Api
             confidential_note: property.confidential_note,
             photos: photos(property),
             photo_urls: photo_urls(property),
-            building: building_detail(property.building),
+            building: building_detail(property),
             shareable: shareable(property),
             portal_codes: property.portal_codes_payload,
             updated_at: property.updated_at
@@ -99,11 +100,11 @@ module Api
             floor_band: property.floor_band,
             available_from: property.available_from,
             description: property.description,
-            building_name: property.building&.name,
-            locality: property.building&.locality&.name,
-            city: property.building&.city&.name,
-            has_pool: property.building&.has_pool,
-            has_gym: property.building&.has_gym,
+            building_name: property.building_name,
+            locality: property.locality&.name,
+            city: property.city&.name,
+            has_pool: property.has_pool,
+            has_gym: property.has_gym,
             photo_urls: photo_urls(property)
           }
         end
@@ -129,12 +130,27 @@ module Api
           }
         end
 
-        def building_summary(building)
-          return nil if building.nil?
-
+        def location_fields(property)
           {
-            id: building.id, name: building.name,
-            locality: building.locality&.name, city: building.city&.name
+            building_name: property.building_name,
+            city: property.city && { id: property.city_id, name: property.city.name },
+            locality: property.locality && { id: property.locality_id, name: property.locality.name },
+            address: property.address,
+            lat: property.lat&.to_f,
+            lng: property.lng&.to_f,
+            google_place_id: property.google_place_id,
+            has_pool: property.has_pool,
+            has_gym: property.has_gym,
+            has_pin: property.has_pin?
+          }
+        end
+
+        # Deprecated. Built from the property's own columns. `id` is the old
+        # building row, and is null on a listing created after the move.
+        def building_summary(property)
+          {
+            id: property.building_id, name: property.building_name,
+            locality: property.locality&.name, city: property.city&.name
           }
         end
 
@@ -144,14 +160,12 @@ module Api
           { id: user.id, name: user.name }
         end
 
-        def building_detail(building)
-          return nil if building.nil?
-
-          building_summary(building).merge(
-            address: building.address,
-            lat: building.lat&.to_f, lng: building.lng&.to_f,
-            google_place_id: building.google_place_id,
-            has_pool: building.has_pool, has_gym: building.has_gym
+        def building_detail(property)
+          building_summary(property).merge(
+            address: property.address,
+            lat: property.lat&.to_f, lng: property.lng&.to_f,
+            google_place_id: property.google_place_id,
+            has_pool: property.has_pool, has_gym: property.has_gym
           )
         end
 

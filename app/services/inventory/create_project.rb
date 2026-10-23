@@ -29,7 +29,7 @@ module Inventory
       return ladder if ladder.is_a?(Result)
 
       Project.transaction do
-        project.save!
+        project.save!(context: [ :create, :listing_form ])
         add_typologies(project)
         ProjectMatchFields.apply(project)
         raise ActiveRecord::RecordInvalid, project if project.errors.any?

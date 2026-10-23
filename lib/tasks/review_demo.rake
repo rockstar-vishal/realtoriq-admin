@@ -111,7 +111,9 @@ def seed_review_projects!(firm, masters)
         city: masters[:city],
         locality: masters[:locality],
         starting_budget: 8_000_000,
-        possession_label: "Ready"
+        possession_label: "Ready",
+        lat: 19.076,
+        lng: 72.8777
       },
       typologies: [
         { typology_id: masters[:typology].id, starting_price: 8_000_000, starting_carpet_sqft: 700 }

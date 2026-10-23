@@ -100,13 +100,9 @@ module Inventory
       property_ids = LeadProperty.unscoped.where(lead_id: lead.id).pluck(:property_id)
       return if property_ids.empty?
 
-      properties = Property.unscoped.where(id: property_ids).to_a
-      Buildings.attach(properties)
+      properties = Property.unscoped.where(id: property_ids).includes(:locality).to_a
       properties.each do |property|
-        building = property.building
-        next if building.nil?
-
-        remember_pin(building.lat, building.lng, building.locality, building.city_id)
+        remember_pin(property.lat, property.lng, property.locality, property.city_id)
       end
     end
 

@@ -51,7 +51,7 @@ module Inventory
       Box.new(min_lat: lat_f - dlat, max_lat: lat_f + dlat, min_lng: lng_f - dlng, max_lng: lng_f + dlng)
     end
 
-    # A building or project pin. Outside Maharashtra, or more than 20 km from
+    # A property or project pin. Outside Maharashtra, or more than 20 km from
     # its own locality center, the center is used instead. A pin with no
     # center is kept only inside Maharashtra. Nil when nothing is usable.
     def listing_point(lat:, lng:, locality_lat:, locality_lng:)

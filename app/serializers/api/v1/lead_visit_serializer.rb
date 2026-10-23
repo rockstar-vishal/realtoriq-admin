@@ -21,7 +21,7 @@ module Api
               title: shared ? card[:title] : property.title,
               price: property.price,
               listing_for: property.listing_for,
-              building: shared ? nil : property.building && { name: property.building.name }
+              building: shared ? nil : (property.building_name.present? ? { name: property.building_name } : nil)
             }
           },
           created_at: visit.created_at

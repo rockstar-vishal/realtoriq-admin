@@ -191,7 +191,7 @@ module Api
           @project.assign_attributes(project_params)
           replace_typologies if params.key?(:typologies)
           Inventory::ProjectMatchFields.apply(@project)
-          saved = @project.errors.empty? && @project.save
+          saved = @project.errors.empty? && @project.save(context: [ :update, :listing_form ])
           raise ActiveRecord::Rollback unless saved
 
           apply_brochure(brochure_blob) if params.key?(:brochure_signed_id)

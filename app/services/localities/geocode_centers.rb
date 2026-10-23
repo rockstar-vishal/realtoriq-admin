@@ -46,7 +46,7 @@ module Localities
 
     def inventory_median(locality)
       points = Project.unscoped.where(locality_id: locality.id).where.not(lat: nil, lng: nil).pluck(:lat, :lng)
-      points += Building.unscoped.where(locality_id: locality.id).where.not(lat: nil, lng: nil).pluck(:lat, :lng)
+      points += Property.unscoped.where(locality_id: locality.id).where.not(lat: nil, lng: nil).pluck(:lat, :lng)
       return if points.size < 3
 
       [ median(points.map { |lat, _lng| lat.to_f }), median(points.map { |_lat, lng| lng.to_f }) ]

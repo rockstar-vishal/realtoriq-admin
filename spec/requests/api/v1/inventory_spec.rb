@@ -82,6 +82,7 @@ RSpec.describe "API v1 inventory" do
         name: "Aurum Vista", builder_id: builder.id, city_id: city.id,
         locality_id: locality.id, starting_budget: 14_200_000,
         possession_on: "2027-12-01", brokerage_percent: 4.5,
+        lat: 19.07, lng: 73.02,
         typologies: [
           { typology_id: typology.id, starting_price: 14_200_000, starting_carpet_sqft: 720 }
         ]
@@ -251,7 +252,7 @@ RSpec.describe "API v1 inventory" do
       create_project
       post "/api/v1/projects", params: {
         name: "Budget Homes", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
-        starting_budget: 3_000_000, possession_label: "Ready",
+        starting_budget: 3_000_000, possession_label: "Ready", lat: 19.07, lng: 73.02,
         typologies: [ { typology_id: create(:typology).id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
 
@@ -277,7 +278,7 @@ RSpec.describe "API v1 inventory" do
       create_project
       post "/api/v1/projects", params: {
         name: "Quiet Park", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
-        starting_budget: 14_200_000, possession_label: "Ready",
+        starting_budget: 14_200_000, possession_label: "Ready", lat: 19.07, lng: 73.02,
         typologies: [ { typology_id: typology.id, starting_price: 14_200_000 } ]
       }, headers: auth, as: :json
 
@@ -293,6 +294,7 @@ RSpec.describe "API v1 inventory" do
       post "/api/v1/projects", params: {
         name: "Budget Homes", builder_id: builder.id, city_id: other_city.id,
         locality_id: other_locality.id, starting_budget: 3_000_000, possession_label: "Ready",
+        lat: 19.07, lng: 73.02,
         typologies: [ { typology_id: typology.id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
 
@@ -338,7 +340,7 @@ RSpec.describe "API v1 inventory" do
       create_project
       post "/api/v1/projects", params: {
         name: "Budget Homes", builder_id: builder.id, city_id: city.id, locality_id: locality.id,
-        starting_budget: 3_000_000, possession_label: "Ready",
+        starting_budget: 3_000_000, possession_label: "Ready", lat: 19.08, lng: 73.03,
         typologies: [ { typology_id: typology.id, starting_price: 3_000_000 } ]
       }, headers: auth, as: :json
 
@@ -463,7 +465,7 @@ RSpec.describe "API v1 inventory" do
   end
 
   describe "properties" do
-    let(:building) { create(:building, firm:, city:, locality:) }
+    let(:building) { create(:building, firm:, city:, locality:, lat: 19.07, lng: 73.02) }
 
     def create_property(overrides = {})
       post "/api/v1/properties", params: {
@@ -677,7 +679,7 @@ RSpec.describe "API v1 inventory" do
   end
 
   describe "photos" do
-    let(:building) { create(:building, firm:, city:, locality:) }
+    let(:building) { create(:building, firm:, city:, locality:, lat: 19.07, lng: 73.02) }
     let(:property) { create(:property, firm:, building:, typology:) }
 
     # The real flow is: ticket → client PUTs the file to storage → attach.
