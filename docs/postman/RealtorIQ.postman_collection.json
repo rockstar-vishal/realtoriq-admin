@@ -5532,7 +5532,11 @@
         },
         {
           "name": "Get form",
-          "request": { "method": "GET", "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}" }
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
+            "description": "Returns category (or null) and project_categories, the mapped project's categories in order, or an empty list."
+          }
         },
         {
           "name": "Update form",
@@ -5540,7 +5544,8 @@
             "method": "PATCH",
             "header": [ { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
-            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
+            "description": "category is residential, commercial, or land. Send null or \"\" to clear it. A mixed project returns 422 invalid_form until a category that project offers is set. Remapping to a project that does not offer the current category clears it.",
+            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"category\": \"commercial\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
           }
         },
         {

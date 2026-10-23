@@ -2288,8 +2288,8 @@ The broker app uses:
 | DELETE | `/facebook/pages/:id/subscribe` | Unsubscribes it at Meta, then here |
 | POST | `/facebook/pages/:id/sync_forms` | Counts: `mapped`, `available` |
 | POST | `/facebook/pages/:id/forms` | `{ meta_form_id }`. 422 `already_mapped` if another firm owns it |
-| GET | `/facebook/forms/:id` | Questions, mappings, listing, sample lead. `ui_field_mappings` is what the editor shows, including suggestions |
-| PATCH | `/facebook/forms/:id` | 422 `invalid_form` with an active form and no listing, an unusable listing, mappings that skip Name or Mobile, or a newly chosen lead source that is turned off |
+| GET | `/facebook/forms/:id` | Questions, mappings, listing, sample lead. `ui_field_mappings` is what the editor shows, including suggestions. `category` is the stored category or null. `project_categories` is the mapped project's categories in Residential, Commercial, Plot & Land order, or `[]` |
+| PATCH | `/facebook/forms/:id` | Optional `category` (`residential`, `commercial`, `land`). A blank value clears it. Remapping to a project that does not offer the stored category clears it. 422 `invalid_form` with an active form and no listing, an unusable listing, mappings that skip Name or Mobile, a newly chosen lead source that is turned off, or a mixed project saved with no category (`Category is required when the project has more than one category`). A category the project does not offer is `Category must be one of this project's categories` when it was not cleared by the remap. Sync and import do not run this category check |
 | GET | `/facebook/imports?page=` | 20 per page, newest first |
 | POST | `/facebook/imports/:id/retry` | Failed or dead only. Resets the retry count and queues the lead |
 | POST | `/facebook/imports/retry_failed` | The same for every failed or dead import. `{ retried }` |

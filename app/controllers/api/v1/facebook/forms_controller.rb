@@ -54,7 +54,7 @@ module Api
           if problem
             return render_error("invalid_form", problem, status: :unprocessable_entity)
           end
-          unless form.save
+          unless form.save(context: :form_edit)
             return render_error("invalid_form", form.errors.full_messages.to_sentence, status: :unprocessable_entity)
           end
 
@@ -71,6 +71,7 @@ module Api
           if params.key?(:field_mappings)
             form.field_mappings = ::Facebook::FieldMapper.sanitize_mappings(params[:field_mappings])
           end
+          form.category = params[:category].presence if params.key?(:category)
           if params[:project_id].present? && params[:property_id].present?
             form.project_id = params[:project_id]
             form.property_id = params[:property_id]
@@ -86,6 +87,9 @@ module Api
           end
           form.assigned_user_id = params[:assigned_user_id].presence if params.key?(:assigned_user_id)
           form.lead_source_id = params[:lead_source_id].presence if params.key?(:lead_source_id)
+          form.association(:project).reset
+          offered = form.project&.categories || []
+          form.category = nil if form.category.present? && offered.any? && offered.exclude?(form.category)
         end
 
         def form_json(form)
@@ -100,6 +104,8 @@ module Api
             "target_options" => ::Facebook::FieldMapper::TARGET_OPTIONS,
             "project_id" => form.project_id,
             "property_id" => form.property_id,
+            "category" => form.category,
+            "project_categories" => form.project&.categories || [],
             "listing_name" => form.listing_name,
             "assigned_user_id" => form.assigned_user_id,
             "lead_source_id" => form.lead_source_id,

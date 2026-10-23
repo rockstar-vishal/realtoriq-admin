@@ -23,7 +23,10 @@ class FacebookLeadForm < ApplicationRecord
   validate :form_id_is_globally_unique
   validate :one_listing
   validate :lead_source_is_active, if: :lead_source_id_changed?
-  validate :category_matches_mapped_project
+  # Sync and import save the form without this context. A mixed project
+  # must not freeze Meta's name, questions and status until someone edits
+  # the form through the API.
+  validate :category_matches_mapped_project, on: :form_edit
 
   scope :active_forms, -> { where(active: true) }
 

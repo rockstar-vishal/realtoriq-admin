@@ -276,8 +276,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["firm_id", "status"], name: "index_facebook_connections_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_facebook_connections_on_firm_id"
     t.index ["firm_id"], name: "index_facebook_connections_one_active_per_firm", unique: true, where: "((status)::text = 'active'::text)"
-    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'invalid'::character varying, 'disconnected'::character varying]::text[])", name: "facebook_connections_status_check"
-    t.check_constraint "token_kind::text = ANY (ARRAY['user_access'::character varying, 'system_access'::character varying]::text[])", name: "facebook_connections_token_kind_check"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'invalid'::character varying::text, 'disconnected'::character varying::text])", name: "facebook_connections_status_check"
+    t.check_constraint "token_kind::text = ANY (ARRAY['user_access'::character varying::text, 'system_access'::character varying::text])", name: "facebook_connections_token_kind_check"
   end
 
   create_table "facebook_import_alert_states", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -343,7 +343,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["firm_id"], name: "index_facebook_lead_imports_on_firm_id"
     t.index ["lead_id"], name: "index_facebook_lead_imports_on_lead_id"
     t.index ["leadgen_id"], name: "index_facebook_lead_imports_on_leadgen_id", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'created'::character varying, 'failed'::character varying, 'dead'::character varying, 'duplicate'::character varying]::text[])", name: "facebook_lead_imports_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'processing'::character varying::text, 'created'::character varying::text, 'failed'::character varying::text, 'dead'::character varying::text, 'duplicate'::character varying::text])", name: "facebook_lead_imports_status_check"
   end
 
   create_table "facebook_oauth_attempts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -358,7 +358,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.datetime "updated_at", null: false
     t.index ["firm_id"], name: "index_facebook_oauth_attempts_on_firm_id"
     t.index ["user_id"], name: "index_facebook_oauth_attempts_on_user_id"
-    t.check_constraint "status::text = ANY (ARRAY['started'::character varying, 'completed'::character varying, 'failed'::character varying, 'consumed'::character varying]::text[])", name: "facebook_oauth_attempts_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['started'::character varying::text, 'completed'::character varying::text, 'failed'::character varying::text, 'consumed'::character varying::text])", name: "facebook_oauth_attempts_status_check"
   end
 
   create_table "facebook_pages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -378,7 +378,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["facebook_connection_id"], name: "index_facebook_pages_on_facebook_connection_id"
     t.index ["firm_id"], name: "index_facebook_pages_on_firm_id"
     t.index ["page_id"], name: "index_facebook_pages_on_page_id", unique: true
-    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'unsubscribed'::character varying, 'error'::character varying]::text[])", name: "facebook_pages_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'unsubscribed'::character varying::text, 'error'::character varying::text])", name: "facebook_pages_status_check"
   end
 
   create_table "firm_bank_accounts", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -469,7 +469,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["firm_id", "channel", "external_id"], name: "index_inbound_enquiries_on_firm_channel_and_external_id", unique: true
     t.index ["firm_id"], name: "index_inbound_enquiries_on_firm_id"
     t.index ["lead_id"], name: "index_inbound_enquiries_on_lead_id"
-    t.check_constraint "channel::text = ANY (ARRAY['99acres'::character varying, 'magicbricks'::character varying, 'housing'::character varying, 'general'::character varying]::text[])", name: "inbound_enquiries_channel_check"
+    t.check_constraint "channel::text = ANY (ARRAY['99acres'::character varying::text, 'magicbricks'::character varying::text, 'housing'::character varying::text, 'general'::character varying::text])", name: "inbound_enquiries_channel_check"
   end
 
   create_table "invoices", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -633,7 +633,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.text "status_message"
     t.index ["firm_id"], name: "index_lead_visit_passes_on_firm_id"
     t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_lead_id_and_project_id"
-    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_open_lead_and_project", unique: true, where: "((turbo_status)::text = ANY ((ARRAY['pending'::character varying, 'unused'::character varying, 'used'::character varying])::text[]))"
+    t.index ["lead_id", "project_id"], name: "index_lead_visit_passes_on_open_lead_and_project", unique: true, where: "((turbo_status)::text = ANY (ARRAY[('pending'::character varying)::text, ('unused'::character varying)::text, ('used'::character varying)::text]))"
     t.index ["lead_id"], name: "index_lead_visit_passes_on_lead_id"
     t.index ["pass_code"], name: "index_lead_visit_passes_on_pass_code", unique: true, where: "(pass_code IS NOT NULL)"
     t.index ["project_id"], name: "index_lead_visit_passes_on_project_id"
@@ -842,7 +842,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["user_id", "dedupe_key"], name: "index_notifications_on_user_id_and_dedupe_key", unique: true
     t.index ["user_id", "read_at"], name: "index_notifications_on_user_id_and_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
-    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying, 'test'::character varying, 'training_published'::character varying, 'marketplace_enquiry'::character varying, 'inbound_enquiry'::character varying, 'facebook'::character varying, 'match_digest'::character varying, 'website_enquiry'::character varying]::text[])", name: "notifications_kind_check"
+    t.check_constraint "kind::text = ANY (ARRAY['followup_due'::character varying::text, 'test'::character varying::text, 'training_published'::character varying::text, 'marketplace_enquiry'::character varying::text, 'inbound_enquiry'::character varying::text, 'facebook'::character varying::text, 'match_digest'::character varying::text, 'website_enquiry'::character varying::text])", name: "notifications_kind_check"
   end
 
   create_table "onboarding_applications", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -895,9 +895,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["rera_number"], name: "index_onboarding_applications_on_rera_number"
     t.index ["reviewed_by_admin_id"], name: "index_onboarding_applications_on_reviewed_by_admin_id"
     t.index ["status"], name: "index_onboarding_applications_on_status"
-    t.check_constraint "entity_type::text = ANY (ARRAY['individual'::character varying, 'proprietorship'::character varying, 'partnership'::character varying, 'llp'::character varying, 'private_limited'::character varying, 'public_limited'::character varying, 'other'::character varying]::text[])", name: "onboarding_applications_entity_type_check"
-    t.check_constraint "status::text = ANY (ARRAY['submitted'::character varying, 'rejected'::character varying, 'lapsed'::character varying]::text[])", name: "onboarding_applications_status_check"
-    t.check_constraint "team_size IS NULL OR (team_size::text = ANY (ARRAY['just_me'::character varying, '2_5'::character varying, '6_20'::character varying, '21_plus'::character varying]::text[]))", name: "onboarding_applications_team_size_check"
+    t.check_constraint "entity_type::text = ANY (ARRAY['individual'::character varying::text, 'proprietorship'::character varying::text, 'partnership'::character varying::text, 'llp'::character varying::text, 'private_limited'::character varying::text, 'public_limited'::character varying::text, 'other'::character varying::text])", name: "onboarding_applications_entity_type_check"
+    t.check_constraint "status::text = ANY (ARRAY['submitted'::character varying::text, 'rejected'::character varying::text, 'lapsed'::character varying::text])", name: "onboarding_applications_status_check"
+    t.check_constraint "team_size IS NULL OR (team_size::text = ANY (ARRAY['just_me'::character varying::text, '2_5'::character varying::text, '6_20'::character varying::text, '21_plus'::character varying::text]))", name: "onboarding_applications_team_size_check"
   end
 
   create_table "one_time_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1099,7 +1099,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["prospect_id", "created_at"], name: "index_prospect_followups_on_prospect_id_and_created_at"
     t.index ["prospect_id"], name: "index_prospect_followups_on_prospect_id"
     t.index ["user_id"], name: "index_prospect_followups_on_user_id"
-    t.check_constraint "outcome::text = ANY (ARRAY['retry'::character varying, 'not_sure'::character varying, 'interested'::character varying, 'not_interested'::character varying]::text[])", name: "prospect_followups_outcome_check"
+    t.check_constraint "outcome::text = ANY (ARRAY['retry'::character varying::text, 'not_sure'::character varying::text, 'interested'::character varying::text, 'not_interested'::character varying::text])", name: "prospect_followups_outcome_check"
   end
 
   create_table "prospects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1125,7 +1125,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["property_id"], name: "index_prospects_on_property_id"
     t.check_constraint "mobile::text ~ '^\\+91[6-9][0-9]{9}$'::text", name: "prospects_mobile_check"
     t.check_constraint "project_id IS NULL OR property_id IS NULL", name: "prospects_one_inventory_check"
-    t.check_constraint "status::text = ANY (ARRAY['new'::character varying, 'following'::character varying, 'interested'::character varying, 'not_interested'::character varying]::text[])", name: "prospects_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['new'::character varying::text, 'following'::character varying::text, 'interested'::character varying::text, 'not_interested'::character varying::text])", name: "prospects_status_check"
   end
 
   create_table "push_subscriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1199,9 +1199,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_21_120000) do
     t.index ["created_by_admin_user_id"], name: "index_trainings_on_created_by_admin_user_id"
     t.index ["language"], name: "index_trainings_on_language"
     t.index ["status", "published_at"], name: "index_trainings_on_status_and_published_at", order: { published_at: :desc }
-    t.check_constraint "language::text = ANY (ARRAY['hinglish'::character varying, 'en'::character varying, 'mr'::character varying]::text[])", name: "trainings_language_check"
+    t.check_constraint "language::text = ANY (ARRAY['hinglish'::character varying::text, 'en'::character varying::text, 'mr'::character varying::text])", name: "trainings_language_check"
     t.check_constraint "podcast_duration_seconds IS NULL OR podcast_duration_seconds > 0", name: "trainings_podcast_duration_check"
-    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'active'::character varying, 'archived'::character varying]::text[])", name: "trainings_status_check"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying::text, 'active'::character varying::text, 'archived'::character varying::text])", name: "trainings_status_check"
   end
 
   create_table "typologies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

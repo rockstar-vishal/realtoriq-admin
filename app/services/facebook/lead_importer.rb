@@ -101,7 +101,8 @@ module Facebook
 
     def write_project(fields, source, assignee_id)
       project = form.project
-      category = form.category.presence || project.primary_category
+      offered = project.categories
+      category = offered.include?(form.category) ? form.category : project.primary_category
       type = nil
       if category != "land"
         type_name = Inventory::PossessionMatch.ready?(project) ? "Ready possession" : "Under construction"

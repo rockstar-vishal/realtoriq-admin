@@ -31,7 +31,7 @@
 
   <div class="container detail">
     <article class="detail-main">
-      <p class="eyebrow"><%= rent ? "For rent" : "For sale" %></p>
+      <p class="eyebrow"><%= [ @listing[:category_label], rent ? "For rent" : "For sale" ].compact_blank.join(" · ") %></p>
       <h1 class="listing-title"><%= @listing[:title] %></h1>
       <% meta = [ @listing[:building_name], @listing[:locality], @listing[:city] ].compact_blank %>
       <% if meta.any? %>
@@ -41,15 +41,38 @@
         <p class="listing-price"><%= inr(@listing[:price]) %> <span class="per"><%= rent ? "per month" : "for sale" %></span></p>
       <% end %>
 
-      <% if @listing[:carpet_area_sqft] || @listing[:floor_band].present? %>
+      <% if @listing[:area_text].present? || @listing[:floor_band].present? || Array(@listing[:details]).any? %>
         <dl class="facts">
-          <% if @listing[:carpet_area_sqft] %>
-            <div class="fact"><dt>Carpet</dt><dd><%= @listing[:carpet_area_sqft] %> sqft</dd></div>
+          <% if @listing[:area_text].present? %>
+            <div class="fact"><dt><%= @listing[:area_label] %></dt><dd><%= @listing[:area_text] %></dd></div>
           <% end %>
           <% if @listing[:floor_band].present? %>
             <div class="fact"><dt>Floor</dt><dd><%= @listing[:floor_band] %></dd></div>
           <% end %>
+          <% Array(@listing[:details]).each do |detail| %>
+            <div class="fact"><dt><%= detail[:label] %></dt><dd><%= detail[:value] %></dd></div>
+          <% end %>
         </dl>
+      <% end %>
+
+      <% if @listing[:lease] %>
+        <section class="sub">
+          <h2>Pre-leased</h2>
+          <dl class="facts">
+            <% if @listing[:lease][:monthly_rent] %>
+              <div class="fact"><dt>Rent</dt><dd><%= inr(@listing[:lease][:monthly_rent]) %> per month</dd></div>
+            <% end %>
+            <% if @listing[:lease][:yield_percent].present? %>
+              <div class="fact"><dt>Yield</dt><dd><%= @listing[:lease][:yield_percent] %>%</dd></div>
+            <% end %>
+            <% if @listing[:lease][:tenant].present? %>
+              <div class="fact"><dt>Tenant</dt><dd><%= @listing[:lease][:tenant] %></dd></div>
+            <% end %>
+            <% if @listing[:lease][:lock_in_until].present? %>
+              <div class="fact"><dt>Lock-in until</dt><dd><%= @listing[:lease][:lock_in_until] %></dd></div>
+            <% end %>
+          </dl>
+        </section>
       <% end %>
 
       <% if amenities.any? %>

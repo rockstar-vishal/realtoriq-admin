@@ -61,14 +61,14 @@
           <div class="configs-wrap">
             <table class="configs">
               <thead>
-                <tr><th scope="col">Configuration</th><th scope="col">Starting price</th><th scope="col">Carpet</th></tr>
+                <tr><th scope="col">Configuration</th><th scope="col">Starting price</th><th scope="col">Area</th></tr>
               </thead>
               <tbody>
                 <% @listing[:configurations].each do |row| %>
                   <tr>
                     <td><%= row[:name] %></td>
                     <td><%= inr(row[:starting_price]) || "—" %></td>
-                    <td><%= row[:starting_carpet_sqft] ? "#{row[:starting_carpet_sqft]} sqft" : "—" %></td>
+                    <td><%= row[:area_text].presence || "—" %></td>
                   </tr>
                 <% end %>
               </tbody>
