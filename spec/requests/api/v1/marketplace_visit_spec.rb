@@ -51,6 +51,7 @@ RSpec.describe "Marketplace visit passes and matches" do
       expect(match["mobile"]).to eq(lead.mobile)
       expect(match["score"]).to eq(100)
       expect(match["matched_on"]).to eq(%w[locality price configuration])
+      expect(response.parsed_body["matches"]).to all(satisfy { |row| !row.key?("sort") })
     end
 
     it "hides a lead assigned to someone else from an agent" do
@@ -93,6 +94,19 @@ RSpec.describe "Marketplace visit passes and matches" do
       expect(match["source"]).to eq("catalog")
       expect(match["score"]).to eq(100)
       expect(match["matched_on"]).to eq(%w[locality price configuration])
+    end
+
+    it "returns no matches when the search is only symbols" do
+      project = catalog_project(locality:)
+      create(:project_typology, project:, typology:, starting_price: 15_000_000)
+      lead = create(:lead, firm:, lead_status: new_status, assigned_user: broker, budget_max: 16_000_000)
+      lead.typologies << typology
+      lead.localities << locality
+
+      post "/api/v1/leads/#{lead.id}/matches", params: { q: "-" }, headers: auth(broker), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["matches"]).to eq([])
     end
   end
 

@@ -100,12 +100,12 @@ RSpec.describe "residential match regression" do
     travel_to Time.find_zone("Asia/Kolkata").local(2026, 9, 15, 12) do
       ready = sale_lead(ready_type)
       soon = project_named("Soon", price: 10_000_000, possession_on: Date.new(2026, 10, 1))
-      project_named("Past", price: 10_000_000, possession_on: Date.new(2025, 9, 1))
+      past = project_named("Past", price: 10_000_000, possession_on: Date.new(2025, 9, 1))
       project_named("Later", price: 10_000_000, possession_on: Date.new(2027, 6, 1))
       listing = create(:property, firm:, typology: two_bhk, price: 10_000_000,
         building: create(:building, firm:, city:, locality:))
 
-      expect(Inventory::MatchInventory.new(lead: ready).call.map { |row| row[:id] }).to contain_exactly(soon.id, listing.id)
+      expect(Inventory::MatchInventory.new(lead: ready).call.map { |row| row[:id] }).to contain_exactly(past.id, soon.id, listing.id)
 
       buyer = sale_lead(ready_type)
       weak = create(:property, firm: other_firm, typology: two_bhk, price: 20_000_000, listed_on_marketplace: true,

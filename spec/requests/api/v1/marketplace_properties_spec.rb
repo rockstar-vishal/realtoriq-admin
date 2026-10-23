@@ -189,6 +189,7 @@ RSpec.describe "Shared property marketplace" do
     expect(response).to have_http_status(:ok)
     names = response.parsed_body["matches"].map { |match| match["name"] }
     expect(names).to eq([ "Shown Client" ])
+    expect(response.parsed_body["matches"]).to all(satisfy { |row| !row.key?("sort") })
     shown_match = response.parsed_body["matches"].find { |match| match["name"] == "Shown Client" }
     expect(shown_match["mobile"]).to eq(shown.mobile)
     expect(response.parsed_body["marketplace_matches"]).to eq([])
@@ -201,6 +202,16 @@ RSpec.describe "Shared property marketplace" do
 
     post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(broker), as: :json
 
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "does not open a shared listing once the owner is inactive" do
+    other_firm.suspend!(reason: "Closed")
+
+    get "/api/v1/properties/#{listing.id}/marketplace", headers: auth(broker), as: :json
+    expect(response).to have_http_status(:not_found)
+
+    post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(broker), as: :json
     expect(response).to have_http_status(:not_found)
   end
 

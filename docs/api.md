@@ -771,12 +771,13 @@ price fields on `projects[]` and `properties[]`.
 | `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
 | `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
-| `POST /leads/:id/matches` | Inventory that shares a preferred locality with this lead, scored 0–100. See below. An unqualified lead, a booked lead, or a lead with no locality, returns `[]`. A dead lead still matches. Does not copy anything into My Projects |
+| `POST /leads/:id/matches` | Inventory scored 0–100. See below. An unqualified lead, a booked lead, or a lead with neither a locality nor a tagged pin, returns `[]`. A dead lead still matches. Does not copy anything into My Projects |
 | `GET /match_digest` | The firm's latest curated list. Super admin only — anyone else is 404. `match_digest` is `null` before the first scan |
 
 **`POST /leads/:id/matches`** lists unmapped rows. Optional `q` searches the
 full set (name, builder or firm, locality, city, configuration; spaces and
 case ignored, so `2bhk` finds `2 BHK`) and returns every hit, with no cap.
+A `q` that is present but has no letters or numbers (`-`, `@`) returns no rows.
 Without `q`, the body is the first 50. The first group fills those slots.
 `truncated` is true when more unmapped matches exist, including a later group
 that did not fit. Search returns those.
@@ -814,10 +815,12 @@ Catalog nearby still needs a configuration and a price that scores, because
 
 A rent lead sees available rental properties only. A ready-possession sale lead
 sees available sale properties plus active projects whose possession month is
-the current month in Asia/Kolkata or one of the next two. An under-construction
-sale lead sees active projects only. A past possession month stays an
-under-construction match. A possession label that is only the word Ready, with
-no date, counts as ready. Archived projects and booked or sold-out properties
+this month in Asia/Kolkata, at most two months ahead, or any earlier month.
+An under-construction sale lead sees active projects only. A possession label
+with no date that starts with the word Ready, such as Ready to move or Ready
+possession, counts as ready. A lead with no
+preferred locality still matches listings within 6 km of a shortlisted project
+or property once nearby matching is on. Archived projects and booked or sold-out properties
 are left out. A catalog project and the firm's booking copy are both listed
 when both are active; the catalog row has `source: "catalog"` and
 `marketplace: true`, with `listed_by` set to the builder. Another firm's shared
@@ -855,17 +858,24 @@ The score is 100 points and is not stored:
 | 50 | The chosen price is at or under the budget plus 2% |
 | 30 | That band was missed, and the price is at or under the budget plus 15% |
 | 20 | Both of those were missed, and the price is at or under the budget plus 25% |
-| 0 | The price is above the budget plus 25% |
+| 0 | The price is above the budget plus 25%, and the lead has a budget |
+| 25 | The lead has no budget (null or zero). The listing's price does not change it. `matched_on` does not include `price` |
 | 20 | Residential only. A configuration smart-matches, otherwise 0 |
 | 20 or 10 | Commercial and Plot & Land only. The listing area is inside the inner band, or only the outer band. Otherwise 0 |
 | 10 | A commercial sale lead prefers pre-leased stock and the listing is pre-leased. The total is then capped at 100 |
 
 Price tiers do not stack. The budget is one amount: `budget_max`, or leftover
-`budget_min` when max is null. Comparisons use decimal arithmetic, inclusive
+`budget_min` when max is null. A lead with neither amount, or with zero, scores
+25 price points on every listing, below a listing that is within budget.
+Comparisons use decimal arithmetic, inclusive
 at each cutoff. When a configuration smart-matches, its price is the one
 scored, and the matching configuration with the best tier wins. When none
 match, the priced configuration closest in rupees is scored and configuration
 points stay 0. A project with no configuration price uses `starting_budget`.
+Commercial and Plot & Land do the same for the configurations the lead chose:
+an unpriced one scores 0 price points when another of those has a price.
+`starting_budget`, or that category's starting price on a mixed project, is
+used only when none of them have a price.
 
 "2 BHK", "2BHK Ultima" and "2 BHK Compact" all match. "2.5 BHK" does not match
 "2 BHK". "1 RK" does not match "1 BHK". Villa and Penthouse match those words
@@ -899,7 +909,8 @@ commercial sale listing. `score_breakdown.fit` is the configuration points for
 a home and the area points for commercial and Plot & Land. `configuration` is
 null outside residential. `area` is null for a home. `bonus` is the pre-leased
 points, or 0. `matched_on` lists the dimensions that scored: `locality` or
-`nearby`, then `price`, `configuration` when those points are above 0, `area`
+`nearby`, then `price` when those points are above 0 and are not the 25
+no-budget points, `configuration` when those points are above 0, `area`
 when the area points are 20, and `pre_leased` when the bonus was earned. `group` is
 `locality` when the row's locality is one the lead named, otherwise `nearby`.
 A pin-circle row in a named locality stays `group: "locality"` and sets
@@ -952,9 +963,12 @@ hours later. `generated_at` is when this list was built.
 ```
 
 `match_count` is how many unlinked options cleared the floor (capped at 50,
-same as the live match call). `new_count` is how many of those were not on
-the previous list. The page shows at most 30 leads and 30 listings, highest
-score first. A quiet scan still returns the rows and does not notify.
+same as the live match call). `new_count` is how many of those were not stored
+on the previous scan, including matches that sat outside the rows the page
+showed. The response is the first 30 leads and the first 30 listings, highest
+score first. A lead or listing that moves into those 30 with the same matches
+has `new_count` 0 and does not cause a ping. A quiet scan still returns the
+rows and does not notify.
 `bin/rails matches:rebaseline` rewrites every eligible firm's digest under the
 same lock and does not notify, so a scoring change can land without pinging
 brokers. It does not turn nearby matching on.
@@ -1525,9 +1539,10 @@ rent leads. The lead must prefer the building's locality, or, once nearby
 matching is on, a neighbor of it or a tagged pin within 6 km. Booked and sold-out
 listings return `[]`. An unqualified lead is left out. A booked lead is left out. A dead lead still matches.
 
-Another firm may call this for a listing that is still shared and available.
-`matches` is then that caller's own leads, and only those that score above 50.
-A listing that is not shared returns 404 to every firm except the owner.
+Another firm may call this for a listing that is still shared and available,
+and whose firm is active. `matches` is then that caller's own leads, and only
+those that score above 50. A listing that is not shared, or whose firm is not
+active, returns 404 to every firm except the owner. The review demo cannot open it.
 `marketplace_matches` and `marketplace_firms` are empty for every firm except
 the owner.
 
@@ -1585,7 +1600,7 @@ Another firm's view of a shared, available listing. The owning firm receives
 (rent, lock-in, tenant, and yield; null when the listing is not pre-leased),
 and the firm's name, mobile, and WhatsApp.
 There is no note, building name, address, pin, floor, description, photos, or
-confidential note. A listing that is not shared returns 404.
+confidential note. A listing that is not shared, or whose firm is not active, returns 404. The review demo cannot open it.
 
 Mapping that property (`POST /leads/:id/properties`) is allowed for any lead
 this caller can see whose sale/rent matches the listing, including an
@@ -2196,10 +2211,11 @@ The path sets the lead source: `portal_99acres`, `portal_magicbricks`,
 | `configuration` | Exact typology name, for example `2 BHK` |
 | `transaction_type` | `sale` or `rent`. Read only on `POST /inbound/general/properties` when `listing` is omitted |
 
-A named project is always a sale. Ready possession is set when the project's
-label is exactly `Ready`, or its possession month is this month or one of the
-next two in India. Anything else, including a past month and `Ready to move`,
-is Under construction. Budget, locality and every configuration are copied
+A named project is always a sale. Ready possession is set when the project has
+no possession date and its label starts with the word Ready (`Ready`,
+`Ready to move`, `Ready possession`), or its possession month is this month,
+one of the next two, or any earlier month in India. A later month is Under
+construction. Budget, locality and every configuration are copied
 from the project. A project with no configuration is rejected. A project with
 no locality is still saved.
 

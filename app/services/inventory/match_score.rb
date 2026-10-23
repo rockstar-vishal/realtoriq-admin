@@ -9,6 +9,8 @@ module Inventory
     LOCATION_POINTS = 30
     NEARBY_POINTS = 20
     CONFIG_POINTS = 20
+    # Between the 30 and 20 price tiers, so a listing within budget still ranks above.
+    NO_BUDGET_POINTS = 25
     BREAKDOWN_KEYS = %i[location price fit configuration area bonus].freeze
     Offer = Struct.new(
       :price, :name, :key, :area_sqft, :area_value, :area_unit, :pre_leased, :category, :typology_id,
@@ -16,7 +18,8 @@ module Inventory
     )
 
     def self.price_points(price, budget)
-      return 0 if price.nil? || budget.nil? || budget.to_i <= 0
+      return NO_BUDGET_POINTS if unbudgeted?(budget)
+      return 0 if price.nil?
 
       amount = price.to_d
       limit = budget.to_d
@@ -77,6 +80,7 @@ module Inventory
         configuration: fit == :area ? nil : fit_points,
         area: fit == :area ? fit_points : nil,
         bonus: bonus_points,
+        unbudgeted: parts[:unbudgeted] == true,
         score: [ location + parts[:price] + fit_points + bonus_points, 100 ].min,
         matched_price: parts[:matched_price],
         matched_configuration: parts[:matched_configuration],
@@ -90,7 +94,7 @@ module Inventory
 
     def self.matched_on(breakdown, nearby: false)
       reasons = [ nearby ? "nearby" : "locality" ]
-      reasons << "price" if breakdown[:price].to_i.positive?
+      reasons << "price" if breakdown[:price].to_i.positive? && !breakdown[:unbudgeted]
       reasons << "configuration" if breakdown[:configuration].to_i.positive?
       reasons << "area" if breakdown[:area].to_i == 20
       reasons << "pre_leased" if breakdown[:bonus].to_i.positive?
@@ -108,45 +112,59 @@ module Inventory
         closest_priced(list, budget) || fallback_offer(fallback_price)
       end
 
-      price_part = chosen ? price_points(chosen.price, budget) : 0
+      price_part = price_points(chosen&.price, budget)
       configuration = matched.any? ? CONFIG_POINTS : 0
       configuration_name = if matched.any?
         (priced_matched.any? ? chosen&.name : matched.first&.name)
       end
       source = matched.any? && priced_matched.empty? ? matched.first : chosen
-      part_from(source, fit: configuration, price: price_part, matched_price: chosen&.price, name: configuration_name)
+      part_from(
+        source, fit: configuration, price: price_part, matched_price: chosen&.price,
+        name: configuration_name, unbudgeted: unbudgeted?(budget)
+      )
     end
 
+    # fallback_price stands in only when nothing in the list has a price, the
+    # same rule as configuration_parts. An unpriced offer beside a priced one
+    # scores 0. Borrowing the project price there would award points for a
+    # configuration the lead did not choose.
     def self.area_parts(budget:, offers:, fallback_price:, lead:)
       list = Array(offers)
+      borrowed = list.any? { |offer| priced?(offer) } ? nil : positive_price(fallback_price)
       if list.empty?
-        chosen = fallback_offer(fallback_price)
-        return part_from(chosen, fit: 0, price: price_points(chosen&.price, budget), matched_price: chosen&.price, name: nil)
+        chosen = fallback_offer(borrowed)
+        return part_from(
+          chosen, fit: 0, price: price_points(chosen&.price, budget), matched_price: chosen&.price,
+          name: nil, unbudgeted: unbudgeted?(budget)
+        )
       end
 
-      best = list.max_by { |offer| area_rank(offer, budget, lead, fallback_price) }
-      price = priced?(best) ? best.price : positive_price(fallback_price)
+      best = list.max_by { |offer| area_rank(offer, budget, lead, borrowed) }
+      price = priced?(best) ? best.price : borrowed
       part_from(
         best,
         fit: lead ? Fit.area_points(lead, best.area_sqft) : 0,
         price: price_points(price, budget),
         matched_price: price,
-        name: best.name
+        name: best.name,
+        unbudgeted: unbudgeted?(budget)
       )
     end
 
-    def self.area_rank(offer, budget, lead, fallback_price)
-      price = priced?(offer) ? offer.price.to_i : positive_price(fallback_price).to_i
+    def self.area_rank(offer, budget, lead, borrowed_price)
+      price = priced?(offer) ? offer.price : borrowed_price
       points = price_points(price, budget)
       area = lead ? Fit.area_points(lead, offer.area_sqft) : 0
+      amount = price.to_i
       target = budget.to_i
-      [ points + area, points, area, -(price - target).abs, -price ]
+      [ points + area, points, area, -(amount - target).abs, -amount ]
     end
 
-    def self.part_from(source, fit:, price:, matched_price:, name:)
+    def self.part_from(source, fit:, price:, matched_price:, name:, unbudgeted: false)
       {
         fit:,
         price:,
+        unbudgeted:,
         matched_price:,
         matched_configuration: name,
         area_sqft: source&.area_sqft,
@@ -186,7 +204,11 @@ module Inventory
       Offer.new(price: price.to_i, name: nil, key: nil)
     end
 
+    def self.unbudgeted?(budget)
+      budget.nil? || budget.to_i <= 0
+    end
+
     private_class_method :configuration_parts, :area_parts, :area_rank, :part_from, :priced?, :positive_price,
-      :best_priced, :closest_priced, :fallback_offer
+      :best_priced, :closest_priced, :fallback_offer, :unbudgeted?
   end
 end

@@ -326,4 +326,75 @@ RSpec.describe "Nearby interest matching" do
     expect(text).not_to include("Secret Name")
     expect(text).not_to include("Private tower")
   end
+
+  it "matches a lead who has a shortlist and no preferred locality" do
+    enable_nearby!
+    create(:subscription, firm:)
+    locate(kharghar)
+    lead = create(:lead, firm:, lead_status: status, budget_max: 10_000_000,
+      transaction_type: "sale", property_type: under_type, name: "No locality")
+    lead.typologies << two_bhk
+    tagged = stock(kharghar, name: "Tagged")
+    lead.lead_projects.create!(project: tagged, firm:)
+    near = stock(kharghar, name: "Nearby", north_m: 2_000)
+
+    rows = Inventory::MatchInventory.new(lead:).call
+    expect(rows.map { |row| row[:id] }).to contain_exactly(near.id)
+
+    digest = Matches::CurateFirm.call(firm:, announce: false)
+    item = digest.lead_items.find { |row| row["lead_id"] == lead.id }
+    expect(item["match_ids"]).to include("project:#{near.id}")
+  end
+
+  it "puts a neighbour-locality firm in marketplace firms" do
+    enable_nearby!
+    locate(kharghar)
+    locate(kamothe, east_m: 2_000)
+    Inventory::RebuildLocalityNeighbors.call(city_id: city.id)
+    ready = create(:property_type, name: "Ready possession")
+    building = create(:building, firm:, city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
+    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true, building:)
+    Current.set(firm: other_firm) do
+      buyer = create(:lead, firm: other_firm, lead_status: status, budget_max: 10_000_000,
+        transaction_type: "sale", property_type: ready, name: "Neighbour")
+      buyer.typologies << two_bhk
+      buyer.localities << kamothe
+    end
+
+    matches = Inventory::MarketplaceLeadMatches.new(property: listing).call
+    firms = Inventory::MarketplaceFirms.new(property: listing).call
+
+    expect(matches.map { |row| row[:firm_id] }).to include(other_firm.id)
+    expect(firms.map { |row| row[:id] }).to include(other_firm.id)
+  end
+
+  it "keeps a firm whose only match sits past the lead-match cap" do
+    enable_nearby!
+    locate(kharghar)
+    locate(kamothe, east_m: 2_000)
+    Inventory::RebuildLocalityNeighbors.call(city_id: city.id)
+    ready = create(:property_type, name: "Ready possession")
+    building = create(:building, firm:, city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
+    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true, building:)
+    bulk = create(:firm, name: "Aardvark Homes")
+    Current.set(firm: bulk) do
+      Inventory::MatchLeads::LIMIT.times do |index|
+        buyer = create(:lead, firm: bulk, lead_status: status, budget_max: 10_000_000,
+          transaction_type: "sale", property_type: ready, name: format("Bulk %02d", index))
+        buyer.typologies << two_bhk
+        buyer.localities << kharghar
+      end
+    end
+    Current.set(firm: other_firm) do
+      buyer = create(:lead, firm: other_firm, lead_status: status, budget_max: 10_000_000,
+        transaction_type: "sale", property_type: ready, name: "Neighbour")
+      buyer.typologies << two_bhk
+      buyer.localities << kamothe
+    end
+
+    matcher = Inventory::MarketplaceLeadMatches.new(property: listing)
+    expect(matcher.call.map { |row| row[:firm_id] }).not_to include(other_firm.id)
+    expect(matcher.scored_rows.map { |row| row[:firm_id] }).to include(other_firm.id)
+    expect(Inventory::MarketplaceFirms.new(property: listing).call.map { |row| row[:id] }).to include(other_firm.id)
+  end
 end

@@ -40,15 +40,20 @@ module Notifications
     attr_reader :user, :kind, :title, :body, :dedupe_key, :data, :force, :subscriptions
 
     # nil means this dedupe_key was already written. Callers must not push again.
+    # The savepoint is the whole point: Postgres aborts the surrounding
+    # transaction on a unique violation, and rescuing in Ruby does not
+    # reopen it. A duplicate must not take the caller's commit with it.
     def insert
-      user.notifications.create!(
-        firm_id: user.firm_id,
-        kind:,
-        title:,
-        body:,
-        dedupe_key:,
-        data:
-      )
+      Notification.transaction(requires_new: true) do
+        user.notifications.create!(
+          firm_id: user.firm_id,
+          kind:,
+          title:,
+          body:,
+          dedupe_key:,
+          data:
+        )
+      end
     rescue ActiveRecord::RecordNotUnique
       nil
     end

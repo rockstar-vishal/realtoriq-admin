@@ -354,6 +354,28 @@ RSpec.describe "categorised matching examples" do
     expect(paths[:inventory].values).not_to include(4_000_000)
   end
 
+  it "does not price an unpriced office from an unpicked showroom" do
+    showroom = create(:typology, name: "Showroom", code: "showroom", category: "commercial")
+    project = add_project(name: "Commercial mix", starting_budget: 15_000_000, possession_on: Date.new(2027, 6, 1), rows: [
+      { typology: two_bhk, starting_price: 15_000_000 },
+      { typology: showroom, starting_price: 10_000_000, area_value: 2_000, area_unit: "sqft" },
+      { typology: office, starting_price: nil, area_value: 1_000, area_unit: "sqft" },
+      { typology: shop, starting_price: 20_000_000, area_value: 200, area_unit: "sqft" }
+    ])
+    lead = add_lead(office, budget: 10_000_000, property_type: under_type,
+      area_min_value: 1_000, area_max_value: 1_000, area_unit: "sqft")
+    lead.typologies << shop
+
+    paths = project_paths(lead, project)
+    [ paths[:inventory], paths[:leads] ].each do |row|
+      expect(row[:matched_configuration]).to eq("Office")
+      expect(row[:score_breakdown][:price]).to eq(0)
+      expect(row[:matched_price]).to be_nil
+      expect(row[:matched_on]).not_to include("price")
+    end
+    expect(paths[:inventory][:score_breakdown][:area]).to eq(20)
+  end
+
   it "gives a residential buyer no price points when the home rows are unpriced" do
     project = add_project(name: "Shop priced", starting_budget: 4_000_000, possession_on: Date.new(2027, 6, 1), rows: [
       { typology: two_bhk, starting_price: nil, starting_carpet_sqft: 700 },

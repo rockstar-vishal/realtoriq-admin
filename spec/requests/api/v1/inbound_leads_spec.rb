@@ -105,7 +105,7 @@ RSpec.describe "API v1 inbound leads" do
     expect(leads.count).to eq(0)
   end
 
-  it "marks a project Ready only from the exact label or a near possession month" do
+  it "marks a project Ready from a Ready label, a past month, or a near possession month" do
     today = Time.find_zone("Asia/Kolkata").today
     project.update!(possession_on: nil, possession_label: "Ready")
     post_inbound("99acres", "projects", buyer(listing: project.code))
@@ -117,11 +117,15 @@ RSpec.describe "API v1 inbound leads" do
 
     project.update!(possession_on: today - 2.months, possession_label: nil)
     post_inbound("99acres", "projects", buyer(listing: project.code, mobile: "9876543212"))
-    expect(leads.find_by(mobile: "+919876543212").property_type).to eq(under_construction)
+    expect(leads.find_by(mobile: "+919876543212").property_type).to eq(ready_possession)
 
     project.update!(possession_on: nil, possession_label: "Ready to move")
     post_inbound("99acres", "projects", buyer(listing: project.code, mobile: "9876543213"))
-    expect(leads.find_by(mobile: "+919876543213").property_type).to eq(under_construction)
+    expect(leads.find_by(mobile: "+919876543213").property_type).to eq(ready_possession)
+
+    project.update!(possession_on: nil, possession_label: "Ready possession")
+    post_inbound("99acres", "projects", buyer(listing: project.code, mobile: "9876543214"))
+    expect(leads.find_by(mobile: "+919876543214").property_type).to eq(ready_possession)
   end
 
   it "saves a project with no locality and rejects one with no configuration" do

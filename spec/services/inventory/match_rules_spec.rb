@@ -9,20 +9,28 @@ RSpec.describe Inventory::PossessionMatch do
     build(:project, firm:, possession_on: date, possession_label: nil)
   end
 
-  it "treats the current month and the next two as ready, and a past month as under construction" do
+  it "treats a past month, this month, and the next two as ready" do
     travel_to Time.find_zone("Asia/Kolkata").local(2026, 9, 15, 12) do
+      expect(described_class.ready?(project_on(Date.new(2025, 9, 1)))).to be(true)
+      expect(described_class.ready?(project_on(Date.new(2026, 8, 1)))).to be(true)
       expect(described_class.ready?(project_on(Date.new(2026, 9, 1)))).to be(true)
+      expect(described_class.ready?(project_on(Date.new(2026, 10, 1)))).to be(true)
       expect(described_class.ready?(project_on(Date.new(2026, 11, 1)))).to be(true)
       expect(described_class.ready?(project_on(Date.new(2026, 12, 1)))).to be(false)
-      expect(described_class.ready?(project_on(Date.new(2025, 9, 1)))).to be(false)
-      expect(described_class.match_label(project_on(Date.new(2025, 9, 1)))).to eq("Sale · Under construction")
+      expect(described_class.match_label(project_on(Date.new(2026, 8, 1)))).to eq("Sale · Ready possession")
     end
   end
 
-  it "treats a Ready label with no date as ready" do
-    project = build(:project, firm:, possession_on: nil, possession_label: "Ready")
+  it "treats a label that starts with Ready, and no date, as ready" do
+    [ "Ready to move", "Ready possession" ].each do |label|
+      project = build(:project, firm:, possession_on: nil, possession_label: label)
 
-    expect(described_class.ready?(project)).to be(true)
+      expect(described_class.ready?(project)).to be(true)
+      expect(described_class.match_label(project)).to eq("Sale · Ready possession")
+    end
+    project = build(:project, firm:, possession_on: nil, possession_label: "readiness")
+
+    expect(described_class.ready?(project)).to be(false)
   end
 end
 
@@ -71,14 +79,14 @@ RSpec.describe Inventory::MatchInventory do
     travel_to Time.find_zone("Asia/Kolkata").local(2026, 9, 15, 12) do
       lead = sale_lead(ready_type)
       soon = own_project(possession_on: Date.new(2026, 10, 1), name: "Soon")
-      own_project(possession_on: Date.new(2025, 9, 1), name: "Past")
+      past = own_project(possession_on: Date.new(2025, 9, 1), name: "Past")
       own_project(possession_on: Date.new(2027, 6, 1), name: "Later")
       listing = create(:property, firm:, typology: two_bhk, price: 10_000_000,
         building: create(:building, firm:, city:, locality:))
 
       ids = described_class.new(lead:).call.map { |row| row[:id] }
 
-      expect(ids).to contain_exactly(soon.id, listing.id)
+      expect(ids).to contain_exactly(past.id, soon.id, listing.id)
     end
   end
 
