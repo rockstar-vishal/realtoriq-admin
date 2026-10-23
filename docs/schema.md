@@ -93,7 +93,33 @@ console session.
 Maharashtra — the center used for nearby matching; blank until geocoded or
 edited in Admin → Masters), `builders`, `typologies` (decimal `bedrooms` for 2.5 BHK),
 `lead_sources`, `lead_statuses` (`is_dead` / `is_booked` are what make the
-reports writable without hardcoding names in SQL), `property_types`.
+reports writable without hardcoding names in SQL), `property_types`
+(possession: under construction or ready). `typologies.category` is
+`residential`, `commercial`, or `land`. `needs_review` and `merged_into_id`
+mark a configuration that import could not place, or one that was folded into
+a canonical row. `category_confirmed_at` is set when seeds, the backfill, or
+the admin form chooses the category. Until then an in-use row may still be
+recategorised once. `configuration_aliases` remembers a merged or reviewed
+name (`key` unique, `source` merge / review / seed).
+
+`properties.carpet_area_sqft` is the area in whole square feet, carpet or
+plot. `area_value` / `area_unit` are what the broker typed (`sqft`, `sqyd`,
+`sqm`, `guntha`, `acre`, `hectare`). `details` is jsonb. `pre_leased` is
+commercial sale only. Leads store `category`, the same area columns
+(`area_min_value`, `area_max_value`, `area_unit`, `area_min_sqft`,
+`area_max_sqft`) and `prefers_pre_leased`. The open-lead unique index is
+`(firm_id, transaction_type, category, open_identity)`. A `duplicate_lead`
+error names that category in `details.category`.
+`project_typologies.label` lets one configuration appear twice.
+`area_value` / `area_unit` / `needs_review` / `review_note` sit on that row.
+`review_note` says why a flagged row was sent to review. The unique index
+is `(project_id, typology_id, lower(coalesce(label, '')))`.
+`facebook_lead_forms.category` is null until a mixed project needs one.
+The category check runs only when the form is saved through `PATCH /facebook/forms/:id`.
+A sync or an import can save a mixed project's form that still has no category.
+Remapping to a project that does not offer the stored category clears it.
+The importer uses that category only while the project still offers it, and
+otherwise uses the project's primary category.
 
 **Buildings are deliberately not here** — see Phase 2.
 
@@ -118,7 +144,7 @@ is no longer a hold. At most one connection per firm has `status = 'active'`.
 | --- | --- |
 | `facebook_connections` | One Facebook login. `access_token` is encrypted. `token_kind`: user_access / system_access. `status`: active / invalid / disconnected. Disconnect keeps the row and clears the token. |
 | `facebook_pages` | A Page granted to this firm. `page_id` is unique across firms. Held only with a page token or `subscribed`. `page_access_token` is encrypted. `status`: active / unsubscribed / error. New pages start unsubscribed. |
-| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. |
+| `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. `category` is null, or one of the mapped project's categories. The mixed-project requirement is enforced on the API save, not on sync or import. |
 | `facebook_lead_imports` | One `leadgen_id` in the whole database. `status`: pending / processing / created / failed / dead / duplicate. `raw_payload` and `fetched_payload` are jsonb. |
 | `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. |
 | `facebook_import_alert_states` | One row per firm. Clocks for the failure digest and the duplicate notice. |
@@ -323,7 +349,9 @@ row per firm (`firm_id` unique), overwritten about every 12 hours.
 `lead_items` and `listing_items` are JSON. `notification_pending` means a
 night scan found something new and the morning ping has not been sent.
 `fingerprint` is the hash of the ids actually stored, so a change that never
-reaches the capped list does not notify. A lead lists inventory, and a
+reaches the capped list does not notify. Adding `category`, `area`, and
+`prefers_pre_leased` on a lead row, or `categories` on a listing row, does
+not change that hash. A lead lists inventory, and a
 project or property lists leads, only when a preferred locality overlaps and
 the score is above 30 for the firm's own stock, or above 50 for a catalog
 project or another firm's shared property. Once nearby matching is on, a
@@ -334,11 +362,18 @@ stay in that list. Booked leads are left out of the live match call and of
 this list. A firm whose subscription has
 lapsed is not scanned. The row is deleted with the firm. `properties.listed_on_marketplace`
 (default true) is that share switch. `GET /properties/marketplace` lists
-every other active firm's shared available properties as that safe card. A lead
+every other active firm's shared available properties as that safe card
+(`category` and `pre_leased`, still no area, photo, or building). The other
+firm's detail adds `area` and `lease`. A lead
 maps one of those listings only while that firm is still active. `lead_localities` holds the lead's
 preferred localities (no `firm_id`; the lead is the tenant). Price is one of
-50 / 30 / 20 / 0 against the lead's budget, and a smart configuration match is
-20. See `docs/api.md`.
+50 / 30 / 20 / 0 against the lead's budget. A home scores a smart configuration
+match at 20. Commercial and Plot & Land score the chosen configuration only,
+and score area at 20 or 10 instead. A pre-leased commercial sale listing scores
+10 more, capped at 100, and sorts first when the scores tie. A project with
+more than one category is priced from that category. `bin/rails matches:rebaseline`
+rewrites every eligible firm's digest without notifying and without turning
+nearby matching on. See `docs/api.md`.
 
 ### Bookings and money — **built**
 

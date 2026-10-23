@@ -163,13 +163,16 @@ module Api
         scope = base_scope
           .search(drawer_filters_present? ? nil : params[:q])
           .price_between(params[:price_min], params[:price_max])
-          .carpet_between(params[:carpet_min], params[:carpet_max])
+          .carpet_between(params[:area_min].presence || params[:carpet_min], params[:area_max].presence || params[:carpet_max])
           .in_city(params[:city_id])
           .in_locality(params[:locality_id])
 
         scope = scope.where(listing_for: params[:listing_for]) if params[:listing_for].present?
         scope = scope.where(building_id: params[:building_id]) if params[:building_id].present?
         scope = scope.where(typology_id: params[:typology_id]) if params[:typology_id].present?
+        if Typology::CATEGORIES.include?(params[:category].to_s)
+          scope = scope.joins(:typology).where(typologies: { category: params[:category] })
+        end
         scope = scope.where(floor_band: params[:floor_band]) if params[:floor_band].present?
         # `all` is the list chip; omitting status still means available, which is
         # what every existing caller that does not send the param expects.
@@ -199,9 +202,14 @@ module Api
       end
 
       def property_params
-        params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
-                      :carpet_area_sqft, :available_from, :description,
+        permitted = params.permit(:building_id, :typology_id, :listing_for, :floor_band, :price,
+                      :carpet_area_sqft, :area_value, :area_unit, :pre_leased,
+                      :available_from, :description,
                       :confidential_note, :status, :listed_on_marketplace, :on_website)
+        # DetailSpecs keeps known keys and drops the rest, so the hash is not
+        # a list of column names the client is allowed to set.
+        permitted[:details] = params[:details].to_unsafe_h if params[:details].respond_to?(:to_unsafe_h)
+        permitted
       end
 
       def portal_code_params

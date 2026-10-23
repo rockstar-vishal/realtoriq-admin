@@ -101,44 +101,54 @@ module Facebook
 
     def write_project(fields, source, assignee_id)
       project = form.project
-      type_name = Inventory::PossessionMatch.ready?(project) ? "Ready possession" : "Under construction"
-      type = PropertyType.find_by(name: type_name)
-      return invalid("Sale property types are not configured.") if type.nil?
+      offered = project.categories
+      category = offered.include?(form.category) ? form.category : project.primary_category
+      type = nil
+      if category != "land"
+        type_name = Inventory::PossessionMatch.ready?(project) ? "Ready possession" : "Under construction"
+        type = PropertyType.find_by(name: type_name)
+        return invalid("Sale property types are not configured.") if type.nil?
+      end
 
-      existing = open_lead(fields.mobile, "sale")
+      existing = open_lead(fields.mobile, "sale", category)
       return Result.new(status: :duplicate, lead: existing) if existing
 
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(fields, "sale", type, source, assignee_id),
+        attributes: lead_attributes(fields, "sale", type, source, assignee_id, category:),
         project_id: project.id,
         copy_project_typologies: true,
         copy_project_localities: true,
         require_locality: false
       ).call
       return Result.new(status: :created, lead: result.lead) if result.ok?
-      return duplicate_result(fields.mobile, "sale") if result.error_code == "duplicate_lead"
+      return duplicate_result(fields.mobile, "sale", category) if result.error_code == "duplicate_lead"
 
       invalid(result.error_message.presence || "We could not save this lead.")
     end
 
     def write_property(fields, source, assignee_id)
       property = form.property
-      type = property.for_sale? ? PropertyType.find_by(name: "Ready possession") : nil
-      return invalid("Sale property types are not configured.") if property.for_sale? && type.nil?
+      category = property.typology.category
+      type = nil
+      if property.for_sale? && category != "land"
+        type = PropertyType.find_by(name: "Ready possession")
+        return invalid("Sale property types are not configured.") if type.nil?
+      end
 
-      existing = open_lead(fields.mobile, property.listing_for)
+      existing = open_lead(fields.mobile, property.listing_for, category)
       return Result.new(status: :duplicate, lead: existing) if existing
 
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(fields, property.listing_for, type, source, assignee_id).merge(budget: property.price),
+        attributes: lead_attributes(fields, property.listing_for, type, source, assignee_id, category:)
+          .merge(budget: property.price),
         typology_ids: [ property.typology_id ],
         locality_ids: [ property.building&.locality_id ].compact,
         require_locality: property.building&.locality_id.present?
       ).call
       return finish_property(result, property) if result.ok?
-      return duplicate_result(fields.mobile, property.listing_for) if result.error_code == "duplicate_lead"
+      return duplicate_result(fields.mobile, property.listing_for, category) if result.error_code == "duplicate_lead"
 
       invalid(result.error_message.presence || "We could not save this lead.")
     end
@@ -148,14 +158,14 @@ module Facebook
       Result.new(status: :created, lead: result.lead)
     end
 
-    def duplicate_result(phone, transaction_type)
-      existing = open_lead(phone, transaction_type)
+    def duplicate_result(phone, transaction_type, category)
+      existing = open_lead(phone, transaction_type, category)
       return invalid("We could not save this lead.") if existing.nil?
 
       Result.new(status: :duplicate, lead: existing)
     end
 
-    def lead_attributes(fields, transaction_type, type, source, assignee_id)
+    def lead_attributes(fields, transaction_type, type, source, assignee_id, category:)
       {
         name: fields.name.to_s.strip.presence&.slice(0, TEXT_LIMIT),
         mobile: fields.mobile,
@@ -165,6 +175,7 @@ module Facebook
         lead_source_id: source.id,
         source_detail: source_detail,
         transaction_type:,
+        category:,
         property_type_id: type&.id,
         assigned_user_id: assignee_id
       }.compact
@@ -176,8 +187,8 @@ module Facebook
       parts.join(" · ").slice(0, TEXT_LIMIT)
     end
 
-    def open_lead(phone, transaction_type)
-      Lead.unscoped.find_by(firm_id: firm.id, transaction_type:, open_identity: phone)
+    def open_lead(phone, transaction_type, category)
+      Lead.unscoped.find_by(firm_id: firm.id, transaction_type:, category:, open_identity: phone)
     end
 
     # Matches Inbound::ReceiveLead#actor. A disabled row is not skipped in

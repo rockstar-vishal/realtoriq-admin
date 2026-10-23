@@ -4,7 +4,7 @@ module Api
   module V1
     module ProjectSerializer
       class << self
-        def list(project)
+        def list(project, category: nil)
           {
             id: project.id,
             code: project.code,
@@ -17,6 +17,10 @@ module Api
             locality: project.locality&.name,
             locality_id: project.locality_id,
             starting_budget: project.starting_budget,
+            categories: project.categories,
+            starting_prices: project.starting_prices,
+            price_summary: project.price_summary(category:),
+            **(category.present? ? { display_starting_price: project.starting_price_for(category) } : {}),
             # Unweighted mean of config rates; null when none can produce a rate.
             avg_psf: project.avg_psf,
             # Derived from the typologies, never stored — a stored band can end
@@ -124,6 +128,11 @@ module Api
             id: project_typology.id,
             typology_id: project_typology.typology_id,
             name: project_typology.typology&.name,
+            label: project_typology.label,
+            display_name: project_typology.display_name,
+            category: project_typology.typology&.category,
+            area: project_typology.area_payload,
+            needs_review: project_typology.needs_review,
             starting_price: project_typology.starting_price,
             starting_carpet_sqft: project_typology.starting_carpet_sqft,
             rate_per_sqft: project_typology.rate_per_sqft

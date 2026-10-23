@@ -216,16 +216,31 @@ Every dropdown in one call — cache it and refresh on app start.
 cities[]         id, name, state, state_code
 localities[]     id, city_id, name, pincode      ← flat, filter by city_id yourself
 builders[]       id, name, global
-typologies[]     id, name, code, bedrooms
+typologies[]     id, name, code, bedrooms, category, area_kind, uses_floor_band, details[]
 lead_sources[]   id, name, code, category
 lead_statuses[]  id, name, code, is_dead, is_booked, is_terminal
-property_types[] id, name, code
+property_types[] id, name, code                  ← possession options; the key stays property_types
+categories[]     code, name                      ← residential, commercial, land
+area_units[]     code, label, sqft               ← sqft factor is a decimal string
+pre_leased_details[]  key, label, type, options, min, max, unit
+tenant_types[]   code, name
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
 prospect_statuses[]  code, name                  ← fixed: new, following, interested, not_interested
 ```
 
 `localities` is a **flat list carrying `city_id`**, not nested under cities.
+`typologies` is the configurations a broker can pick: active, and not merged
+into another configuration. `category` is `residential`, `commercial`, or
+`land`. `area_kind` is `carpet` or `plot`. `uses_floor_band` is false for
+villa, row house, plots, and commercial configurations other than office.
+`bedrooms` is still a JSON number. `details[]` is that configuration's
+optional fields: `key`, `label`, `type` (`select`, `integer`, `decimal`,
+`boolean`, `date`), `options` (`code` and `label`), `min`, `max` and `unit`.
+A configuration with no spec has `details: []`.
+`pre_leased_details[]` uses that same shape, so a select's `options` are
+`{ code, label }`. Tenant names are Bank, Retail brand, F&B, Clinic,
+Office tenant, and Other.
 
 Seeded values today: statuses `new`, `hot`, `followup`, `visit_planned`,
 `negotiation`, `booked`, `dead` · sources `portal_housing`, `portal_99acres`,
@@ -422,6 +437,7 @@ Shared filters, all optional:
 | `source_id` | Repeat or comma-separate |
 | `source_missing` | `true` adds leads with no source. With `source_id`, the list is those sources **plus** no source |
 | `assigned_user_id` | Repeat or comma-separate. Narrows the leads the caller can already see. An agent cannot widen it to someone else's leads |
+| `category` | `residential`, `commercial`, or `land`. Blank is every category. Anything else is `422 invalid`. Bookings and revenue follow the booking's lead |
 
 `GET /reports/source_status` and `GET /reports/dead_leads` are every role.
 An agent sees `Lead.visible_to` (their assigned leads). A manager or super
@@ -525,7 +541,11 @@ disabled. An agent receives only themselves.
 | --- | --- | --- | --- |
 | `mobile` | string | **required** | Normalised to E.164 |
 | `transaction_type` | enum | **required** | `sale` · `rent` |
-| `property_type_id` | **string** | conditional | **Required for `sale`, forbidden for `rent`** |
+| `property_type_id` | **string** | conditional | **Required for a residential or commercial `sale`, forbidden for `rent`, and cleared for Plot & Land** |
+| `category` | enum | optional | `residential` (default) · `commercial` · `land`. When sent with configurations from another category: `422 invalid`, "Pick configurations from one category." Omitting it leaves the stored category, which stays `residential` for older clients |
+| `area_min`, `area_max` | number | optional | Commercial and Plot & Land only. Stored on `area_min_value` / `area_max_value`. A residential lead clears them. Commercial area is sq ft |
+| `area_unit` | enum | optional | `sqft` (default) · `sqyd` · `sqm` · `guntha` · `acre` · `hectare`. Commercial must be `sqft` |
+| `prefers_pre_leased` | boolean | optional | Kept only for a commercial sale. Every other lead stores false |
 | `name` | string | optional | Nullable by design — brokers capture a number first |
 | `alt_mobile` | string | optional | |
 | `email` | string | optional | |
@@ -547,7 +567,7 @@ disabled. An agent receives only themselves.
 > sale lead` with nothing pointing at the real cause. See
 > [Traps](#traps-worth-knowing).
 
-One **live** lead per `(firm, mobile, transaction_type)`. A dead lead does not hold that slot, so the same number can be created again. Same number may exist once as `sale` and once as `rent`. A second create of the same type is **`422 duplicate_lead`** with `details.lead_id` and `details.transaction_type` so you can open the existing card. PATCH `transaction_type` to the other type is the same `422` if that type already exists on the number. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another live lead holds the mobile is the same `422 duplicate_lead`, with the message "A live sale lead already exists for this number." Two revives at once return that error rather than a 500.
+One **open** lead per `(firm, mobile, transaction_type, category)`. A dead lead does not hold that slot, so the same number can be created again. The same number may be open once as a residential sale and once as a commercial sale, and once as `sale` and once as `rent`. A second create of the same type and category is **`422 duplicate_lead`**. `details.lead_id`, `details.transaction_type` and `details.category` identify the existing card. The message is "A sale Residential lead already exists for this number." (`sale` or `rent`, and Residential, Commercial, or Plot & Land). A PATCH that moves the lead onto a type and category that is already open is the same `422`. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another open lead holds that mobile, type and category is the same `422`. Two revives at once return that error rather than a 500.
 
 Returns `201` with the lead plus `possible_duplicates` — the **other** transaction type on the same number, if any, and only leads the caller can see. Same type is never in this array; it was refused.
 
@@ -591,12 +611,14 @@ signed-in user and starts as New. There is no status or next-action column.
 Sheet rules:
 
 - **Mobile**, **Sale or rent** (`sale` or `rent`) and **Budget** (whole rupees, `12000000` or `1,20,00,000`) are required. A decimal other than `.00`, or text such as `1.2 Cr`, fails the row. A mobile Excel has turned into scientific notation or a decimal fails the row.
-- **Property type** is required for sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank.
-- **Configurations** are typology names (`2 BHK`). Spaces and case do not matter. An empty cell copies them from the linked listings. A filled cell is used instead. An unknown name fails the row.
+- **Possession** (the old header **Property type** is still accepted) is required for a residential or commercial sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank. A Plot & Land row must leave it blank (`Leave Possession blank for Plot & Land.`). The date column is **Possession up to**. On a sheet that still has both **Property type** and **Possession**, Possession remains the date.
+- **Configurations** are typology names (`2 BHK`, `Shop`, `Residential plot`). Spaces and case do not matter. There is no Category column: the category comes from the configurations, or from the linked listings when that cell is empty. Names from more than one category fail the row (`Configurations must be from one category.`). An unknown name fails the row.
+- **Area** is optional. `800-1200 sqft`, `2-4 guntha` or `3 acre`. One number sets the minimum and the maximum. A residential row must leave it blank. A commercial row is sq ft. Plot & Land may use sq ft, sq yd, sq m, guntha, acre or hectare.
+- **Prefers pre-leased** is optional `yes` or `no`. It is kept only for a commercial sale.
 - **Project codes** and **Property codes** take several values separated by commas, at most 20 in one cell. A code is `P-` plus 6 characters for a project and `H-` plus 6 characters for a property, shown on that project or property's list and detail. A cell may also contain the record id. A project cell may contain a LaunchIQ reference (`PR…`): the firm's own active copy is linked, otherwise the active marketplace row. Linking does not copy a marketplace project into My Projects.
 - **Location** is added to the localities on the linked listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
 - A project code on a rent row fails. A property is linked only when its sale/rent matches the row. An unknown code, an archived project, or a sold property fails the row and does not create the lead. A private code from another firm, and a code belonging to a firm that is not active, are reported as unknown. A shared property links only while that firm is active, matching `GET /properties/marketplace`.
-- The same mobile may be imported once as sale and once as rent. A second live row of the same kind fails. When the caller can see that lead, the error includes its code.
+- The same mobile may be imported once per category, and once as sale and once as rent. A second open row of the same kind and category fails. The message names the category (`A sale Commercial lead already exists for this number`). When the caller can see that lead, the error includes its code.
 
 `code` on a project and on a property is this import code. It is not
 `external_ref` and it is not the lead's `L-0001`.
@@ -621,6 +643,7 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
 | `possession_from`, `possession_to` | Drawer |
 | `typology_ids[]` | Drawer. Repeat the key |
+| `category` | `residential` · `commercial` · `land`. Not a drawer field, so it still applies with `q` |
 | `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` |
 | `page`, `per_page` | |
 
@@ -800,6 +823,29 @@ when both are active; the catalog row has `source: "catalog"` and
 `marketplace: true`, with `listed_by` set to the builder. Another firm's shared
 property has `marketplace: true` and `listed_by` set to that firm's name.
 
+A listing is scored only inside the lead's category. Commercial and Plot & Land
+also require the configuration the lead chose. Residential still scores every
+configuration in the category: a smart match is 20 and any other configuration
+is 0. Plot & Land does not ask possession, so a plot lead sees plot properties
+and plotted projects of any possession date. A ready commercial buyer does not
+see an under-construction project.
+
+Commercial and Plot & Land score area instead of configuration. Both sides need
+an area, otherwise area is 0. The lead's range is compared in square feet. An
+area inside 90% of the minimum and 110% of the maximum is 20. An area inside
+75% and 125% is 10. A missing maximum is open and a missing minimum is 0.
+`matched_on` includes `area` only when those points are 20.
+
+A commercial sale lead can prefer pre-leased stock. A pre-leased listing then
+scores 10 more, and the total is capped at 100. Among equal scores the
+pre-leased listing sorts first. With the preference off, that tie-break does
+not move anything. `matched_on` includes `pre_leased` when the bonus was earned.
+
+A project with more than one category shows that category's starting price as
+`starting_budget`. A home buyer does not see the shop price. When that category
+has no priced row, `starting_budget` and the price points are empty. A
+single-category project still uses `starting_budget`.
+
 The score is 100 points and is not stored:
 
 | Points | When |
@@ -810,7 +856,9 @@ The score is 100 points and is not stored:
 | 30 | That band was missed, and the price is at or under the budget plus 15% |
 | 20 | Both of those were missed, and the price is at or under the budget plus 25% |
 | 0 | The price is above the budget plus 25% |
-| 20 | A configuration smart-matches, otherwise 0 |
+| 20 | Residential only. A configuration smart-matches, otherwise 0 |
+| 20 or 10 | Commercial and Plot & Land only. The listing area is inside the inner band, or only the outer band. Otherwise 0 |
+| 10 | A commercial sale lead prefers pre-leased stock and the listing is pre-leased. The total is then capped at 100 |
 
 Price tiers do not stack. The budget is one amount: `budget_max`, or leftover
 `budget_min` when max is null. Comparisons use decimal arithmetic, inclusive
@@ -821,15 +869,19 @@ points stay 0. A project with no configuration price uses `starting_budget`.
 
 "2 BHK", "2BHK Ultima" and "2 BHK Compact" all match. "2.5 BHK" does not match
 "2 BHK". "1 RK" does not match "1 BHK". Villa and Penthouse match those words
-in the name.
+in the name. Commercial and Plot & Land do not use that smart match: the lead's
+chosen configuration is the only one scored.
 
 ```json
 { "matches": [
   { "kind": "project", "id": "…", "name": "Aurum Vista", "source": "catalog",
     "marketplace": true, "listed_by": "Aurum Developers",
     "city": "Thane", "locality": "Kolshet", "starting_budget": 14200000,
+    "category": "residential", "area_sqft": 720, "area_unit": "sqft", "area_value": "720",
+    "pre_leased": false,
+    "area": { "value": "720", "unit": "sqft", "sqft": 720, "kind": "carpet" },
     "score": 100,
-    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "score_breakdown": { "location": 30, "price": 50, "fit": 20, "configuration": 20, "area": null, "bonus": 0 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"],
     "distance_m": 800, "group": "locality", "near_shortlist": false }
@@ -840,8 +892,15 @@ in the name.
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
 title), `price`, and `listing_for` instead of `source` and `starting_budget`.
-`matched_on` lists the dimensions that scored: `locality` or `nearby`, then
-`price` and `configuration` when those points are above 0. `group` is
+`category` is the lead's category. `area` is the row that was scored: `kind`
+is `plot` for Plot & Land and `carpet` otherwise. `area_sqft`, `area_unit` and
+`area_value` repeat that area. `pre_leased` is true only for a pre-leased
+commercial sale listing. `score_breakdown.fit` is the configuration points for
+a home and the area points for commercial and Plot & Land. `configuration` is
+null outside residential. `area` is null for a home. `bonus` is the pre-leased
+points, or 0. `matched_on` lists the dimensions that scored: `locality` or
+`nearby`, then `price`, `configuration` when those points are above 0, `area`
+when the area points are 20, and `pre_leased` when the bonus was earned. `group` is
 `locality` when the row's locality is one the lead named, otherwise `nearby`.
 A pin-circle row in a named locality stays `group: "locality"` and sets
 `near_shortlist` to true. `distance_m` is metres to the hook in use: the
@@ -879,11 +938,15 @@ hours later. `generated_at` is when this list was built.
   "lead_items": [
     { "lead_id": "…", "code": "L-0004", "name": "Asha", "budget": 10000000,
       "typologies": ["2 BHK"], "localities": ["Kharghar"], "dead": false,
-      "match_count": 6, "new_count": 3, "top_score": 100 }
+      "match_count": 6, "new_count": 3, "top_score": 100,
+      "category": "residential",
+      "area": { "min": null, "max": null, "unit": null, "min_sqft": null, "max_sqft": null },
+      "prefers_pre_leased": false }
   ],
   "listing_items": [
     { "kind": "property", "id": "…", "title": "2 BHK in Kharghar",
-      "listing_for": "sale", "match_count": 4, "new_count": 1, "top_score": 80 }
+      "listing_for": "sale", "categories": ["residential"],
+      "match_count": 4, "new_count": 1, "top_score": 80 }
   ]
 } }
 ```
@@ -892,9 +955,17 @@ hours later. `generated_at` is when this list was built.
 same as the live match call). `new_count` is how many of those were not on
 the previous list. The page shows at most 30 leads and 30 listings, highest
 score first. A quiet scan still returns the rows and does not notify.
+`bin/rails matches:rebaseline` rewrites every eligible firm's digest under the
+same lock and does not notify, so a scoring change can land without pinging
+brokers. It does not turn nearby matching on.
 `listing_items[].kind` is `project` or `property`. A property row includes
 `listing_for` (`sale` or `rent`) so two listings with the same title can be
-told apart. A project row omits it. Unqualified leads are
+told apart. A project row omits it. A lead row also carries `category`,
+`area` (`min`, `max`, `unit`, `min_sqft`, `max_sqft`) and
+`prefers_pre_leased`. A listing row carries `categories`, in residential,
+commercial, land order, taken from the configurations that matched.
+Digests written before `matches:rebaseline` omit those keys.
+Unqualified leads are
 left out. Booked leads are left out. Dead leads stay, with `dead: true`.
 A row already linked to that lead or listing is left out. Sold-out and
 booked properties are left out.
@@ -1049,9 +1120,9 @@ existing lead. `details.lead_id` is included only when the caller can open it.
 
 | Mode | What is copied | What the client sends |
 | --- | --- | --- |
-| `project` | Sale. Starting budget, typologies, and locality, when the project has them | `project_id`. `property_type_id` (Under construction or Ready possession — sale leads require it). Budget, `typology_ids`, and `locality_ids` when the project lacks them |
-| `property` | This firm only. Price, typology, building locality, `listing_for` | `property_id`. Sale asks `property_type_id` (default Ready possession). Rent does not. The property is linked with `lead_properties` |
-| `requirements` | Nothing | `transaction_type` (`sale` or `rent`), `budget` (whole rupees), `typology_ids`, `locality_ids`, and `property_type_id` when sale |
+| `project` | Sale. Starting budget, the configurations of one category, and locality, when the project has them | `project_id`. Optional `category` (`residential`, `commercial`, `land`); omitted uses the project's primary category, which is residential when the project has a home. `property_type_id` (Under construction or Ready possession) for a residential or commercial sale. Plot & Land does not take one. Budget, `typology_ids`, and `locality_ids` when the project lacks them |
+| `property` | This firm only. Price, the property's category and typology, building locality, `listing_for` | `property_id`. Sale of a home or a commercial unit asks `property_type_id` (Ready possession). Rent and Plot & Land do not. The property is linked with `lead_properties` |
+| `requirements` | Nothing. The category is the category of `typology_ids` | `transaction_type` (`sale` or `rent`), `budget` (whole rupees), `typology_ids`, `locality_ids`, and `property_type_id` when the configurations are a residential or commercial sale. Optional `area_min`, `area_max`, `area_unit` and `prefers_pre_leased`, with the same rules as `POST /leads` |
 
 An agent is assigned to themselves by the existing create rules. A manager's
 lead stays unassigned. A project may be this firm's or a marketplace listing.
@@ -1183,13 +1254,24 @@ the same way, in their own list. The same name may exist once in each.
 | `promo_text`, `promo_ends_on` | string / date | optional | `promo_text` has no length limit |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
-| `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft }`. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row |
+| `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft, label, area_value, area_unit }`. `label`, `area_value` and `area_unit` are optional. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row. The same configuration can appear twice only with different labels |
 
 **Derived, never sent and never stored**: `price_band`, `area_band` (min/max
 across the typologies), per-config `rate_per_sqft`, and list/detail **`avg_psf`**
 (unweighted mean of those rates; integer; half-up once; `null` if none). A stored
 band can end up disagreeing with the rows it came from. `starting_budget` is not
 recomputed from configurations.
+
+Each typology row also returns `label`, `display_name`, `category`, `area`
+(`value`, `unit`, `sqft`, `kind`) and `needs_review`. `name` stays the
+configuration's own name. The project returns `categories` (residential, then
+commercial, then land — only those it has), `starting_prices`
+(`{ residential, commercial, land }`, null when that category has no positive
+price) and `price_summary`. One category is `From ₹X` from `starting_budget`.
+A mix is `Homes from ₹90 L · Commercial from ₹40 L`. `GET /projects?category=`
+limits the list to projects that have that category and sets
+`display_starting_price` and `price_summary` to that category only. The filter
+is a subquery, so a project is not repeated once per row.
 
 **`promo` is an object and appears only while the promo is live** —
 `{ text, ends_on }`, or absent. An expired promo is omitted entirely rather than
@@ -1207,6 +1289,7 @@ sent with a past date for you to check.
 | `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range |
 | `possession_before` | date. Not a drawer field; still applies alongside `q` |
 | `typology_ids[]` | Drawer. Repeat the key |
+| `category` | `residential` · `commercial` · `land`. Projects with at least one configuration in that category. Not a drawer field |
 | `source` | `catalog` lists the marketplace (active shared projects only). Omit it for My Projects |
 | `sort` | **`name`** (default, A–Z) · `recent` (newest first) · `relevant` (marketplace browse; see below) |
 | `page`, `per_page` | 25 per page by default |
@@ -1307,7 +1390,8 @@ Buildings: `name` (**required**), `city_id`, `locality_id`, `address`, `lat`,
 dropdown.
 
 Properties: `building_id`, `typology_id`, `listing_for` (`sale` · `rent`),
-`price`, `carpet_area_sqft`, `floor_band` (`lower` · `middle` · `higher`),
+`price`, `carpet_area_sqft`, `area_value`, `area_unit`, `details`, `pre_leased`,
+`floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`,
 `listed_on_marketplace` (boolean, default true). Turning it off hides the
 listing from other firms' matches and from `marketplace_firms`. A mapping
@@ -1315,6 +1399,20 @@ already saved stays.
 (`available` · `booked` · `sold_out`). Any role may create. List and detail
 include `created_by: { id, name }` (or `null` on older rows) — show it when
 `permissions.manage_projects` is true.
+
+`carpet_area_sqft` is the area in square feet (carpet for a home or a
+commercial unit, plot area converted to sq ft for land). Send `area_value`
+and `area_unit` for guntha, acre and the rest. When only `carpet_area_sqft`
+is sent, it is stored as that many sq ft. A home or commercial unit must use
+`sqft`. Plot & Land is sale only. Floor band is cleared for villa, row house,
+plots, and commercial units other than office. `pre_leased` is kept only on a
+commercial sale, and then `details.lease_monthly_rent` is required.
+
+List and detail add `category`, `area` (`value`, `unit`, `sqft`, `kind`),
+`details`, `pre_leased`, `lease` (or `null`) and `rate_per_unit`
+(`{ amount, unit }`). `carpet_area_sqft` and `rate_per_sqft` stay.
+`GET /properties` also takes `category`, `area_min` and `area_max`.
+`carpet_min` and `carpet_max` remain aliases of that area filter.
 
 `POST /builders` is superadmin only. `{ name, website }`. A name that already
 exists on the **master** list is `422 invalid` — pick the master row instead of
@@ -1339,6 +1437,7 @@ carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 
 List and detail also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).
+A Plot & Land sale reads `Sale`.
 The marketplace list includes `code` as well, and still omits private fields.
 
 > **`confidential_note` is returned only by `GET /properties/:id`.** It is absent
@@ -1358,8 +1457,8 @@ Anything else is `422 not_marketplace`. `url` is the turbo microsite
 the same broker and project. A double tap returns the same token.
 `503 turbo_origin_missing` when `realtoriq.turbo_public_origin` is not set. An
 enquiry on that link creates a sale lead for the broker, with lead source
-`Builder Microsite`. A live lead for the same mobile is not duplicated; its
-source is left as it was. The owner is emailed from
+`Builder Microsite`, in the project's primary category. An open lead for the
+same mobile, sale and category is not duplicated; its source is left as it was. The owner is emailed from
 `RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>` when they have an email, a
 follow-up is recorded, and the owner gets a `marketplace_enquiry` notification.
 A dead lead does not block a new one. The same `enquiry_id` again is `200` and
@@ -1399,9 +1498,12 @@ group. A high-scoring dead lead can sit above a live one inside the same group.
   { "kind": "lead", "id": "…", "code": "L-0001", "name": "Meera Shah",
     "mobile": "+919820144210",
     "budget": 16000000, "typologies": ["2 BHK"], "localities": ["Kolshet"],
+    "category": "residential", "area_sqft": 720, "area_unit": "sqft", "area_value": "720",
+    "pre_leased": false,
+    "area": { "value": "720", "unit": "sqft", "sqft": 720, "kind": "carpet" },
     "status": { "code": "dead", "name": "Dead", "is_dead": true, "is_booked": false },
     "score": 100,
-    "score_breakdown": { "location": 30, "price": 50, "configuration": 20 },
+    "score_breakdown": { "location": 30, "price": 50, "fit": 20, "configuration": 20, "area": null, "bonus": 0 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"],
     "distance_m": null, "group": "locality", "near_shortlist": false }
@@ -1438,7 +1540,10 @@ Match a phone number on that id. Firm names are not unique.
 `code` is that firm's own lead code, so the other broker can find the client.
 `localities` is the shared locality. `configurations` is that lead's
 typology names. There is no lead id, name, phone, budget, or score.
-An under-construction lead is not included on a sale listing. An unqualified
+An under-construction home or commercial lead is not included on a sale listing.
+A plot lead is included: Plot & Land does not ask possession. The lead's
+category must match the listing, and commercial and Plot & Land also require
+the configuration the lead chose. An unqualified
 lead is not included. A booked lead is not included. A dead lead still is. At most 50.
 Until nearby matching is on, highest score first, then firm name, then lead code.
 After that, the pin, named-locality, and neighbor groups come first, and firm
@@ -1466,17 +1571,20 @@ case are ignored, so `2bhk` finds `2 BHK`. The building name and the
 description are not searched. A query that is only punctuation returns
 no rows.
 
-Each row is the safe card: `id`, `title`, `listing_for`, `price`,
-`typology`, `locality`, `city`, and `firm: { name, mobile, whatsapp }`.
-There is no carpet, photo, building, address, floor, description, or
+Each row is the safe card: `id`, `code`, `title`, `listing_for`, `price`,
+`typology`, `locality`, `city`, `category`, `pre_leased`, and
+`firm: { name, mobile, whatsapp }`.
+There is no area, carpet, photo, building, address, floor, description, or
 confidential note. Open one row with `GET /properties/:id/marketplace`.
 
 ### `GET /properties/:id/marketplace`
 
 Another firm's view of a shared, available listing. The owning firm receives
 404 and uses `GET /properties/:id`. The body is the title, configuration,
-locality, city, price, carpet, and the firm's name, mobile, and WhatsApp.
-There is no building name, address, pin, floor, description, photos, or
+`category`, locality, city, price, carpet, `area`, `pre_leased`, `lease`
+(rent, lock-in, tenant, and yield; null when the listing is not pre-leased),
+and the firm's name, mobile, and WhatsApp.
+There is no note, building name, address, pin, floor, description, photos, or
 confidential note. A listing that is not shared returns 404.
 
 Mapping that property (`POST /leads/:id/properties`) is allowed for any lead
@@ -1587,7 +1695,7 @@ greater than 0 and at most 100; omitted leaves the stored percent alone, blank
 clears it), and `brokerage_ladder: { url, checksum, filename }` (copied;
 omitted leaves the image alone). Detail shows all three on a
 marketplace project. `shareable` still omits the percent and the ladder. The
-builder is `developer_name`, not `company_code`.
+builder is `developer_name`, not `company_code`. Each `unit_types` entry is stored as its own configuration row: `label`, `typology_name`, `typology_category` (`residential`, `commercial` or `land`), `typology_slug`, `price_min` (whole rupees), `area_min` and `area_unit` (`sqft` or `sqm`). A home or office sent in sqm is stored in sq ft, converted with 10.7639. A plot keeps the typed sqm.
 
 ### `shareable`
 
@@ -1660,6 +1768,7 @@ by rupees from what the reports sum.
 | `use_existing` | boolean | optional | Catalog booking name clash — reuse the existing My Projects row |
 | `new_name` | string | optional | Catalog booking name clash — copy under this name instead |
 | `carpet_area_sqft`, `other_details` | | optional | |
+| `area_kind` | | response | `carpet`, or `plot` when the lead's category is land. Not a write field |
 | `registration_done_on` | date | optional | |
 | `client_paid_percent` | integer | optional | 0–100 |
 
@@ -2179,8 +2288,8 @@ The broker app uses:
 | DELETE | `/facebook/pages/:id/subscribe` | Unsubscribes it at Meta, then here |
 | POST | `/facebook/pages/:id/sync_forms` | Counts: `mapped`, `available` |
 | POST | `/facebook/pages/:id/forms` | `{ meta_form_id }`. 422 `already_mapped` if another firm owns it |
-| GET | `/facebook/forms/:id` | Questions, mappings, listing, sample lead. `ui_field_mappings` is what the editor shows, including suggestions |
-| PATCH | `/facebook/forms/:id` | 422 `invalid_form` with an active form and no listing, an unusable listing, mappings that skip Name or Mobile, or a newly chosen lead source that is turned off |
+| GET | `/facebook/forms/:id` | Questions, mappings, listing, sample lead. `ui_field_mappings` is what the editor shows, including suggestions. `category` is the stored category or null. `project_categories` is the mapped project's categories in Residential, Commercial, Plot & Land order, or `[]` |
+| PATCH | `/facebook/forms/:id` | Optional `category` (`residential`, `commercial`, `land`). A blank value clears it. Remapping to a project that does not offer the stored category clears it. 422 `invalid_form` with an active form and no listing, an unusable listing, mappings that skip Name or Mobile, a newly chosen lead source that is turned off, or a mixed project saved with no category (`Category is required when the project has more than one category`). A category the project does not offer is `Category must be one of this project's categories` when it was not cleared by the remap. Sync and import do not run this category check |
 | GET | `/facebook/imports?page=` | 20 per page, newest first |
 | POST | `/facebook/imports/:id/retry` | Failed or dead only. Resets the retry count and queues the lead |
 | POST | `/facebook/imports/retry_failed` | The same for every failed or dead import. `{ retried }` |
@@ -2231,7 +2340,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
-| `duplicate_lead` | 422 | That mobile already has a live lead of this transaction type. Also when reviving a dead lead, changing status through a follow-up, or marking a prospect interested. `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
+| `duplicate_lead` | 422 | That mobile already has an open lead of this transaction type and category. Also when reviving a dead lead, changing status through a follow-up, changing a lead onto a taken category, or marking a prospect interested. The message names the type and the category, for example "A sale Commercial lead already exists for this number." `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, `details.category`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
 | `notes_required` | 422 | A prospect follow-up needs a note |
 | `connected_required` | 422 | A prospect follow-up must say whether the call connected. A missing `connected` is not false |
 | `ncd_required` | 422 | A missed prospect call that stays on the list needs a next dial time |

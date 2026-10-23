@@ -4,10 +4,10 @@ module Admin
   module Masters
     class PropertyTypesController < BaseController
       self.master_model = PropertyType
-      self.master_label = "Property type"
+      self.master_label = "Possession option"
       self.master_permitted = %i[name code sort_order active]
       self.master_columns = [
-        { key: :name, label: "Property type", type: :text, required: true },
+        { key: :name, label: "Possession option", type: :text, required: true },
         { key: :sort_order, label: "Order", type: :number },
         { key: :active, label: "Active", type: :boolean }
       ]

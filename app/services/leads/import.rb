@@ -21,11 +21,13 @@ module Leads
       [ :alt_mobile, "Alt mobile" ],
       [ :email, "Email" ],
       [ :transaction_type, "Sale or rent" ],
-      [ :property_type, "Property type" ],
+      [ :property_type, "Possession" ],
       [ :budget, "Budget" ],
       [ :configurations, "Configurations" ],
+      [ :area, "Area" ],
+      [ :prefers_pre_leased, "Prefers pre-leased" ],
       [ :location, "Location" ],
-      [ :possession, "Possession" ],
+      [ :possession, "Possession up to" ],
       [ :source, "Source" ],
       [ :source_detail, "Source detail" ],
       [ :notes, "Notes" ],
@@ -37,10 +39,18 @@ module Leads
       "phone" => :mobile,
       "alt phone" => :alt_mobile,
       "transaction type" => :transaction_type,
+      "property type" => :property_type,
       "configuration" => :configurations,
       "locality" => :location,
       "project code" => :project_codes,
       "property code" => :property_codes
+    }.freeze
+
+    AREA_UNITS = {
+      "sqft" => "sqft", "sq ft" => "sqft",
+      "sqyd" => "sqyd", "sq yd" => "sqyd",
+      "sqm" => "sqm", "sq m" => "sqm",
+      "guntha" => "guntha", "acre" => "acre", "hectare" => "hectare"
     }.freeze
 
     Result = Struct.new(:file_error, :created_count, :failed_count, :results, keyword_init: true) do
@@ -53,13 +63,15 @@ module Leads
     Rejection = Struct.new(:message)
 
     def self.template
+      sample = {
+        name: "Example lead", mobile: "9000000000", transaction_type: "sale",
+        property_type: "Under construction", budget: "12000000",
+        configurations: "2 BHK", location: "Kharghar, Mumbai",
+        possession: "31/12/2027", source: "Referral", notes: "Higher floor"
+      }
       CSV.generate do |csv|
         csv << HEADERS.map(&:last)
-        csv << [
-          "Example lead", "9000000000", nil, nil, "sale", "Under construction",
-          "12000000", "2 BHK", "Kharghar, Mumbai", "31/12/2027", "Referral",
-          nil, "Higher floor", nil, nil
-        ]
+        csv << HEADERS.map { |key, _name| sample[key] }
       end
     end
 
@@ -153,17 +165,29 @@ module Leads
       nil
     end
 
-    def header_key(header)
-      label = header.to_s.sub(/\A\uFEFF/, "").downcase.gsub(/[*]+/, "").gsub(/[_\s]+/, " ").strip
-      return if label.empty?
+    def normalize_header(header)
+      header.to_s.sub(/\A\uFEFF/, "").downcase.gsub(/[*]+/, "").gsub(/[_\s]+/, " ").strip
+    end
 
-      HEADERS.to_h { |key, name| [ name.downcase, key ] }[label] || HEADER_ALIASES[label]
+    # "Possession" is the type column on a new sheet. An old sheet still calls
+    # the date column "Possession" and the type column "Property type".
+    def header_key(header, labels: nil)
+      label = normalize_header(header)
+      return if label.empty?
+      return :possession if label == "possession" && Array(labels).include?("property type")
+
+      header_names[label] || HEADER_ALIASES[label]
+    end
+
+    def header_names
+      @header_names ||= HEADERS.to_h { |key, name| [ name.downcase, key ] }
     end
 
     def extract(csv_row)
+      labels = csv_row.headers.map { |header| normalize_header(header) }
       fields = HEADERS.to_h { |key, _name| [ key, nil ] }
       csv_row.headers.each do |header|
-        key = header_key(header)
+        key = header_key(header, labels:)
         fields[key] = csv_row[header] if key
       end
       fields
@@ -224,17 +248,8 @@ module Leads
       budget = parse_budget(fields[:budget])
       return budget.message if budget.is_a?(Rejection)
 
-      property_type = parse_property_type(fields[:property_type], type)
-      return property_type.message if property_type.is_a?(Rejection)
-
       email = parse_email(fields[:email])
       return email.message if email.is_a?(Rejection)
-
-      possession = parse_possession(fields[:possession])
-      return possession.message if possession.is_a?(Rejection)
-
-      source = parse_source(fields[:source])
-      return source.message if source.is_a?(Rejection)
 
       projects = resolve_codes(fields[:project_codes], :project)
       return projects.message if projects.is_a?(Rejection)
@@ -248,6 +263,22 @@ module Leads
       typologies = resolve_typologies(fields[:configurations], projects, properties)
       return typologies.message if typologies.is_a?(Rejection)
 
+      category = typologies[:category]
+      property_type = parse_property_type(fields[:property_type], type, category)
+      return property_type.message if property_type.is_a?(Rejection)
+
+      area = parse_area(fields[:area], category)
+      return area.message if area.is_a?(Rejection)
+
+      pre_leased = parse_pre_leased(fields[:prefers_pre_leased])
+      return pre_leased.message if pre_leased.is_a?(Rejection)
+
+      possession = parse_possession(fields[:possession])
+      return possession.message if possession.is_a?(Rejection)
+
+      source = parse_source(fields[:source])
+      return source.message if source.is_a?(Rejection)
+
       localities = resolve_localities(fields[:location], projects, properties)
       return localities.message if localities.is_a?(Rejection)
 
@@ -255,7 +286,10 @@ module Leads
         name: fields[:name].to_s.strip.presence,
         mobile:, alt_mobile:, email:, transaction_type: type, property_type:, budget:,
         possession:, source:, source_detail: fields[:source_detail].to_s.strip.presence,
-        notes: fields[:notes].to_s.strip.presence, projects:, properties:, typologies:, localities:
+        notes: fields[:notes].to_s.strip.presence, projects:, properties:,
+        typologies: typologies[:ids], category:, localities:,
+        area_min: area&.dig(:min), area_max: area&.dig(:max), area_unit: area&.dig(:unit),
+        prefers_pre_leased: pre_leased
       }
     end
 
@@ -296,21 +330,54 @@ module Leads
       amount
     end
 
-    def parse_property_type(raw, type)
+    def parse_property_type(raw, type, category)
       text = raw.to_s.strip
+      return reject("Plot & Land is sale only.") if category == "land" && type == "rent"
+      if category == "land"
+        return reject("Leave Possession blank for Plot & Land.") if text.present?
+
+        return nil
+      end
       if type == "rent"
-        return reject("Leave Property type blank on a rent row.") if text.present?
+        return reject("Leave Possession blank on a rent row.") if text.present?
 
         return nil
       end
 
       names = property_types.map(&:name)
-      return reject("Property type is required. Use #{names.join(' or ')}.") if text.empty?
+      return reject("Possession is required. Use #{names.join(' or ')}.") if text.empty?
 
       found = property_types.find { |row| row.name.casecmp?(text) }
       return found if found
 
-      reject("Property type must be #{names.join(' or ')}.")
+      reject("Possession must be #{names.join(' or ')}.")
+    end
+
+    def parse_area(raw, category)
+      text = raw.to_s.strip.gsub(/\s+/, " ")
+      return nil if text.empty?
+      return reject("Leave Area blank for a residential lead.") if category == "residential"
+
+      match = text.match(/\A(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?\s+(.+)\z/)
+      unit = match && AREA_UNITS[match[3].downcase]
+      return reject("Area must look like 800-1200 sqft, 2-4 guntha or 3 acre.") unless unit
+      return reject("Area for a commercial lead is in sq ft.") if category == "commercial" && unit != "sqft"
+
+      min = BigDecimal(match[1])
+      max = match[2].present? ? BigDecimal(match[2]) : min
+      return reject("Area must be greater than 0.") unless min.positive? && max.positive?
+      return reject("Area minimum must be less than or equal to the maximum.") if min > max
+
+      { min:, max:, unit: }
+    end
+
+    def parse_pre_leased(raw)
+      text = raw.to_s.strip.downcase
+      return false if text.empty?
+      return true if text == "yes"
+      return false if text == "no"
+
+      reject("Prefers pre-leased must be yes or no.")
     end
 
     def parse_email(raw)
@@ -539,22 +606,25 @@ module Leads
 
     def resolve_typologies(raw, projects, properties)
       text = raw.to_s.strip
-      if text.empty?
-        ids = projects.flat_map(&:typology_ids) + properties.map(&:typology_id)
-        ids = ids.compact.uniq
-        return ids if ids.any?
+      ids = if text.empty?
+        (projects.flat_map(&:typology_ids) + properties.map(&:typology_id)).compact.uniq
+      else
+        named = []
+        text.split(",").map(&:strip).compact_blank.each do |name|
+          found = typologies.find { |row| squish(row.name) == squish(name) }
+          return reject("Unknown configuration #{name}. Use one of: #{typologies.map(&:name).join(', ')}.") unless found
 
-        return reject("Add a configuration, such as 2 BHK.")
+          named << found.id
+        end
+        named.uniq
       end
+      return reject("Add a configuration, such as 2 BHK.") if ids.empty?
 
-      ids = []
-      text.split(",").map(&:strip).compact_blank.each do |name|
-        found = typologies.find { |row| squish(row.name) == squish(name) }
-        return reject("Unknown configuration #{name}. Use one of: #{typologies.map(&:name).join(', ')}.") unless found
+      rows = Typology.where(id: ids).to_a
+      categories = rows.map(&:category).uniq
+      return reject("Configurations must be from one category.") if categories.many?
 
-        ids << found.id
-      end
-      ids.uniq
+      { ids:, category: categories.first }
     end
 
     def squish(value)
@@ -637,20 +707,28 @@ module Leads
     end
 
     def lead_attributes(prepared)
-      {
+      attrs = {
         name: prepared[:name],
         mobile: prepared[:mobile],
         alt_mobile: prepared[:alt_mobile],
         email: prepared[:email],
         transaction_type: prepared[:transaction_type],
+        category: prepared[:category],
         property_type_id: prepared[:property_type]&.id,
         budget: prepared[:budget],
         possession_by: prepared[:possession],
         lead_source_id: prepared[:source]&.id,
         source_detail: prepared[:source_detail],
         notes: prepared[:notes],
-        assigned_user_id: actor.id
+        assigned_user_id: actor.id,
+        prefers_pre_leased: prepared[:prefers_pre_leased]
       }
+      if prepared[:area_min]
+        attrs[:area_min_value] = prepared[:area_min]
+        attrs[:area_max_value] = prepared[:area_max]
+        attrs[:area_unit] = prepared[:area_unit]
+      end
+      attrs
     end
 
     def link(lead, prepared)
@@ -671,12 +749,13 @@ module Leads
     end
 
     def duplicate_message(result, type)
+      label = Typology.label_for(result.lead&.category) || "Residential"
       existing_id = result.error_details&.dig(:lead_id) || result.error_details&.dig("lead_id")
       existing = existing_id && Lead.visible_to(actor).find_by(id: existing_id)
       if existing
-        "A live #{type} lead already exists for this number (#{existing.code})."
+        "A #{type} #{label} lead already exists for this number (#{existing.code})."
       else
-        "A live #{type} lead already exists for this number."
+        "A #{type} #{label} lead already exists for this number."
       end
     end
 

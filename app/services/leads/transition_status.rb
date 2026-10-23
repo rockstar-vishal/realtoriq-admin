@@ -7,8 +7,6 @@ module Leads
   # Nothing should set lead.lead_status directly — a bare column update leaves
   # the dead-leads report unable to say when the lead died.
   class TransitionStatus
-    DUPLICATE_INDEX = "index_leads_on_firm_type_and_open_identity"
-
     Result = Struct.new(:ok?, :lead, :error_code, :error_message, :error_details, keyword_init: true)
 
     def initialize(lead:, to_status:, actor:, reason: nil, note: nil, booked_at: nil)
@@ -47,7 +45,7 @@ module Leads
     rescue ActiveRecord::RecordInvalid => e
       failure("invalid", e.record.errors.full_messages.to_sentence)
     rescue ActiveRecord::RecordNotUnique => e
-      raise unless e.message.include?(DUPLICATE_INDEX)
+      raise unless Lead.duplicate_index_violation?(e)
 
       duplicate_failure(lead.duplicate_on_mobile_and_type)
     end
@@ -96,11 +94,10 @@ module Leads
     end
 
     def duplicate_failure(existing)
-      type = lead.transaction_type
       failure(
         "duplicate_lead",
-        "A live #{type} lead already exists for this number.",
-        lead_id: existing&.id, transaction_type: type
+        lead.open_duplicate_message,
+        **(lead.open_duplicate_details(existing) || {})
       )
     end
 

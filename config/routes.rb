@@ -86,7 +86,15 @@ Rails.application.routes.draw do
       # Builders are addressed by id: firm-owned ones can share a slug with the
       # global list, so a slug no longer identifies a single row.
       resources :builders, except: %i[show]
-      resources :typologies, except: %i[show]
+      resources :typologies, except: %i[show] do
+        collection do
+          get :review
+          post :remap
+        end
+        member do
+          post :merge
+        end
+      end
       resources :lead_sources, except: %i[show]
       resources :lead_statuses, except: %i[show]
       resources :property_types, except: %i[show]

@@ -111,7 +111,7 @@ RSpec.describe Leads::Import do
     result = import([ sale(property_type: nil, project_codes: project.code) ])
 
     expect(result.created_count).to eq(0)
-    expect(result.results.first[:error]).to include("Property type is required")
+    expect(result.results.first[:error]).to include("Possession is required")
   end
 
   it "names a duplicate the caller can see, and hides the code when they cannot" do
@@ -174,6 +174,71 @@ RSpec.describe Leads::Import do
     expect(result.created_count).to eq(0)
     expect(result.results.first[:error]).to include("Unknown project code")
     expect(result.results.first[:error]).not_to include(secret.name)
+  end
+
+  it "reads Area and Prefers pre-leased, and rejects a mix of categories" do
+    shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+    plot = create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
+
+    commercial = import([
+      sale(mobile: "9820155101", configurations: "Shop", area: "800-1200 sqft", prefers_pre_leased: "yes")
+    ])
+    residential = import([ sale(mobile: "9820155102", area: "800-1200 sqft") ])
+    land = import([
+      sale(mobile: "9820155103", configurations: "Residential plot", property_type: nil,
+        area: "2-4 guntha", prefers_pre_leased: "yes")
+    ])
+    mixed = import([ sale(mobile: "9820155104", configurations: "2 BHK, Shop") ])
+    occupied = import([ sale(mobile: "9820155101", configurations: "Shop") ])
+
+    shop_lead = Lead.across_firms.find_by!(mobile: "+919820155101")
+    plot_lead = Lead.across_firms.find_by!(mobile: "+919820155103")
+    expect(commercial.created_count).to eq(1)
+    expect(shop_lead.category).to eq("commercial")
+    expect(shop_lead.typologies).to contain_exactly(shop)
+    expect(shop_lead.area_min_sqft).to eq(800)
+    expect(shop_lead.area_max_sqft).to eq(1_200)
+    expect(shop_lead.prefers_pre_leased).to be(true)
+    expect(residential.results.first[:error]).to include("Leave Area blank for a residential lead")
+    expect(land.created_count).to eq(1)
+    expect(plot_lead.category).to eq("land")
+    expect(plot_lead.property_type).to be_nil
+    expect(plot_lead.area_unit).to eq("guntha")
+    expect(plot_lead.area_min_value).to eq(2)
+    expect(plot_lead.area_max_value).to eq(4)
+    expect(plot_lead.prefers_pre_leased).to be(false)
+    expect(plot_lead.typologies).to contain_exactly(plot)
+    expect(mixed.results.first[:error]).to eq("Configurations must be from one category.")
+    expect(occupied.results.first[:error]).to eq(
+      "A sale Commercial lead already exists for this number (#{shop_lead.code})."
+    )
+  end
+
+  it "keeps Property type as an alias when the sheet still has a Possession date" do
+    headers = [ "Name", "Mobile", "Sale or rent", "Property type", "Budget", "Configurations", "Location", "Possession" ]
+    row = [ "Rhea Kapoor", "9820155111", "sale", "Under construction", "12000000", "2 BHK", "Kharghar, Mumbai", "31/12/2027" ]
+    csv = CSV.generate { |sheet| sheet << headers; sheet << row }
+
+    result = described_class.new(firm:, actor:, io: csv).call
+
+    lead = Lead.across_firms.find(result.results.first[:lead_id])
+    expect(lead.property_type.name).to eq("Under construction")
+    expect(lead.possession_by).to eq(Date.new(2027, 12, 31))
+  end
+
+  it "rejects a possession type on a plot and requires one on a home" do
+    create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
+
+    filled = import([ sale(configurations: "Residential plot", property_type: "Under construction") ])
+    blank = import([ sale(mobile: "9820155121", property_type: nil) ])
+    rented = import([
+      sale(mobile: "9820155122", configurations: "Residential plot", transaction_type: "rent",
+        property_type: nil, budget: "45000")
+    ])
+
+    expect(filled.results.first[:error]).to eq("Leave Possession blank for Plot & Land.")
+    expect(blank.results.first[:error]).to include("Possession is required")
+    expect(rented.results.first[:error]).to eq("Plot & Land is sale only.")
   end
 
   it "rejects a workbook and a semicolon file before creating anything" do

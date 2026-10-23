@@ -66,7 +66,8 @@ module Prospects
       return failure(project_message(project)) unless project.is_a?(Project)
 
       {
-        lead: base_lead("sale", lead[:property_type_id], budget: blankable(lead[:budget])),
+        lead: base_lead("sale", lead[:property_type_id], budget: blankable(lead[:budget]))
+          .merge(category: lead[:category].presence || project.primary_category),
         typology_ids: array_ids(:typology_ids),
         locality_ids: array_ids(:locality_ids),
         copy_project: true,
@@ -80,9 +81,10 @@ module Prospects
       return failure(property_message(property)) unless property.is_a?(Property)
 
       locality_id = property.building&.locality_id
-      type_id = property.for_sale? ? lead[:property_type_id] : nil
+      type_id = property.for_sale? && !property.typology&.land? ? lead[:property_type_id] : nil
       {
-        lead: base_lead(property.listing_for, type_id, budget: property.price),
+        lead: base_lead(property.listing_for, type_id, budget: property.price)
+          .merge(category: property.typology&.category),
         typology_ids: [ property.typology_id ].compact,
         locality_ids: [ locality_id ].compact,
         copy_project: false,
@@ -119,6 +121,13 @@ module Prospects
       }
       payload[:property_type_id] = property_type_id if property_type_id.present?
       payload[:budget] = budget if budget.present?
+      payload[:category] = lead[:category] if lead[:category].present?
+      payload[:area_unit] = lead[:area_unit] if lead[:area_unit].present?
+      payload[:area_min_value] = lead[:area_min] if lead.key?(:area_min)
+      payload[:area_max_value] = lead[:area_max] if lead.key?(:area_max)
+      if lead.key?(:prefers_pre_leased)
+        payload[:prefers_pre_leased] = ActiveModel::Type::Boolean.new.cast(lead[:prefers_pre_leased])
+      end
       payload
     end
 

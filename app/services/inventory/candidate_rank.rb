@@ -11,15 +11,16 @@ module Inventory
       new(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:).decide
     end
 
-    def self.sort_key(ranking:, decision:, score:, name:)
+    def self.sort_key(ranking:, decision:, score:, name:, pre_leased_first: false)
       label = name.to_s.downcase
-      return [ -score, label ] unless ranking
+      pl = pre_leased_first ? 0 : 1
+      return [ -score, pl, label ] unless ranking
 
       distance = decision.distance_m || 1_000_000_000
       case decision.band
-      when :pin then [ 0, distance, -score, label ]
-      when :preferred then [ 1, 0, -score, distance, label ]
-      else [ 1, 1, distance, -score, label ]
+      when :pin then [ 0, distance, -score, pl, label ]
+      when :preferred then [ 1, 0, -score, pl, distance, label ]
+      else [ 1, 1, distance, -score, pl, label ]
       end
     end
 

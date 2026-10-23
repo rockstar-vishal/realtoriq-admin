@@ -18,7 +18,6 @@ module Leads
                         keyword_init: true)
 
     MAX_CODE_ATTEMPTS = 5
-    DUPLICATE_INDEX = "index_leads_on_firm_type_and_open_identity"
 
     def initialize(firm:, actor:, attributes:, typology_ids: [],
                    copy_project_typologies: false, locality_ids: [],
@@ -42,6 +41,11 @@ module Leads
 
       lead = build(status)
       apply_project_defaults(lead)
+      # Category is part of the duplicate key. It has to be known before the
+      # check, and before configurations are saved — a mixed project's rows
+      # repeat ids, and only this category's ids may be copied.
+      rejected = assign_category(lead)
+      return rejected if rejected
       return duplicate_result(lead) if lead.duplicate_on_mobile_and_type
 
       attempts = 0
@@ -64,7 +68,7 @@ module Leads
         return Result.new(ok?: false, lead:, error_code: e.result.error_code,
                           error_message: e.result.error_message, errors: e.result.errors)
       rescue ActiveRecord::RecordNotUnique => e
-        return duplicate_result(lead) if e.message.include?(DUPLICATE_INDEX)
+        return duplicate_result(lead) if Lead.duplicate_index_violation?(e)
 
         attempts += 1
         raise if attempts >= MAX_CODE_ATTEMPTS
@@ -175,10 +179,43 @@ module Leads
       Result.new(ok?: false, lead:, errors: lead.errors)
     end
 
+    def assign_category(lead)
+      if typology_ids.present?
+        categories = Typology.where(id: typology_ids).distinct.pluck(:category)
+        return category_rejected if categories.many?
+
+        if categories.one?
+          return category_rejected if requested_category && requested_category != categories.first
+
+          lead.category = categories.first
+        end
+      elsif copy_project_typologies && source_project
+        lead.category = requested_category || source_project.primary_category || lead.category
+      end
+      nil
+    end
+
+    def requested_category
+      value = attributes[:category] || attributes["category"]
+      value.to_s.presence
+    end
+
+    def category_rejected
+      lead = Lead.new
+      lead.errors.add(:base, "Pick configurations from one category.")
+      Result.new(
+        ok?: false, lead:, errors: lead.errors,
+        error_code: "invalid",
+        error_message: "Pick configurations from one category."
+      )
+    end
+
     def assign_typologies(lead)
       ids = typology_ids
-      ids = source_project.typology_ids if ids.empty? && copy_project_typologies && source_project
-      ids.each { |id| lead.lead_typologies.create!(typology_id: id) }
+      if ids.empty? && copy_project_typologies && source_project
+        ids = source_project.typology_ids_for(lead.category)
+      end
+      ids.uniq.each { |id| lead.lead_typologies.create!(typology_id: id) }
     end
 
     def assign_localities(lead)
@@ -226,8 +263,8 @@ module Leads
       Result.new(
         ok?: false, lead:,
         error_code: "duplicate_lead",
-        error_message: "A #{lead.transaction_type} lead already exists for this number.",
-        error_details: existing && { lead_id: existing.id, transaction_type: lead.transaction_type }
+        error_message: lead.open_duplicate_message,
+        error_details: lead.open_duplicate_details(existing)
       )
     end
 

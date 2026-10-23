@@ -34,6 +34,11 @@ module Inbound
       return failure(typology) if typology.is_a?(String)
 
       type = resolve_type
+      if typology.land?
+        return failure("Plot & Land is sale only.") if type == "rent"
+
+        type = "sale"
+      end
       return failure("Say whether this is a sale or a rent.") if type.nil?
 
       Result.new(ok?: true, phone:, budget:, city:, locality:, typology:, transaction_type: type)

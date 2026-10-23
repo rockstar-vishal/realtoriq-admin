@@ -14,7 +14,8 @@ module MastersHelper
       associated = record.public_send(column[:key].to_s.delete_suffix("_id"))
       blank_dash(associated&.public_send(column[:display] || :name))
     when :select
-      blank_dash(value&.humanize)
+      chosen = Array(column[:options]).find { |option| option.is_a?(Array) && option.last == value }
+      blank_dash(chosen ? chosen.first : value&.humanize)
     else
       blank_dash(value)
     end

@@ -21,6 +21,12 @@ module Api
             price: property.price,
             carpet_area_sqft: property.carpet_area_sqft,
             rate_per_sqft: property.rate_per_sqft,
+            rate_per_unit: property.rate_per_unit,
+            category: property.typology&.category,
+            area: property.area_payload,
+            details: property.details,
+            pre_leased: property.pre_leased,
+            lease: property.lease_payload,
             floor_band: property.floor_band,
             available_from: property.available_from,
             typology: property.typology && { id: property.typology_id, name: property.typology.name },
@@ -30,7 +36,7 @@ module Api
             created_by: named_user(property.created_by_user),
             created_at: property.created_at,
             listed_on_marketplace: property.listed_on_marketplace,
-            match_label: property.for_rent? ? "Rent" : "Sale · Ready possession"
+            match_label: match_label(property)
             # confidential_note is deliberately absent.
           }
         end
@@ -47,6 +53,8 @@ module Api
             typology: typology_ref(property),
             locality: card[:locality],
             city: card[:city],
+            category: property.typology&.category,
+            pre_leased: property.pre_leased,
             firm: firm_lines(card[:firm_name], channels)
           }
         end
@@ -54,7 +62,11 @@ module Api
         # Another firm. No note, address, pin, photos, floor, or description.
         def marketplace(property)
           channels = ContactChannel.unscoped.where(firm_id: property.firm_id).to_a
-          marketplace_list(property, channels).merge(carpet_area_sqft: property.carpet_area_sqft)
+          marketplace_list(property, channels).merge(
+            carpet_area_sqft: property.carpet_area_sqft,
+            area: property.area_payload,
+            lease: property.lease_payload
+          )
         end
 
         def detail(property)
@@ -97,6 +109,13 @@ module Api
         end
 
         private
+
+        def match_label(property)
+          return "Rent" if property.for_rent?
+          return "Sale" if property.typology&.category == "land"
+
+          "Sale · Ready possession"
+        end
 
         def typology_ref(property)
           property.typology && { id: property.typology_id, name: property.typology.name }

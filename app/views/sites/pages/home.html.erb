@@ -130,6 +130,21 @@
 </div>
 
 <main class="container">
+  <% categories = site_categories(@projects, @properties) %>
+  <% if categories.size > 1 %>
+    <div class="category-tabs">
+      <input type="radio" name="site-category" id="site-cat-all" checked>
+      <% categories.each do |code| %>
+        <input type="radio" name="site-category" id="site-cat-<%= code %>">
+      <% end %>
+      <div class="cat-bar" role="tablist" aria-label="Category">
+        <label for="site-cat-all">All</label>
+        <% categories.each do |code| %>
+          <label for="site-cat-<%= code %>"><%= site_category_label(code) %></label>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
   <section class="block" id="projects">
     <div class="block-head"><h2>Projects</h2></div>
     <% if @projects.empty? %>
@@ -137,7 +152,7 @@
     <% else %>
       <div class="cards cards-projects">
         <% @projects.each do |project| %>
-          <a class="card<%= ' has-media' if project[:cover_url] %>" href="<%= project[:path] %>">
+          <a class="card<%= ' has-media' if project[:cover_url] %> <%= Array(project[:categories]).map { |code| "cat-#{code}" }.join(' ') %>" href="<%= project[:path] %>">
             <% if project[:cover_url] %>
               <div class="card-media">
                 <%= image_tag project[:cover_url], alt: "", loading: "lazy" %>
@@ -150,7 +165,9 @@
               <% if !project[:cover_url] && project[:possession_display].present? %>
                 <span class="badge">Possession <%= project[:possession_display] %></span>
               <% end %>
-              <% if project[:starting_budget] %>
+              <% if project[:categories].to_a.size > 1 && project[:price_summary] %>
+                <p class="card-price"><%= project[:price_summary] %></p>
+              <% elsif project[:starting_budget] %>
                 <p class="card-price"><span class="label">Starting</span> <%= inr(project[:starting_budget]) %></p>
               <% end %>
               <h3 class="card-title"><%= project[:name] %></h3>
@@ -176,7 +193,7 @@
         <div class="cards cards-properties">
           <% group.each do |property| %>
             <% rent = property[:listing_for] == "rent" %>
-            <a class="card<%= ' has-media' if property[:cover_url] %>" href="<%= property[:path] %>">
+            <a class="card<%= ' has-media' if property[:cover_url] %> cat-<%= property[:category] %>" href="<%= property[:path] %>">
               <% if property[:cover_url] %>
                 <div class="card-media">
                   <%= image_tag property[:cover_url], alt: "", loading: "lazy" %>

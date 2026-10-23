@@ -402,7 +402,7 @@
                 "reference"
               ]
             },
-            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
+            "description": "Every dropdown the app needs, in one request: cities, localities, builders, typologies, lead sources, lead statuses, property types, plus the fixed transaction-type and floor-band enums. `typologies[].details` lists each configuration's fields (`key`, `label`, `type`, `options` with `code` and `label`, `min`, `max`, `unit`). A configuration with no spec has an empty `details` array. `pre_leased_details[]` uses the same shape, so tenant options are `{ code, label }`. `tenant_types[].name` is Bank, Retail brand, F&B, Clinic, Office tenant, or Other.\n\nGlobal data, identical for every firm, so it carries an **ETag**. Send `If-None-Match` and you get a 304 instead of the payload — cheap to revalidate on every app launch.\n\nNote `lead_statuses[].is_dead` / `is_booked`: those flags are what make the dead-leads and bookings reports computable without hardcoding status names."
           },
           "event": [
             {
@@ -673,7 +673,7 @@
             "method": "GET",
             "header": [],
             "url": "{{api_base}}/match_digest",
-            "description": "Super admin only. lead_items and listing_items are the current unlinked matches. new_count is how many of those were not on the previous list. generated_at is when the list was built, in the response timestamp."
+            "description": "Super admin only. lead_items and listing_items are the current unlinked matches. A lead row adds category, area, and prefers_pre_leased. A listing row adds categories. Digests written before matches:rebaseline omit those keys. new_count is how many of those were not on the previous list. generated_at is when the list was built, in the response timestamp."
           }
         }
       ]
@@ -1322,7 +1322,7 @@
                 "followups"
               ]
             },
-            "description": "Creates a lead in the same transaction, with no opening lead follow-up. lead.mode is project, property, or requirements. A duplicate live lead is 422 duplicate_lead and the prospect does not change. details.lead_code is always set; details.lead_id only when the caller can open the lead. not_sure leaves any existing next dial time. not_interested clears it."
+            "description": "Creates a lead in the same transaction, with no opening lead follow-up. lead.mode is project, property, or requirements. Project mode accepts category (otherwise the project's primary category). Property mode uses the property's category. Requirements mode takes the category from typology_ids, plus area_min, area_max, area_unit and prefers_pre_leased. A duplicate open lead of the same type and category is 422 duplicate_lead and the prospect does not change. details.category is set. details.lead_code is always set; details.lead_id only when the caller can open the lead. not_sure leaves any existing next dial time. not_interested clears it."
           }
         },
         {
@@ -1671,7 +1671,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "leads", "import" ]
             },
-            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. Property type is still required for sale (Under construction or Ready possession). Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. Leads are assigned to the signed-in user and start as New."
+            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. The Possession column (the old header Property type is still accepted) is required for a residential or commercial sale, and must be blank for rent and for Plot & Land. The date column is Possession up to. Area is optional (800-1200 sqft, 2-4 guntha, 3 acre) and is rejected on a residential row. Prefers pre-leased is yes or no. Configurations from more than one category fail the row. There is no Category column. Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. A second open lead of the same type and category names that category. Leads are assigned to the signed-in user and start as New."
           }
         },
         {
@@ -1693,10 +1693,10 @@
                 "leads"
               ]
             },
-            "description": "Every field the endpoint accepts, in one body.\n\n**One lead per (firm, mobile, transaction_type).** A second sale on the same number is `422 duplicate_lead` with `details.lead_id`. Sale + rent on one number is allowed.\n\n`notes` is Client's requirements. Optional `project_id` copies blank budget/possession/notes from that project and maps it.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for `sale` and forbidden for `rent`.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.",
+            "description": "Every field the endpoint accepts, in one body.\n\n**One open lead per (firm, mobile, transaction_type, category).** A second residential sale on the same number is `422 duplicate_lead`. The message is \"A sale Residential lead already exists for this number.\" `details` includes `lead_id`, `transaction_type` and `category`. A commercial sale on that number is a different lead. Sale + rent on one number is allowed.\n\n`notes` is Client's requirements. Optional `project_id` copies blank budget/possession/notes from that project and maps it.\n\n**`property_type_id` is a single string, not an array.** It is permitted as a scalar, and Rails' `params.permit` *silently discards* an array value for a scalar key — so sending `[\"01a0…\"]` arrives as nil and you get `422 Property type is required for a sale lead` with nothing pointing at the real cause. `typology_ids` **is** an array: one property type, many configurations.\n\n**The date field is `possession_by`.** `possession_up_to` and similar near-misses are dropped in the same silent way — you get a `201` and a lead with no possession date.\n\n`mobile` is normalised, so \"97597 54343\" and \"+919759754343\" are the same lead.\n\n`property_type_id` is required for a residential or commercial `sale`, forbidden for `rent`, and cleared for Plot & Land.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.\n\nNCD and the opening comment are nested: `followup: { comment, next_action_at }`. Top-level `next_action_at` / `next_action_note` are ignored. `notes` is Detailed Client Requirements.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"followup\": {\n    \"comment\": \"Call back after site visit\",\n    \"next_action_at\": \"2026-09-02T10:30:00+05:30\"\n  },\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"locality_ids\": [\n    \"{{locality_id}}\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144299\",\n  \"email\": \"yash.raheja@example.com\",\n  \"transaction_type\": \"sale\",\n  \"category\": \"residential\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 18000000,\n  \"possession_by\": \"2027-06-30\",\n  \"area_min\": null,\n  \"area_max\": null,\n  \"area_unit\": \"sqft\",\n  \"prefers_pre_leased\": false,\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"99acres enquiry #48213\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"followup\": {\n    \"comment\": \"Call back after site visit\",\n    \"next_action_at\": \"2026-09-02T10:30:00+05:30\"\n  },\n  \"notes\": \"Wants a higher floor, no ground.\",\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"locality_ids\": [\n    \"{{locality_id}}\"\n  ]\n}"
             }
           },
           "event": [
@@ -1871,7 +1871,7 @@
                 "matches"
               ]
             },
-            "description": "Unmapped inventory for this lead. Until nearby matching is on, a preferred locality must overlap. After that, the first group fills the 50: listings within 6 km of a tagged pin, then preferred localities, then neighbor localities whose centers are within 6 km. A higher score does not jump a group. Optional JSON body { q } searches the full set and returns every hit with no cap. Without q, truncated is true when more matches exist. Each row has distance_m, group (locality or nearby), and near_shortlist. The body also has interest_localities and neighbor_localities. Score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. A preferred locality is 30 points. Nearby is 20. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches."
+            "description": "Unmapped inventory for this lead. Until nearby matching is on, a preferred locality must overlap. After that, the first group fills the 50: listings within 6 km of a tagged pin, then preferred localities, then neighbor localities whose centers are within 6 km. A higher score does not jump a group. Optional JSON body { q } searches the full set and returns every hit with no cap. Without q, truncated is true when more matches exist. Each row has distance_m, group (locality or nearby), and near_shortlist. The body also has interest_localities and neighbor_localities. Score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. A preferred locality is 30 points. Nearby is 20. Rent leads see rentals only. Ready-possession leads see sale properties and projects due this month or the next two. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches. A listing is scored only in the lead's category. Commercial and Plot & Land also require the chosen configuration and score area instead of configuration. A pre-leased commercial sale listing scores 10 more, capped at 100, and sorts first when scores tie. A mixed project shows that category's starting price. Each row adds category, area, area_sqft, area_unit, area_value, pre_leased, and score_breakdown keys fit, configuration, area, and bonus."
           },
           "event": [
             {
@@ -2995,7 +2995,7 @@
             "description": "Project and typologies in one call — a project saved without them shows an empty price band, which is worse than no project.\n\n`possession_on` may be replaced by `possession_label` (\"Ready\") for completed projects; one of the two is required. Attach a brochure with `brochure_signed_id` from `/uploads`. `brokerage_percent` is the starting brokerage. Attach the ladder image with `brokerage_ladder_signed_id` from `/uploads` using purpose `project_brokerage_ladder`. `promo_text` has no length limit.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
+              "raw": "{\n  \"name\": \"Aurum Vista {{$timestamp}}\",\n  \"builder_id\": \"{{builder_id}}\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"Off Ghodbunder Road, Kolshet\",\n  \"lat\": 19.2183,\n  \"lng\": 72.9781,\n  \"google_place_id\": \"ChIJb8Jg9pZ_XjkRQvDBGgAAAAA\",\n  \"starting_budget\": 14200000,\n  \"possession_on\": \"2027-12-31\",\n  \"possession_label\": \"Dec 2027\",\n  \"rera_number\": \"P51700054321\",\n  \"brokerage_percent\": 2.5,\n  \"promo_text\": \"Launch pricing till month end\",\n  \"promo_ends_on\": \"2027-12-31\",\n  \"status\": \"active\",\n  \"typologies\": [\n    {\n      \"typology_id\": \"{{typology_id}}\",\n      \"starting_price\": 14200000,\n      \"starting_carpet_sqft\": 720,\n      \"label\": \"Ultima\",\n      \"area_value\": 720,\n      \"area_unit\": \"sqft\"\n    }\n  ],\n  \"brochure_signed_id\": \"{{brochure_signed_id}}\"\n}"
             }
           },
           "event": [
@@ -3120,7 +3120,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project, a project with no locality, an unqualified lead, or a booked lead returns matches: []. A dead lead still matches. Each match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked)."
+            "description": "Sale leads this caller can see that prefer this project's locality. Scored 0-100, at most 50, highest first. An archived project, a project with no locality, an unqualified lead, or a booked lead returns matches: []. A dead lead still matches. Each match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked). The lead's category must match a row, and commercial and Plot & Land also require the chosen configuration. Plot & Land does not ask possession. Each row adds category, area, area_sqft, area_unit, area_value, pre_leased, and score_breakdown keys fit, configuration, area, and bonus."
           }
         },
         {
@@ -3779,7 +3779,7 @@
             "description": "Every accepted field. `status` is `available` / `booked` / `sold_out`; `floor_band` is `lower` / `middle` / `higher`; `listing_for` is `sale` / `rent`. Mark sold = PATCH `sold_out` (reversible).\n\n`confidential_note` is returned only by the detail — never in a list and never in `shareable`.\n\n`rate_per_sqft` is derived from price and carpet area, never sent. On a rental `price` is monthly rent, so the rate is rent per sqft per month.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
+              "raw": "{\n  \"building_id\": \"{{building_id}}\",\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"higher\",\n  \"price\": 11800000,\n  \"carpet_area_sqft\": 690,\n  \"area_value\": 690,\n  \"area_unit\": \"sqft\",\n  \"pre_leased\": false,\n  \"details\": {},\n  \"available_from\": \"2026-10-01\",\n  \"description\": \"North-east facing, two covered parkings.\",\n  \"confidential_note\": \"Owner will close at 1.15 Cr. Do not share.\",\n  \"status\": \"available\"\n}"
             }
           },
           "event": [
@@ -3857,7 +3857,7 @@
                 "lead_matches"
               ]
             },
-            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked). An unqualified lead is left out. A booked lead is left out. A dead lead still matches. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. A dead lead is included there too. A booked lead is not. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. An unqualified or booked lead does not add its firm unless that firm mapped the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50."
+            "description": "Own-firm leads that match this listing, above a score of 30. Each own-firm match includes mobile, the lead's primary number, and status (code, name, is_dead, is_booked). An unqualified lead is left out. A booked lead is left out. A dead lead still matches. For the owner, marketplace_matches lists other firms' leads that score above 50 as firm_id, firm name, that firm's lead code, locality, and configuration — no client name and no client phone. A dead lead is included there too. A booked lead is not. Join a phone number on firm_id, not the name. marketplace_firms is the firms to call, including a firm that linked the listing. An unqualified or booked lead does not add its firm unless that firm mapped the listing. Both are empty when the listing is not shared, and empty for every firm except the owner. Another firm calling a shared listing gets only their own leads that score above 50. The lead's category must match the listing, and commercial and Plot & Land also require the chosen configuration. A plot lead is included on a sale listing because Plot & Land does not ask possession."
           }
         },
         {
@@ -3871,7 +3871,7 @@
               "path": ["properties", "marketplace"],
               "query": [{ "key": "q", "value": "2bhk" }]
             },
-            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card: no carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
+            "description": "Other active firms' shared available listings, newest first. Search matches firm, locality, city, or configuration (2bhk finds 2 BHK). Not the building name or description. Each row is a safe card with category and pre_leased, and still no area, carpet, photo, building, address, or confidential note. This firm's own stock is omitted."
           }
         },
         {
@@ -3884,7 +3884,7 @@
               "host": ["{{api_base}}"],
               "path": ["properties", "{{property_id}}", "marketplace"]
             },
-            "description": "Another firm's safe view of a shared available listing: title, configuration, locality, city, price, carpet, and the firm's phone lines. No address, building name, or confidential note. The owning firm receives 404."
+            "description": "Another firm's safe view of a shared available listing: title, configuration, category, locality, city, price, carpet, area, pre_leased, lease, and the firm's phone lines. No note, address, pin, floor, photos, building name, or confidential note. The owning firm receives 404."
           }
         },
         {
@@ -5227,7 +5227,7 @@
             "url": "{{base_url}}/turbo/events",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"event\": \"upsert\",\n  \"pushed_at\": \"2026-09-28T12:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"project_name\": \"Harbour One\",\n  \"developer_name\": \"Lodha\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Worli\",\n  \"rera_number\": \"P51800000001\",\n  \"possession_on\": \"2027-12-31\",\n  \"rm_name\": \"Asha Rao\",\n  \"rm_contact\": \"9876543210\",\n  \"unit_types\": [{ \"label\": \"2 BHK\", \"typology_name\": \"2BHK\", \"price_min\": 15000000, \"area_min\": 650, \"area_unit\": \"sqft\" }],\n  \"images\": [{ \"url\": \"https://launch.example/photo.jpg\", \"checksum\": \"abc\", \"filename\": \"photo.jpg\" }],\n  \"brochure\": { \"url\": \"https://launch.example/brochure.pdf\", \"checksum\": \"def\", \"filename\": \"brochure.pdf\" }\n}"
+              "raw": "{\n  \"event\": \"upsert\",\n  \"pushed_at\": \"2026-09-28T12:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"project_name\": \"Harbour One\",\n  \"developer_name\": \"Lodha\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Worli\",\n  \"rera_number\": \"P51800000001\",\n  \"possession_on\": \"2027-12-31\",\n  \"rm_name\": \"Asha Rao\",\n  \"rm_contact\": \"9876543210\",\n  \"unit_types\": [{ \"label\": \"2 BHK\", \"typology_name\": \"2BHK\", \"typology_category\": \"residential\", \"typology_slug\": \"2-bhk\", \"price_min\": 15000000, \"area_min\": 650, \"area_unit\": \"sqft\" }],\n  \"images\": [{ \"url\": \"https://launch.example/photo.jpg\", \"checksum\": \"abc\", \"filename\": \"photo.jpg\" }],\n  \"brochure\": { \"url\": \"https://launch.example/brochure.pdf\", \"checksum\": \"def\", \"filename\": \"brochure.pdf\" }\n}"
             }
           }
         },
@@ -5532,7 +5532,11 @@
         },
         {
           "name": "Get form",
-          "request": { "method": "GET", "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}" }
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
+            "description": "Returns category (or null) and project_categories, the mapped project's categories in order, or an empty list."
+          }
         },
         {
           "name": "Update form",
@@ -5540,7 +5544,8 @@
             "method": "PATCH",
             "header": [ { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{api_base}}/facebook/forms/{{facebook_form_id}}",
-            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
+            "description": "category is residential, commercial, or land. Send null or \"\" to clear it. A mixed project returns 422 invalid_form until a category that project offers is set. Remapping to a project that does not offer the current category clears it.",
+            "body": { "mode": "raw", "raw": "{\n  \"active\": true,\n  \"project_id\": \"{{project_id}}\",\n  \"category\": \"commercial\",\n  \"field_mappings\": {\n    \"full_name\": \"name\",\n    \"phone_number\": \"mobile\"\n  }\n}" }
           }
         },
         {

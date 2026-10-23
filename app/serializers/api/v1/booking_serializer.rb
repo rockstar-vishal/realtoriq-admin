@@ -16,6 +16,7 @@ module Api
             booked_on: booking.booked_on,
             status: booking.status,
             agreement_value: booking.agreement_value,
+            area_kind: booking.lead&.category == "land" ? "plot" : "carpet",
             net_income: booking.net_income,
             # The design's list card shows all three side by side.
             invoiced: booking.invoiced_total,

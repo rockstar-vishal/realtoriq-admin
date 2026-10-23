@@ -15,4 +15,9 @@ namespace :matches do
   task nearby_enable: :environment do
     Matches::EnableNearby.call
   end
+
+  desc "Rewrite match digests without notifying, after category matching changes."
+  task rebaseline: :environment do
+    Matches::Rebaseline.call
+  end
 end

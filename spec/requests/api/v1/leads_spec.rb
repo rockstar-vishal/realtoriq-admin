@@ -705,6 +705,64 @@ RSpec.describe "API v1 leads" do
     end
   end
 
+  describe "PATCH /leads/:id category" do
+    let!(:shop) { create(:typology, name: "Shop", code: "shop", category: "commercial") }
+    let!(:plot) { create(:typology, name: "Residential plot", code: "residential_plot", category: "land") }
+    let!(:lead) do
+      create(:lead, :matchable, firm:, lead_status: new_status, property_type:,
+        possession_by: Date.new(2027, 6, 1))
+    end
+
+    it "switches to the configurations' category, notes it, and clears a plot's possession" do
+      patch "/api/v1/leads/#{lead.id}",
+        params: { typology_ids: [ shop.id ] },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      lead.reload
+      expect(lead.category).to eq("commercial")
+      expect(lead.property_type).to eq(property_type)
+      expect(lead.lead_activities.where(kind: "note").last.body).to eq(
+        "Requirement changed from Residential to Commercial (Shop)."
+      )
+      expect(AuditEvent.find_by!(action: "lead.category_changed", subject: lead).metadata).to include(
+        "from" => "residential", "to" => "commercial"
+      )
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { typology_ids: [ plot.id ] },
+        headers: auth(manager), as: :json
+
+      lead.reload
+      expect(response).to have_http_status(:ok)
+      expect(lead.category).to eq("land")
+      expect(lead.property_type).to be_nil
+      expect(lead.possession_by).to be_nil
+      expect(lead.lead_activities.where(kind: "note").last.body).to eq(
+        "Requirement changed from Commercial to Plot & Land (Residential plot)."
+      )
+    end
+
+    it "refuses a switch onto a category that is already open for the number" do
+      other = create(:lead, firm:, mobile: lead.mobile, lead_status: new_status,
+        transaction_type: "sale", category: "commercial", property_type:)
+      other.typologies << shop
+
+      patch "/api/v1/leads/#{lead.id}",
+        params: { typology_ids: [ shop.id ] },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("duplicate_lead")
+      expect(response.parsed_body.dig("error", "message")).to eq(
+        "A sale Commercial lead already exists for this number."
+      )
+      expect(response.parsed_body.dig("error", "details", "category")).to eq("commercial")
+      expect(response.parsed_body.dig("error", "details", "lead_id")).to eq(other.id)
+      expect(lead.reload.category).to eq("residential")
+    end
+  end
+
   describe "POST /leads/:id/status" do
     let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status) }
 
@@ -744,7 +802,10 @@ RSpec.describe "API v1 leads" do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body.dig("error", "code")).to eq("duplicate_lead")
-      expect(response.parsed_body.dig("error", "message")).to eq("A live sale lead already exists for this number.")
+      expect(response.parsed_body.dig("error", "message")).to eq(
+        "A sale Residential lead already exists for this number."
+      )
+      expect(response.parsed_body.dig("error", "details", "category")).to eq("residential")
       expect(response.parsed_body.dig("error", "details", "lead_id")).to eq(live.id)
       expect(lead.reload.lead_status).to eq(dead_status)
     end

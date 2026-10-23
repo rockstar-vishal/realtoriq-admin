@@ -9,8 +9,23 @@ module Matches
       :kind, :id, :name, :locality_id, :marketplace, :listing_for, :ready,
       :offers, :fallback_price, :floor,
       :lat, :lng, :locality_lat, :locality_lng,
+      :categories, :starting_prices,
       keyword_init: true
-    )
+    ) do
+      def pre_leased
+        Array(offers).any? { |offer| offer.pre_leased }
+      end
+
+      def price_source
+        return unless kind == "project"
+
+        Inventory::Fit::PriceSource.new(
+          categories: Array(categories),
+          starting_prices: starting_prices || {},
+          starting_budget: fallback_price
+        )
+      end
+    end
     CACHE_TTL = 1.hour
     Possession = Struct.new(:possession_on, :possession_label)
 
@@ -72,7 +87,7 @@ module Matches
     end
 
     def cached_marketplace_projects(locality_id)
-      Rails.cache.fetch("matches/marketplace-projects/v2/#{locality_id}", expires_in: CACHE_TTL) do
+      Rails.cache.fetch("matches/marketplace-projects/v3/#{locality_id}", expires_in: CACHE_TTL) do
         Project.marketplace.where(locality_id:)
           .includes(:locality, project_typologies: :typology)
           .map { |project| project_payload(project) }
@@ -80,7 +95,7 @@ module Matches
     end
 
     def cached_shared_properties(locality_id)
-      Rails.cache.fetch("matches/shared-properties/v2/#{locality_id}", expires_in: CACHE_TTL) do
+      Rails.cache.fetch("matches/shared-properties/v3/#{locality_id}", expires_in: CACHE_TTL) do
         records = Property.unscoped
           .where(listed_on_marketplace: true, status: "available")
           .joins("INNER JOIN buildings ON buildings.id = properties.building_id")
@@ -174,6 +189,8 @@ module Matches
         ready: Inventory::PossessionMatch.ready?(project),
         offers: offers_for(project),
         fallback_price: project.starting_budget,
+        categories: project.categories,
+        starting_prices: project.starting_prices,
         floor: marketplace ? Inventory::MatchInventory::MARKETPLACE_FLOOR : Inventory::MatchInventory::OWN_FLOOR,
         lat: project.lat, lng: project.lng,
         locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
@@ -195,6 +212,8 @@ module Matches
         ready: Inventory::PossessionMatch.ready?(snapshot),
         offers:,
         fallback_price: row["starting_budget"],
+        categories: row["categories"],
+        starting_prices: row["starting_prices"],
         floor: Inventory::MatchInventory::MARKETPLACE_FLOOR,
         lat: row["lat"], lng: row["lng"],
         locality_lat: row["locality_lat"], locality_lng: row["locality_lng"]
@@ -210,13 +229,7 @@ module Matches
         marketplace:,
         listing_for: property.listing_for,
         ready: nil,
-        offers: [
-          Inventory::MatchScore::Offer.new(
-            price: property.price,
-            name: property.typology&.name,
-            key: Inventory::ConfigurationKey.call(property.typology&.name)
-          )
-        ],
+        offers: [ Inventory::MatchScore.offer_for_property(property) ],
         fallback_price: nil,
         floor: marketplace ? Inventory::MatchInventory::MARKETPLACE_FLOOR : Inventory::MatchInventory::OWN_FLOOR,
         lat: property.building&.lat, lng: property.building&.lng,
@@ -267,9 +280,11 @@ module Matches
         "possession_on" => project.possession_on&.iso8601,
         "possession_label" => project.possession_label,
         "starting_budget" => project.starting_budget,
+        "categories" => project.categories,
+        "starting_prices" => project.starting_prices,
         "lat" => project.lat, "lng" => project.lng,
         "locality_lat" => project.locality&.lat, "locality_lng" => project.locality&.lng,
-        "offers" => offers_for(project).map { |offer| { "price" => offer.price, "name" => offer.name, "key" => offer.key } }
+        "offers" => offers_for(project).map { |offer| offer_payload(offer) }
       }
     end
 
@@ -283,29 +298,35 @@ module Matches
         "price" => property.price,
         "lat" => building&.lat, "lng" => building&.lng,
         "locality_lat" => building&.locality&.lat, "locality_lng" => building&.locality&.lng,
-        "offers" => [
-          {
-            "price" => property.price,
-            "name" => property.typology&.name,
-            "key" => Inventory::ConfigurationKey.call(property.typology&.name)
-          }
-        ]
+        "offers" => [ offer_payload(Inventory::MatchScore.offer_for_property(property)) ]
       }
     end
 
     def offers_for(project)
-      project.project_typologies.map do |row|
-        Inventory::MatchScore::Offer.new(
-          price: row.starting_price,
-          name: row.typology&.name,
-          key: Inventory::ConfigurationKey.call(row.typology&.name)
-        )
-      end
+      project.project_typologies.map { |row| Inventory::MatchScore.offer_for_row(row) }
+    end
+
+    def offer_payload(offer)
+      {
+        "price" => offer.price,
+        "name" => offer.name,
+        "key" => offer.key,
+        "area_sqft" => offer.area_sqft,
+        "area_value" => offer.area_value,
+        "area_unit" => offer.area_unit,
+        "pre_leased" => offer.pre_leased,
+        "category" => offer.category,
+        "typology_id" => offer.typology_id
+      }
     end
 
     def offer_structs(rows)
       Array(rows).map do |row|
-        Inventory::MatchScore::Offer.new(price: row["price"], name: row["name"], key: row["key"])
+        Inventory::MatchScore::Offer.new(
+          price: row["price"], name: row["name"], key: row["key"],
+          area_sqft: row["area_sqft"], area_value: row["area_value"], area_unit: row["area_unit"],
+          pre_leased: row["pre_leased"], category: row["category"], typology_id: row["typology_id"]
+        )
       end
     end
 

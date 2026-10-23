@@ -38,8 +38,11 @@ module Api
         raw = params[:lead]
         return if raw.blank?
 
-        raw.permit(:mode, :project_id, :property_id, :transaction_type, :property_type_id, :budget,
-          typology_ids: [], locality_ids: [])
+        raw.permit(
+          :mode, :project_id, :property_id, :transaction_type, :property_type_id, :budget,
+          :category, :area_min, :area_max, :area_unit, :prefers_pre_leased,
+          typology_ids: [], locality_ids: []
+        )
       end
 
       def followup_json(followup)

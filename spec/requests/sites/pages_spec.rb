@@ -337,6 +337,79 @@ RSpec.describe "Firm website" do
     expect(ActionMailer::Base.deliveries.size).to eq(1)
   end
 
+  it "keeps a homes-only site free of category tabs and shows the starting price" do
+    visit_home
+
+    expect(response.body).not_to include('id="site-cat-')
+    expect(response.body).not_to include('name="site-category"')
+    expect(response.body).to include("Starting")
+    expect(response.body).to include("₹1,42,00,000")
+    expect(response.body).not_to include("Homes from")
+  end
+
+  it "shows a price summary, category tabs, area in its unit, and a pre-leased yield" do
+    site = create(:firm, :with_super_admin, name: "Harbour Homes")
+    create(:subscription, firm: site, plan:)
+    place = create(:city, name: "Mumbai")
+    area = create(:locality, city: place, name: "Kharghar")
+    home = typology
+    shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+    plot = create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
+    mixed = create(:project, firm: site, city: place, locality: area, name: "Checkseven One", starting_budget: 9_000_000)
+    create(:project_typology, project: mixed, typology: home, label: "Ultima", starting_price: 9_000_000)
+    create(:project_typology, project: mixed, typology: shop, starting_price: 4_000_000, starting_carpet_sqft: 450)
+    create(:project_typology, project: mixed, typology: plot, starting_price: 4_500_000,
+      area_value: 2, area_unit: "guntha")
+    building = create(:building, firm: site, city: place, locality: area, name: "Harbour Block")
+    shop_home = create(:property, firm: site, building:, typology: shop, listing_for: "sale",
+      price: 8_500_000, area_value: 450, area_unit: "sqft", pre_leased: true,
+      details: {
+        "frontage_ft" => 20, "main_road" => true,
+        "lease_monthly_rent" => 120_000, "tenant_type" => "bank", "lock_in_until" => "2027-03-01"
+      })
+    plot_home = create(:property, firm: site, building:, typology: plot, listing_for: "sale",
+      price: 4_500_000, area_value: 2, area_unit: "guntha",
+      details: { "road_width_ft" => 30 })
+    site_host = "cp-#{site.slug}.realtoriq.kgen.tech"
+
+    get "/", headers: { "HOST" => site_host }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include("Homes from ₹90 L · Commercial from ₹40 L · Plots from ₹45 L")
+    expect(response.body).to include('id="site-cat-residential"')
+    expect(response.body).to include('id="site-cat-commercial"')
+    expect(response.body).to include('id="site-cat-land"')
+    expect(response.body).to include("Residential")
+    expect(response.body).to include("Commercial")
+    expect(response.body).to include("Plot &amp; Land")
+    expect(response.body).to include("cat-residential cat-commercial cat-land")
+    expect(response.body).to include("2 BHK Ultima")
+
+    get public_project_path(mixed), headers: { "HOST" => site_host }
+    expect(response.body).to include("Homes from ₹90 L · Commercial from ₹40 L · Plots from ₹45 L")
+    expect(response.body).to include("450 sq ft")
+    expect(response.body).to include("2 guntha (2,178 sq ft)")
+
+    get public_property_path(plot_home), headers: { "HOST" => site_host }
+    expect(response.body).to include("Plot area")
+    expect(response.body).to include("2 guntha (2,178 sq ft)")
+    expect(response.body).to include("Road width")
+    expect(response.body).to include("30 feet")
+    expect(response.body).not_to include(">Carpet<")
+
+    get public_property_path(shop_home), headers: { "HOST" => site_host }
+    expect(response.body).to include("Carpet")
+    expect(response.body).to include("450 sq ft")
+    expect(response.body).to include("Frontage")
+    expect(response.body).to include("20 feet")
+    expect(response.body).to include("Main road")
+    expect(response.body).to include("Yes")
+    expect(response.body).to include("Pre-leased")
+    expect(response.body).to include("16.94%")
+    expect(response.body).to include("Bank")
+    expect(response.body).to include("₹1,20,000")
+  end
+
   it "does not treat a laptop host as a firm site on staging" do
     allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("staging"))
 

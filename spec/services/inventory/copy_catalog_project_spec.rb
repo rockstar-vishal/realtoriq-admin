@@ -39,6 +39,23 @@ RSpec.describe Inventory::CopyCatalogProject do
     expect(Project.unscoped.where(firm_id: firm.id, external_ref: "PRABC123").count).to eq(1)
   end
 
+  it "copies the label, the typed area and the review flag" do
+    plot = create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
+    create(:project_typology, project: catalog, typology: plot, label: "Phase 2",
+      area_value: 15_000, area_unit: "sqm", needs_review: true, starting_price: 5_000_000,
+      review_note: 'LaunchIQ sent only "Plot". Confirm the plot type.')
+
+    result = described_class.new(catalog: Project.unscoped.find(catalog.id)).call
+    row = result.project.project_typologies.find_by!(typology: plot)
+
+    expect(row.label).to eq("Phase 2")
+    expect(row.area_value).to eq(15_000)
+    expect(row.area_unit).to eq("sqm")
+    expect(row.needs_review).to be(true)
+    expect(row.review_note).to eq('LaunchIQ sent only "Plot". Confirm the plot type.')
+    expect(row.starting_carpet_sqft).to eq(161_459)
+  end
+
   it "reuses the copy when the unique index rejects a second insert" do
     existing = described_class.new(catalog:).call.project
     service = described_class.new(catalog:)

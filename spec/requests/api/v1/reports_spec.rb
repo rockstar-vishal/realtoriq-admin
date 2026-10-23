@@ -181,6 +181,28 @@ RSpec.describe "API v1 reports" do
       expect(response).to have_http_status(:forbidden)
       expect(response.parsed_body.dig("error", "code")).to eq("forbidden_role")
     end
+
+    it "filters by the lead's category, and bookings follow that lead" do
+      home = create(:lead, firm:, lead_status: hot, category: "residential")
+      shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+      shopper = create(:lead, firm:, lead_status: hot, category: "commercial")
+      shopper.typologies << shop
+      create(:booking, firm:, lead: home, booked_on: Date.new(2026, 9, 2),
+        agreement_value: 1_000_000, commission_percent: 0, kicker: 0, passback: 0)
+      create(:booking, firm:, lead: shopper, booked_on: Date.new(2026, 9, 3),
+        agreement_value: 2_000_000, commission_percent: 0, kicker: 0, passback: 0)
+
+      get "/api/v1/reports/bookings",
+        params: { from: "2026-09-01", upto: "2026-09-30", category: "commercial" }, headers: auth
+
+      row = response.parsed_body["rows"].find { |item| item["month"] == "2026-09" }
+      expect(row["bookings"]).to eq(1)
+      expect(row["agreement_value"]).to eq(2_000_000)
+
+      get "/api/v1/reports/source_status",
+        params: { from: "2020-01-01", upto: "2030-01-01", category: "commercial" }, headers: auth
+      expect(response.parsed_body.dig("summary", "total")).to eq(1)
+    end
   end
 
   describe "GET /api/v1/reports/revenue" do

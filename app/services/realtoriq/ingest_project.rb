@@ -301,39 +301,101 @@ module Realtoriq
         rows.find { |row| NameKey.call(row.name) == key }
     end
 
+    # Every LaunchIQ unit is its own row. Rows that resolve to the same
+    # configuration and the same label keep the lowest price.
     def unit_rows
-      rows = Array(payload["unit_types"])
-      built = rows.filter_map { |row| unit_row(row) }
+      built = []
+      Array(payload["unit_types"]).each do |row|
+        parsed = unit_row(row)
+        return parsed if parsed.is_a?(Result)
+
+        built << parsed if parsed
+      end
       return failure("at least one configuration is required") if built.empty?
 
-      built.group_by { |row| row[:typology].id }.map do |_id, group|
-        group.min_by { |row| row[:starting_price] || Float::INFINITY }
-      end
+      built.group_by { |row| [ row[:typology].id, row[:label].to_s.downcase ] }
+        .map { |_key, group| group.min_by { |row| [ row[:starting_price].nil? ? 1 : 0, row[:starting_price].to_i ] } }
     end
 
     def unit_row(row)
       row = row.to_h.deep_stringify_keys
-      label = row["typology_name"].presence || row["label"].presence
-      return if label.blank?
+      typology_name = row["typology_name"].to_s
+      unit_label = row["label"].to_s
+      return if typology_name.strip.blank? && unit_label.strip.blank?
 
-      typology = find_named(Typology.all, label) || create_typology(label)
-      price = integer_rupees(row["price_min"])
+      resolved = UnitResolver.call(
+        typology_name:,
+        typology_category: row["typology_category"],
+        label: unit_label
+      )
+      return failure("a configuration could not be resolved") if resolved.typology.nil?
+
       {
-        typology:,
-        starting_price: price,
-        starting_carpet_sqft: carpet(row)
+        typology: resolved.typology,
+        label: variant_label(unit_label, typology_name, resolved),
+        starting_price: integer_rupees(row["price_min"]),
+        needs_review: resolved.needs_review,
+        review_note: review_note(resolved, typology_name, unit_label, row["typology_category"]),
+        **area_fields(row, resolved.typology)
       }
     end
 
-    def create_typology(name)
-      match = name.match(/(\d+(?:\.5)?)\s*bhk/i)
-      typology = Typology.create!(
-        name:,
-        bedrooms: match && BigDecimal(match[1]),
-        sort_order: Typology.maximum(:sort_order).to_i + 1
-      )
-      Rails.logger.info("[marketplace] created typology #{typology.name}")
-      typology
+    # The unit label, otherwise the configuration name, whichever still says
+    # something after the row drops a label that only repeats the configuration.
+    # A generic configuration name is not a label. Neither is the configuration
+    # name when its BHK disagreed with the unit label.
+    def variant_label(unit_label, typology_name, resolved)
+      kept = ProjectTypology.stored_label(unit_label, resolved.typology)
+      return kept if kept
+      return if resolved.bhk_conflict || Typology.generic_name?(typology_name)
+
+      ProjectTypology.stored_label(typology_name, resolved.typology)
+    end
+
+    # Set whenever the row is flagged. The three sentences are the only
+    # reasons ops sees on Review.
+    def review_note(resolved, typology_name, unit_label, category)
+      return unless resolved.needs_review
+
+      text = case resolved.review
+      when :bhk_conflict
+        configuration = typology_name.strip
+        label = unit_label.strip
+        "LaunchIQ configuration \"#{configuration}\" disagrees with unit label \"#{label}\". " \
+          "Fix the unit in LaunchIQ, then push again."
+      when :bare_plot
+        "LaunchIQ sent only \"#{bare_plot_text(typology_name, unit_label)}\". Confirm the plot type."
+      else
+        shown = [ typology_name.strip, unit_label.strip ].find(&:present?)
+        category_text = category.to_s.strip.presence || "none"
+        "Couldn't classify \"#{shown}\" (LaunchIQ category: #{category_text})."
+      end
+      text[0, ProjectTypology::REVIEW_NOTE_LIMIT]
+    end
+
+    def bare_plot_text(typology_name, unit_label)
+      [ typology_name, unit_label ].map(&:strip).find { |text| text.match?(/plot|land/i) } ||
+        [ typology_name, unit_label ].map(&:strip).find(&:present?)
+    end
+
+    # LaunchIQ allows sqm on any unit. After the configuration is known, a
+    # home or office is stored in sq ft (AreaUnits, 10.7639). A plot keeps
+    # the typed sqm.
+    def area_fields(row, typology)
+      raw = row["area_min"]
+      return {} if raw.blank?
+
+      number = raw.is_a?(String) ? BigDecimal(raw) : raw.to_d
+      return {} unless number.positive?
+
+      unit = row["area_unit"].to_s == "sqm" ? "sqm" : "sqft"
+      if unit == "sqm" && !typology.land?
+        return { area_value: AreaUnits.to_sqft(number, "sqm"), area_unit: "sqft" }
+      end
+
+      { area_value: number, area_unit: unit }
+    rescue ArgumentError
+      {}
     end
 
     def integer_rupees(value)
@@ -346,25 +408,17 @@ module Realtoriq
       nil
     end
 
-    def carpet(row)
-      value = row["area_min"]
-      return if value.blank?
-
-      number = value.to_d
-      number *= BigDecimal("10.764") if row["area_unit"].to_s == "sqm"
-      rounded = number.round(0, :half_up).to_i
-      rounded.positive? ? rounded : nil
-    rescue ArgumentError
-      nil
-    end
-
     def replace_typologies(project, rows)
       project.project_typologies.destroy_all
       rows.each do |row|
         project.project_typologies.create!(
           typology: row[:typology],
+          label: row[:label],
           starting_price: row[:starting_price],
-          starting_carpet_sqft: row[:starting_carpet_sqft]
+          area_value: row[:area_value],
+          area_unit: row[:area_unit].presence || "sqft",
+          needs_review: row[:needs_review],
+          review_note: row[:review_note]
         )
       end
     end

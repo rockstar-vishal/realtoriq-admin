@@ -39,6 +39,11 @@ module Inventory
       end
 
       Result.new(ok?: true, project: project.reload)
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.message.include?(ProjectTypology::LABEL_INDEX)
+
+      project.errors.add(:base, ProjectTypology::LABEL_CLASH)
+      Result.new(ok?: false, project:, errors: project.errors)
     rescue ActiveRecord::RecordInvalid => e
       Result.new(ok?: false, project: e.record, errors: e.record.errors)
     end
@@ -59,7 +64,7 @@ module Inventory
 
     def add_typologies(project)
       typologies.each do |row|
-        attrs = row.respond_to?(:permit) ? row.permit(:typology_id, :starting_price, :starting_carpet_sqft) : row
+        attrs = row.respond_to?(:permit) ? row.permit(:typology_id, :starting_price, :starting_carpet_sqft, :label, :area_value, :area_unit) : row
         project.project_typologies.create!(attrs)
       end
     end

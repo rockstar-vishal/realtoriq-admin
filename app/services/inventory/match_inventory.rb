@@ -92,7 +92,10 @@ module Inventory
     def projects_in(scope)
       return scope.none if locality_ids.empty? && hooks.pins.empty?
 
-      scope.where(id: project_ids(scope))
+      in_category = scope.where(
+        id: ProjectTypology.joins(:typology).where(typologies: { category: lead.category }).select(:project_id)
+      )
+      in_category.where(id: project_ids(in_category))
     end
 
     def project_ids(scope)
@@ -110,13 +113,13 @@ module Inventory
     end
 
     def property_rows
-      return [] if lead.sale? && !lead.ready_possession?
+      return [] if Fit.possession_applies?(lead) && !lead.ready_possession?
 
       (own_properties + shared_properties).filter_map { |property| serialize_property(property) }
     end
 
     def own_properties
-      scope = Property.where(status: "available", listing_for: lead.transaction_type)
+      scope = properties_in_category(Property.where(status: "available", listing_for: lead.transaction_type))
       Property.where(id: property_ids(scope))
         .includes(:typology, building: %i[city locality])
         .to_a
@@ -129,9 +132,17 @@ module Inventory
       scope = Property.unscoped
         .where(listed_on_marketplace: true, status: "available", listing_for: lead.transaction_type)
         .where(firm_id: Firm.marketplace_eligible.where.not(id: Current.firm_id).select(:id))
+      scope = properties_in_category(scope)
       records = Property.unscoped.where(id: property_ids(scope)).includes(:typology, :firm).to_a
       Buildings.attach(records)
       records
+    end
+
+    def properties_in_category(scope)
+      scoped = scope.joins(:typology).where(typologies: { category: lead.category })
+      return scoped if lead.category == "residential"
+
+      scoped.where(typology_id: lead.typology_ids)
     end
 
     def property_ids(scope)
@@ -150,18 +161,15 @@ module Inventory
     end
 
     def serialize_project(project)
-      offers = project.project_typologies.map do |row|
-        MatchScore::Offer.new(
-          price: row.starting_price,
-          name: row.typology&.name,
-          key: ConfigurationKey.call(row.typology&.name)
-        )
-      end
+      rows = in_scope_rows(project)
+      return if rows.empty?
+
+      offers = rows.map { |row| MatchScore.offer_for_row(row) }
       ranked = rank_listing(
         locality_id: project.locality_id,
         lat: project.lat, lng: project.lng,
         locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
-        offers:, fallback_price: project.starting_budget, name: project.name
+        offers:, fallback_price: Fit.fallback_price(lead, project), name: project.name, listing: project
       )
       return unless ranked
 
@@ -176,9 +184,9 @@ module Inventory
         listed_by: marketplace ? project.builder&.name : nil,
         city: project.city&.name,
         locality: project.locality&.name,
-        starting_budget: project.starting_budget,
+        starting_budget: shown_starting_budget(project),
         score: breakdown[:score],
-        score_breakdown: breakdown.slice(:location, :price, :configuration),
+        score_breakdown: breakdown.slice(*MatchScore::BREAKDOWN_KEYS),
         matched_price: breakdown[:matched_price],
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped_project_ids.include?(project.id),
@@ -188,24 +196,30 @@ module Inventory
         near_shortlist: ranked[:near_shortlist],
         sort: ranked[:sort],
         floor: marketplace ? MARKETPLACE_FLOOR : OWN_FLOOR,
-        configuration_names: project.project_typologies.filter_map { |row| row.typology&.name }
-      }
+        configuration_names: rows.map(&:display_name)
+      }.merge(area_fields(breakdown))
+    end
+
+    def in_scope_rows(project)
+      project.project_typologies.select { |row| Fit.row_in_scope?(lead, row.typology) }
+    end
+
+    def shown_starting_budget(project)
+      return project.starting_budget unless project.categories.size > 1
+
+      project.starting_price_for(lead.category)
     end
 
     def serialize_property(property)
-      offers = [
-        MatchScore::Offer.new(
-          price: property.price,
-          name: property.typology&.name,
-          key: ConfigurationKey.call(property.typology&.name)
-        )
-      ]
+      return unless Fit.row_in_scope?(lead, property.typology)
+
+      offers = [ MatchScore.offer_for_property(property) ]
       building = property.building
       ranked = rank_listing(
         locality_id: building&.locality_id,
         lat: building&.lat, lng: building&.lng,
         locality_lat: building&.locality&.lat, locality_lng: building&.locality&.lng,
-        offers:, name: property.title
+        offers:, name: property.title, listing: property
       )
       return unless ranked
 
@@ -224,7 +238,7 @@ module Inventory
         locality: shared ? card[:locality] : property.building&.locality&.name,
         price: property.price,
         score: breakdown[:score],
-        score_breakdown: breakdown.slice(:location, :price, :configuration),
+        score_breakdown: breakdown.slice(*MatchScore::BREAKDOWN_KEYS),
         matched_price: breakdown[:matched_price],
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped_property_ids.include?(property.id),
@@ -235,6 +249,23 @@ module Inventory
         sort: ranked[:sort],
         floor: shared ? MARKETPLACE_FLOOR : OWN_FLOOR,
         configuration_names: [ property.typology&.name ]
+      }.merge(area_fields(breakdown))
+    end
+
+    def area_fields(breakdown)
+      value = AreaUnits.display_quantity(breakdown[:matched_area_value])
+      {
+        category: breakdown[:matched_category] || lead.category,
+        area_sqft: breakdown[:matched_area_sqft],
+        area_unit: breakdown[:matched_area_unit],
+        area_value: value,
+        pre_leased: breakdown[:matched_pre_leased] == true,
+        area: {
+          value:,
+          unit: breakdown[:matched_area_unit],
+          sqft: breakdown[:matched_area_sqft],
+          kind: breakdown[:matched_category] == "land" ? "plot" : "carpet"
+        }
       }
     end
 
@@ -256,12 +287,13 @@ module Inventory
       value.to_s.downcase.gsub(/[^a-z0-9.]/, "")
     end
 
-    def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, fallback_price: nil)
+    def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, listing:, fallback_price: nil)
       decision = CandidateRank.decide(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:)
       return unless decision
 
       breakdown = MatchScore.for_offers(
-        budget:, offers:, lead_keys:, fallback_price:, location_points: decision.location_points
+        budget:, offers:, lead_keys:, fallback_price:, location_points: decision.location_points,
+        fit: score_fit, bonus: Fit.pre_leased_bonus(lead, listing), lead:
       )
       {
         breakdown:,
@@ -269,8 +301,15 @@ module Inventory
         distance_m: decision.distance_m,
         group: decision.group,
         near_shortlist: decision.near_shortlist,
-        sort: CandidateRank.sort_key(ranking: hooks.ranking?, decision:, score: breakdown[:score], name:)
+        sort: CandidateRank.sort_key(
+          ranking: hooks.ranking?, decision:, score: breakdown[:score], name:,
+          pre_leased_first: Fit.pre_leased_first?(lead, listing)
+        )
       }
+    end
+
+    def score_fit
+      lead.category == "residential" ? :configuration : :area
     end
 
     def center_ids(pin, box)

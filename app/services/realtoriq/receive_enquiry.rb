@@ -35,8 +35,12 @@ module Realtoriq
       phone = Phone.normalise(payload["phone"])
       return failure("Phone must be a 10-digit mobile number.") unless phone&.match?(/\A\+91\d{10}\z/)
 
-      property_type = PropertyType.find_by(name: "Under construction")
-      return failure("Sale property types are not configured.") if property_type.nil?
+      category = project.primary_category
+      property_type = nil
+      if category != "land"
+        property_type = PropertyType.find_by(name: "Under construction")
+        return failure("Sale property types are not configured.") if property_type.nil?
+      end
 
       lead_source = LeadSource.find_by(name: SOURCE_NAME)
       return failure("Lead sources are not configured.") if lead_source.nil?
@@ -46,7 +50,7 @@ module Realtoriq
       return Result.new(ok?: true, status: :ok) if already_received?
 
       Current.firm = link.firm
-      deliver(link, project, phone, property_type, lead_source, owner)
+      deliver(link, project, phone, property_type, lead_source, owner, category)
     rescue ActiveRecord::RecordNotUnique => e
       raise unless e.message.include?(ENQUIRY_INDEX)
 
@@ -61,7 +65,7 @@ module Realtoriq
 
     attr_reader :payload
 
-    def deliver(link, project, phone, property_type, lead_source, owner)
+    def deliver(link, project, phone, property_type, lead_source, owner, category)
       failure_result = nil
       ActiveRecord::Base.transaction do
         MarketplaceEnquiry.create!(
@@ -71,7 +75,9 @@ module Realtoriq
           submitted_at:
         )
 
-        existing = Lead.unscoped.find_by(firm_id: link.firm_id, transaction_type: "sale", open_identity: phone)
+        existing = Lead.unscoped.find_by(
+          firm_id: link.firm_id, transaction_type: "sale", category:, open_identity: phone
+        )
         if existing
           lead = existing
           outcome = "existing"
@@ -79,7 +85,7 @@ module Realtoriq
           remember_locality(existing, project)
           note_existing(existing, owner)
         else
-          created = create_lead(link, project, phone, property_type, lead_source, owner)
+          created = create_lead(link, project, phone, property_type, lead_source, owner, category)
           if created.is_a?(Result)
             failure_result = created
             raise ActiveRecord::Rollback
@@ -137,20 +143,22 @@ module Realtoriq
       lead.assigned_user&.active? ? lead.assigned_user : owner
     end
 
-    def create_lead(link, project, phone, property_type, lead_source, owner)
+    def create_lead(link, project, phone, property_type, lead_source, owner, category)
+      attributes = {
+        name: payload["name"].to_s.strip.presence,
+        mobile: phone,
+        transaction_type: "sale",
+        category:,
+        lead_source_id: lead_source.id,
+        source_detail: "Marketplace #{payload['project_code']}",
+        notes: payload["message"].presence,
+        assigned_user_id: owner.id
+      }
+      attributes[:property_type_id] = property_type.id if property_type
       result = Leads::Create.new(
         firm: link.firm,
         actor: owner,
-        attributes: {
-          name: payload["name"].to_s.strip.presence,
-          mobile: phone,
-          transaction_type: "sale",
-          property_type_id: property_type.id,
-          lead_source_id: lead_source.id,
-          source_detail: "Marketplace #{payload['project_code']}",
-          notes: payload["message"].presence,
-          assigned_user_id: owner.id
-        },
+        attributes:,
         project_id: project.id,
         copy_project_typologies: true,
         copy_project_localities: true,

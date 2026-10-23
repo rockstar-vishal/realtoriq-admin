@@ -73,6 +73,23 @@ RSpec.describe "Admin masters" do
 
       expect(Typology.find_by(name: "2.5 BHK").bedrooms).to eq(2.5)
     end
+
+    it "points the review alias at the latest remap" do
+      firm = create(:firm)
+      Current.firm = firm
+      shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
+      showroom = create(:typology, name: "Showroom", code: "showroom", category: "commercial")
+      project = create(:project, firm:)
+      row = create(:project_typology, project:, typology: create(:typology, name: "Boutique", code: "boutique"),
+        label: "Grade A Boutique Office Spaces", needs_review: true)
+
+      post remap_admin_masters_typologies_path, params: { project_typology_id: row.id, typology_id: shop.id }
+      post remap_admin_masters_typologies_path, params: { project_typology_id: row.id, typology_id: showroom.id }
+
+      alias_row = ConfigurationAlias.find_by!(key: "gradeaboutiqueofficespaces")
+      expect(alias_row.typology).to eq(showroom)
+      expect(alias_row.source).to eq("review")
+    end
   end
 
   describe "access" do

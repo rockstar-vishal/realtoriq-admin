@@ -111,20 +111,28 @@ module Matches
       unless lead.rent?
         chosen.concat(pool[:projects].select { |item| show_project?(lead, item, hooks) })
       end
-      unless lead.sale? && !lead.ready_possession?
+      if show_properties?(lead)
         chosen.concat(pool[:properties].select { |item| show_property?(lead, item, hooks) })
       end
       chosen
     end
 
+    def show_properties?(lead)
+      !(Inventory::Fit.possession_applies?(lead) && !lead.ready_possession?)
+    end
+
     def show_project?(lead, item, hooks)
-      decision = decision_for(hooks, item)
-      decision && (!lead.ready_possession? || item.ready)
+      decision_for(hooks, item) && (!lead.ready_possession? || item.ready) && scoped_offers(lead, item).any?
     end
 
     def show_property?(lead, item, hooks)
-      decision = decision_for(hooks, item)
-      decision && item.listing_for == lead.transaction_type
+      decision_for(hooks, item) && item.listing_for == lead.transaction_type && scoped_offers(lead, item).any?
+    end
+
+    def scoped_offers(lead, item)
+      item.offers.select { |offer|
+        Inventory::Fit.row_in_scope?(lead, Inventory::Fit::Ref.new(id: offer.typology_id, category: offer.category))
+      }
     end
 
     def decision_for(hooks, item)
@@ -146,19 +154,26 @@ module Matches
       decision = decision_for(hooks, item)
       return unless decision
 
+      offers = scoped_offers(lead, item)
+      return if offers.empty?
+
       breakdown = Inventory::MatchScore.for_offers(
         budget: lead.budget_amount,
-        offers: item.offers,
+        offers:,
         lead_keys: keys,
-        fallback_price: item.fallback_price,
-        location_points: decision.location_points
+        fallback_price: Inventory::Fit.fallback_price(lead, item.price_source),
+        location_points: decision.location_points,
+        fit: lead.category == "residential" ? :configuration : :area,
+        bonus: Inventory::Fit.pre_leased_bonus(lead, item),
+        lead:
       )
       return unless breakdown[:score] > item.floor
 
       {
         item:, score: breakdown[:score], decision:,
         sort: Inventory::CandidateRank.sort_key(
-          ranking: hooks.ranking?, decision:, score: breakdown[:score], name: item.name
+          ranking: hooks.ranking?, decision:, score: breakdown[:score], name: item.name,
+          pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
         )
       }
     end
@@ -204,10 +219,11 @@ module Matches
       key = [ item.kind, item.id ]
       bucket = buckets[key] ||= {
         "kind" => item.kind, "id" => item.id, "title" => item.name,
-        "listing_for" => item.listing_for, "leads" => []
+        "listing_for" => item.listing_for, "categories" => listing_categories(item), "leads" => []
       }
       buyer_sort = Inventory::CandidateRank.sort_key(
-        ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name
+        ranking: hooks.ranking?, decision: row[:decision], score: row[:score], name: lead.display_name,
+        pre_leased_first: Inventory::Fit.pre_leased_first?(lead, item)
       )
       bucket["leads"] << {
         "lead_id" => lead.id, "name" => lead.display_name, "score" => row[:score], "_sort" => buyer_sort
@@ -227,7 +243,10 @@ module Matches
         "match_count" => match_ids.size,
         "new_count" => new_count(match_ids, previous&.dig("match_ids")),
         "top_score" => scored.first[:score],
-        "match_ids" => match_ids
+        "match_ids" => match_ids,
+        "category" => lead.category,
+        "area" => lead.area_payload,
+        "prefers_pre_leased" => lead.prefers_pre_leased
       }
     end
 
@@ -260,7 +279,13 @@ module Matches
         "match_ids" => match_ids
       }
       item["listing_for"] = bucket["listing_for"] if bucket["listing_for"].present?
+      item["categories"] = bucket["categories"] if bucket.key?("categories")
       item
+    end
+
+    def listing_categories(item)
+      found = Array(item.offers).filter_map(&:category)
+      Typology::CATEGORY_ORDER & found
     end
 
     def new_count(ids, previous_ids)
