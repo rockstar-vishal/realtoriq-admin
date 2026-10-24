@@ -89,7 +89,10 @@ RSpec.describe "Nearby interest matching" do
     expect(rows.map { |row| row[:name] }).to eq([ "Far Kharghar", "Close Kamothe" ])
     expect(rows.map { |row| row[:group] }).to eq(%w[locality nearby])
     expect(rows.first[:score]).to be < rows.last[:score]
-    expect(rows.first[:distance_m]).to be > rows.last[:distance_m]
+    expect(rows.first[:distance_m]).to be_nil
+    expect(rows.last[:distance_m]).to eq(
+      Inventory::Geo.distance_m(kharghar.lat, kharghar.lng, close.lat, close.lng)
+    )
     expect(rows.first[:matched_on]).to include("locality")
     expect(rows.last[:matched_on]).to include("nearby")
     expect(rows.first[:near_shortlist]).to be(false)
@@ -167,7 +170,7 @@ RSpec.describe "Nearby interest matching" do
     )
     expect(rows.map { |row| row[:name] }).not_to include("Tagged Tower", "Other city")
     expect(rows.first[:distance_m]).to be < 1_000
-    expect(rows.last[:distance_m]).to be_within(50).of(3_000)
+    expect(rows.last[:distance_m]).to be_nil
   end
 
   it "opens the same circle from a mapped property" do

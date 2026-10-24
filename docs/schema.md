@@ -123,13 +123,22 @@ otherwise uses the project's primary category.
 
 **Buildings are deliberately not here** — see Phase 2.
 
-`locality_neighbors` stores both directions of a same-city pair whose centers
-are within 6 km (`distance_m`). It is rebuilt when a center is saved. Matching
-reads it instead of measuring the city on each request. `nearby_matchings` has
-no `firm_id`. One row means nearby matching is on for every firm. The table
-stays empty until `bin/rails matches:nearby_enable`, which rebuilds pairs,
-rewrites digests, and sets the notified fingerprint so that switch does not
-ping anyone. Neither table is firm-scoped.
+`locality_neighbors` stores both directions of a pair whose centers are within
+6 km (`distance_m`). While anchor matching is off the pair stays inside one
+city. `matches:anchor_enable` rebuilds pairs across cities, still one hop and
+still 6 km. It is rebuilt when a center is saved. Matching reads it instead of
+measuring the city on each request. `nearby_matchings` has no `firm_id`. One
+row means nearby matching is on for every firm. The table stays empty until
+`bin/rails matches:nearby_enable`, which rebuilds pairs, rewrites digests, and
+sets the notified fingerprint so that switch does not ping anyone.
+`anchor_matchings` is the same shape plus `radius_m` (integer, 1000–6000,
+default 6000). One row means anchor matching is on. It stays empty until
+`bin/rails matches:anchor_enable`. Leads store an optional place:
+`near_label`, `near_address`, `near_lat`, `near_lng` (`decimal(10,7)`) and
+`near_place_id`. Pin indexes, each partial on both coordinates present:
+`index_projects_on_pin`, `index_properties_on_pin`, `index_leads_on_near_pin`.
+The older `(city_id, lat, lng)` pin indexes stay. Neither switch table is
+firm-scoped.
 
 ### Facebook Lead Ads
 

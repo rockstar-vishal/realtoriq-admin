@@ -92,7 +92,8 @@ RSpec.describe "API v1 lead mappings" do
         "matches" => [],
         "truncated" => false,
         "interest_localities" => [],
-        "neighbor_localities" => []
+        "neighbor_localities" => [],
+        "anchors" => []
       )
     end
 

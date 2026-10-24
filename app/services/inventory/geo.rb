@@ -5,6 +5,10 @@ module Inventory
   # lookup, or inside one 6 km box around a tagged pin. Not a city scan.
   module Geo
     NEARBY_M = 6_000
+    ANCHOR_DEFAULT_M = 6_000
+    ANCHOR_RING_POINTS = [ 30, 25, 20 ].freeze
+    MAX_ANCHORS = 3
+    SHARED_STEP_M = 500
     PIN_DRIFT_M = 20_000
     CENTER_DISAGREEMENT_M = 5_000
     EARTH_M = 6_371_000.0
@@ -51,18 +55,50 @@ module Inventory
       Box.new(min_lat: lat_f - dlat, max_lat: lat_f + dlat, min_lng: lng_f - dlng, max_lng: lng_f + dlng)
     end
 
+    # The listing's own pin, or nil when listing_point would use the locality
+    # centre or nothing. listing_point calls this so the two cannot drift.
+    def own_pin(lat:, lng:, locality_lat:, locality_lng:)
+      center = pair(locality_lat, locality_lng)
+      pin = pair(lat, lng)
+      return unless pin && inside_maharashtra?(*pin) && (center.nil? || distance_m(*pin, *center) <= PIN_DRIFT_M)
+
+      { lat: pin[0], lng: pin[1] }
+    end
+
     # A property or project pin. Outside Maharashtra, or more than 20 km from
     # its own locality center, the center is used instead. A pin with no
     # center is kept only inside Maharashtra. Nil when nothing is usable.
     def listing_point(lat:, lng:, locality_lat:, locality_lng:)
+      own = own_pin(lat:, lng:, locality_lat:, locality_lng:)
+      return own if own
+
       center = pair(locality_lat, locality_lng)
-      pin = pair(lat, lng)
-      if pin && inside_maharashtra?(*pin) && (center.nil? || distance_m(*pin, *center) <= PIN_DRIFT_M)
-        return { lat: pin[0], lng: pin[1] }
-      end
       return { lat: center[0], lng: center[1] } if center && inside_maharashtra?(*center)
 
       nil
+    end
+
+    # Ring 1 is the first third of the radius, ring 2 the next, ring 3 the
+    # rest. Past the radius there is no ring. Points are 30, 25, then 20.
+    def ring_for(metres, radius_m:)
+      return if metres.nil? || radius_m.nil? || radius_m <= 0 || metres.negative? || metres > radius_m
+
+      third = radius_m / 3.0
+      if metres <= third
+        [ 1, ANCHOR_RING_POINTS[0] ]
+      elsif metres <= third * 2
+        [ 2, ANCHOR_RING_POINTS[1] ]
+      else
+        [ 3, ANCHOR_RING_POINTS[2] ]
+      end
+    end
+
+    # Nearest 500 m, and never under 500. Nil stays nil.
+    def rounded_m(metres)
+      return if metres.nil?
+
+      rounded = (metres.to_f / SHARED_STEP_M).round * SHARED_STEP_M
+      [ rounded, SHARED_STEP_M ].max
     end
 
     def haversine_sql(lat_sql, lng_sql)

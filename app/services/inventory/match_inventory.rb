@@ -26,7 +26,8 @@ module Inventory
         matches: listed.map { |row| publish(row) },
         truncated: query.blank? && ordered.size > LIMIT,
         interest_localities: interest_localities,
-        neighbor_localities: neighbor_localities
+        neighbor_localities: neighbor_localities,
+        anchors: anchor_summaries
       }
     end
 
@@ -36,7 +37,7 @@ module Inventory
 
     def visible_rows
       return [] if lead.unqualified? || lead.lead_status&.is_booked?
-      return [] if locality_ids.empty? && hooks.pins.empty?
+      return [] if locality_ids.empty? && circle_empty?
 
       (project_rows + property_rows).select { |row| row[:score] > row[:floor] && !row[:mapped] }
     end
@@ -82,7 +83,9 @@ module Inventory
     end
 
     def own_projects
-      load_projects(projects_in(Project.where(status: "active", source: "own")))
+      scope = Project.where(status: "active", source: "own")
+      scope = ProjectTwins.without_listed_copies(scope) if anchor_mode?
+      load_projects(projects_in(scope))
     end
 
     def marketplace_projects
@@ -90,7 +93,7 @@ module Inventory
     end
 
     def projects_in(scope)
-      return scope.none if locality_ids.empty? && hooks.pins.empty?
+      return scope.none if locality_ids.empty? && circle_empty?
 
       in_category = scope.where(
         id: ProjectTypology.joins(:typology).where(typologies: { category: lead.category }).select(:project_id)
@@ -100,10 +103,17 @@ module Inventory
 
     def project_ids(scope)
       ids = locality_ids.empty? ? [] : scope.where(locality_id: locality_ids).pluck(:id)
-      hooks.pins.each do |pin|
-        box = Geo.box(pin[:lat], pin[:lng])
-        ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
-        ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
+      if anchor_mode?
+        hooks.anchors.each do |anchor|
+          box = Geo.box(anchor.lat, anchor.lng, metres: hooks.anchor_radius_m + 150)
+          ids |= scope.where(lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+        end
+      else
+        hooks.pins.each do |pin|
+          box = Geo.box(pin[:lat], pin[:lng])
+          ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+          ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
+        end
       end
       ids
     end
@@ -145,13 +155,20 @@ module Inventory
     end
 
     def property_ids(scope)
-      return [] if locality_ids.empty? && hooks.pins.empty?
+      return [] if locality_ids.empty? && circle_empty?
 
       ids = locality_ids.empty? ? [] : scope.where(locality_id: locality_ids).pluck(:id)
-      hooks.pins.each do |pin|
-        box = Geo.box(pin[:lat], pin[:lng])
-        ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
-        ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
+      if anchor_mode?
+        hooks.anchors.each do |anchor|
+          box = Geo.box(anchor.lat, anchor.lng, metres: hooks.anchor_radius_m + 150)
+          ids |= scope.where(lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+        end
+      else
+        hooks.pins.each do |pin|
+          box = Geo.box(pin[:lat], pin[:lng])
+          ids |= scope.where(city_id: pin[:city_id], lat: box.min_lat..box.max_lat, lng: box.min_lng..box.max_lng).pluck(:id)
+          ids |= scope.where(locality_id: center_ids(pin, box)).pluck(:id)
+        end
       end
       ids
     end
@@ -188,6 +205,8 @@ module Inventory
         mapped: mapped_project_ids.include?(project.id),
         matched_on: MatchScore.matched_on(breakdown, nearby: ranked[:nearby]),
         distance_m: ranked[:distance_m],
+        distance_rounded: ranked[:distance_rounded],
+        anchor: ranked[:anchor],
         group: ranked[:group],
         near_shortlist: ranked[:near_shortlist],
         sort: ranked[:sort],
@@ -239,6 +258,8 @@ module Inventory
         mapped: mapped_property_ids.include?(property.id),
         matched_on: MatchScore.matched_on(breakdown, nearby: ranked[:nearby]),
         distance_m: ranked[:distance_m],
+        distance_rounded: ranked[:distance_rounded],
+        anchor: ranked[:anchor],
         group: ranked[:group],
         near_shortlist: ranked[:near_shortlist],
         sort: ranked[:sort],
@@ -285,7 +306,10 @@ module Inventory
     end
 
     def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, listing:, fallback_price: nil)
-      decision = CandidateRank.decide(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:)
+      decision = CandidateRank.decide(
+        hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:,
+        round_distance: listing.is_a?(Property) && listing.firm_id != Current.firm_id
+      )
       return unless decision
 
       breakdown = MatchScore.for_offers(
@@ -295,7 +319,9 @@ module Inventory
       {
         breakdown:,
         nearby: decision.nearby,
-        distance_m: decision.distance_m,
+        distance_m: decision.shown_distance_m,
+        distance_rounded: decision.distance_rounded,
+        anchor: anchor_payload(decision),
         group: decision.group,
         near_shortlist: decision.near_shortlist,
         sort: CandidateRank.sort_key(
@@ -321,13 +347,44 @@ module Inventory
     end
 
     def mapped_project_ids
-      @mapped_project_ids ||= lead.lead_projects
-        .reject { |row| row.withdrawn_at.present? }
-        .map(&:project_id)
+      @mapped_project_ids ||= begin
+        ids = lead.lead_projects.reject { |row| row.withdrawn_at.present? }.map(&:project_id)
+        if anchor_mode?
+          ids = ProjectTwins.expand(ids, firm_id: lead.firm_id)
+          ids |= ProjectTwins.expand(hooks.visited_project_ids, firm_id: lead.firm_id)
+        end
+        ids
+      end
     end
 
     def mapped_property_ids
-      @mapped_property_ids ||= lead.lead_properties.map(&:property_id)
+      @mapped_property_ids ||= begin
+        ids = lead.lead_properties.map(&:property_id)
+        ids |= hooks.visited_property_ids if anchor_mode?
+        ids
+      end
+    end
+
+    def anchor_mode?
+      hooks.anchor_mode?
+    end
+
+    def circle_empty?
+      anchor_mode? ? hooks.anchors.empty? : hooks.pins.empty?
+    end
+
+    def anchor_summaries
+      return [] unless anchor_mode?
+
+      hooks.anchors.map { |anchor|
+        { kind: anchor.kind, name: anchor.name, listing_kind: anchor.listing_kind, listing_id: anchor.listing_id }
+      }
+    end
+
+    def anchor_payload(decision)
+      return if decision.anchor.nil?
+
+      { kind: decision.anchor.kind, name: decision.anchor.name }
     end
   end
 end

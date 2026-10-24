@@ -80,12 +80,18 @@ class Lead < ApplicationRecord
   validate :configurations_match_category
   validate :land_is_for_sale
   validate :area_is_ordered
+  validate :near_coordinates_are_a_pair
+  validate :near_place_is_inside_india
+  validate :near_label_present_with_pin
 
   validates :category, inclusion: { in: Typology::CATEGORIES }
   validates :area_unit, inclusion: { in: AreaUnits::CODES }
   validates :area_min_value, :area_max_value, numericality: { greater_than: 0 }, allow_nil: true
+  validates :near_label, length: { maximum: 40 }, allow_nil: true
+  validates :near_address, length: { maximum: 255 }, allow_nil: true
 
   before_validation :normalise_contact_details
+  before_validation :strip_near_place
   before_validation :normalise_requirement
   before_validation :sync_open_identity
   before_validation :assign_code, on: :create
@@ -448,6 +454,31 @@ class Lead < ApplicationRecord
     self.mobile = Phone.normalise(mobile)
     self.alt_mobile = Phone.normalise(alt_mobile) if alt_mobile.present?
     self.email = email.to_s.downcase.strip.presence
+  end
+
+  def strip_near_place
+    self.near_label = near_label.strip.presence if near_label.is_a?(String)
+    self.near_address = near_address.strip.presence if near_address.is_a?(String)
+  end
+
+  def near_coordinates_are_a_pair
+    return if near_lat.blank? == near_lng.blank?
+
+    errors.add(:base, "Latitude and longitude are set together")
+  end
+
+  def near_place_is_inside_india
+    return if near_lat.blank? && near_lng.blank?
+    return if IndiaPin.pin_inside_india?(near_lat, near_lng)
+
+    errors.add(:base, "The place must be inside India.")
+  end
+
+  def near_label_present_with_pin
+    return if near_lat.blank? && near_lng.blank?
+    return if near_label.present?
+
+    errors.add(:near_label, "is required")
   end
 
   # One live sale (or rent) lead per mobile per firm. Dead leads leave the

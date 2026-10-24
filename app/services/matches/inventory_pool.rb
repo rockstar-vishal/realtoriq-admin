@@ -29,14 +29,16 @@ module Matches
     CACHE_TTL = 1.hour
     Possession = Struct.new(:possession_on, :possession_label)
 
-    def self.call(locality_ids:, price_cap:, boxes: [])
-      new(locality_ids:, price_cap:, boxes:).call
+    def self.call(locality_ids:, price_cap:, boxes: [], centers: true, hide_listed_copies: false)
+      new(locality_ids:, price_cap:, boxes:, centers:, hide_listed_copies:).call
     end
 
-    def initialize(locality_ids:, price_cap:, boxes: [])
+    def initialize(locality_ids:, price_cap:, boxes: [], centers: true, hide_listed_copies: false)
       @locality_ids = Array(locality_ids).uniq
       @price_cap = price_cap
       @boxes = boxes
+      @centers = centers
+      @hide_listed_copies = hide_listed_copies
     end
 
     def call
@@ -45,7 +47,7 @@ module Matches
 
     private
 
-    attr_reader :locality_ids, :price_cap, :boxes
+    attr_reader :locality_ids, :price_cap, :boxes, :centers, :hide_listed_copies
 
     def projects
       return box_projects if locality_ids.empty?
@@ -60,8 +62,9 @@ module Matches
     end
 
     def own_projects
-      Project.where(status: "active", source: "own", locality_id: locality_ids)
-        .includes(:locality, project_typologies: :typology)
+      scope = Project.where(status: "active", source: "own", locality_id: locality_ids)
+      scope = Inventory::ProjectTwins.without_listed_copies(scope) if hide_listed_copies
+      scope.includes(:locality, project_typologies: :typology)
         .map { |project| project_candidate(project, marketplace: false) }
     end
 
@@ -106,6 +109,7 @@ module Matches
       return [] if boxes.empty?
 
       own_scope = Project.where(status: "active", source: "own")
+      own_scope = Inventory::ProjectTwins.without_listed_copies(own_scope) if hide_listed_copies
       own = projects_from(own_scope, in_boxes(own_scope))
         .map { |project| project_candidate(project, marketplace: false) }
       market = projects_from(Project.marketplace, in_boxes(Project.marketplace))
@@ -139,9 +143,9 @@ module Matches
     def properties_near
       table = Property.arel_table
       boxes_pred = boxes.map { |box|
-        table[:city_id].eq(box[:city_id])
-          .and(table[:lat].between(box[:min_lat]..box[:max_lat]))
+        located = table[:lat].between(box[:min_lat]..box[:max_lat])
           .and(table[:lng].between(box[:min_lng]..box[:max_lng]))
+        box[:city_id].present? ? table[:city_id].eq(box[:city_id]).and(located) : located
       }.reduce { |combined, predicate| combined.or(predicate) }
       predicate = boxes_pred
       if center_locality_ids.any?
@@ -158,6 +162,8 @@ module Matches
     end
 
     def center_locality_ids
+      return [] unless centers
+
       @center_locality_ids ||= boxes.flat_map { |box|
         Inventory::Geo.center_locality_ids(
           city_id: box[:city_id], min_lat: box[:min_lat], max_lat: box[:max_lat],
@@ -167,10 +173,15 @@ module Matches
     end
 
     def in_boxes(scope)
-      clauses = boxes.map { |box|
-        scope.where(city_id: box[:city_id], lat: box[:min_lat]..box[:max_lat], lng: box[:min_lng]..box[:max_lng])
-      }
+      clauses = boxes.map { |box| boxed_scope(scope, box) }
       clauses.reduce { |combined, clause| combined.or(clause) }
+    end
+
+    def boxed_scope(scope, box)
+      located = scope.where(lat: box[:min_lat]..box[:max_lat], lng: box[:min_lng]..box[:max_lng])
+      return located if box[:city_id].blank?
+
+      located.where(city_id: box[:city_id])
     end
 
     def project_candidate(project, marketplace:)

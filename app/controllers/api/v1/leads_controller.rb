@@ -56,7 +56,9 @@ module Api
           locality_ids: params[:locality_ids],
           copy_project_localities: !params.key?(:locality_ids),
           project_id: params[:project_id],
-          followup: followup_params
+          followup: followup_params,
+          near_place: near_place_value,
+          near_place_supplied: params.key?(:near_place)
         ).call
 
         unless result.ok?
@@ -105,6 +107,7 @@ module Api
           replace_typologies if params.key?(:typology_ids)
           apply_category_from_configurations
           replace_localities if params.key?(:locality_ids)
+          apply_near_place if params.key?(:near_place)
           ensure_match_fields
           saved = @lead.errors.empty? && @lead.save
           raise ActiveRecord::Rollback unless saved
@@ -409,6 +412,34 @@ module Api
         @lead.errors.add(:budget, "is required") if @lead.budget_amount.blank?
         @lead.errors.add(:typology_ids, "must include a configuration") if @lead.lead_typologies.empty?
         @lead.errors.add(:locality_ids, "must include a locality") if @lead.lead_localities.empty?
+      end
+
+      def apply_near_place
+        assign_near_place(@lead, near_place_value)
+      end
+
+      # A place change is read on the next match and the next digest, the same
+      # way a preferred-locality change is. Neither enqueues a scan by itself.
+      def near_place_value
+        raw = params[:near_place]
+        return nil if raw.nil?
+
+        raw.permit(:label, :address, :lat, :lng, :google_place_id)
+      end
+
+      def assign_near_place(lead, place)
+        if place.nil?
+          lead.assign_attributes(
+            near_label: nil, near_address: nil, near_lat: nil, near_lng: nil, near_place_id: nil
+          )
+          return
+        end
+
+        lead.near_label = place[:label]
+        lead.near_address = place[:address]
+        lead.near_lat = place[:lat]
+        lead.near_lng = place[:lng]
+        lead.near_place_id = place[:google_place_id]
       end
 
       def render_validation_errors(errors)

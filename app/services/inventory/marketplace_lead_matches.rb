@@ -89,7 +89,16 @@ module Inventory
     end
 
     def tagged_lead_ids(base)
-      return [] unless nearby_on? && listing_point && property.city_id
+      return [] unless nearby_on?
+
+      if anchors_on?
+        point = listing_own_pin
+        return [] if point.nil?
+
+        box = Geo.box(point[:lat], point[:lng], metres: anchor_radius + 150)
+        return AnchoredLeads.ids(box:, lead_scope: base, unscoped: true)
+      end
+      return [] unless listing_point && property.city_id
 
       box = Geo.box(listing_point[:lat], listing_point[:lng])
       center_ids = Geo.center_locality_ids(
@@ -104,12 +113,35 @@ module Inventory
     def nearby_on?
       return @nearby_on unless @nearby_on.nil?
 
-      @nearby_on = NearbyMatching.enabled?
+      @nearby_on = NearbyMatching.enabled? || anchors_on?
+    end
+
+    def read_anchor_switch
+      return if defined?(@anchor_radius)
+
+      @anchor_radius = AnchorMatching.pick(:radius_m)
+    end
+
+    def anchors_on?
+      read_anchor_switch
+      !@anchor_radius.nil?
+    end
+
+    def anchor_radius
+      read_anchor_switch
+      @anchor_radius
+    end
+
+    def listing_own_pin
+      @listing_own_pin ||= Geo.own_pin(
+        lat: property.lat, lng: property.lng,
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+      )
     end
 
     def scored
       rows = candidates
-      index = HookIndex.for(rows, nearby: nearby_on?)
+      index = HookIndex.for(rows, nearby: nearby_on?, anchors: anchors_on?, radius_m: anchor_radius)
       rows.filter_map { |lead| scored_lead(lead, index) }
     end
 
@@ -118,7 +150,9 @@ module Inventory
       decision = CandidateRank.decide(
         hooks:, locality_id:,
         lat: property.lat, lng: property.lng,
-        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+        round_distance: true,
+        skip_listing: { kind: "property", ids: [ property.id ] }
       )
       return unless decision
 
@@ -139,7 +173,7 @@ module Inventory
         ranking: hooks.ranking?, decision:, score: breakdown[:score], name: lead.firm&.name,
         pre_leased_first: Fit.pre_leased_first?(lead, property), tie: lead.id
       )
-      [ sort, row(lead).merge(distance_m: decision.distance_m, group: decision.group) ]
+      [ sort, row(lead).merge(distance_m: decision.shown_distance_m, group: decision.group) ]
     end
 
     def offers
