@@ -227,10 +227,13 @@ tenant_types[]   code, name
 transaction_types[]  code, name                  ← fixed: sale, rent
 floor_bands[]        code, name                  ← fixed: lower, middle, higher
 prospect_statuses[]  code, name                  ← fixed: new, following, interested, not_interested
+matching             anchor_radius_m             ← null while anchor matching is off
 ```
 
 `localities` is a **flat list carrying `city_id`**, not nested under cities.
 `lat` and `lng` are the locality centre, or null when it has not been placed.
+`matching.anchor_radius_m` is the anchor circle in metres, or null while
+anchor matching is off. The lead form draws its circle from it.
 `typologies` is the configurations a broker can pick: active, and not merged
 into another configuration. `category` is `residential`, `commercial`, or
 `land`. `area_kind` is `carpet` or `plot`. `uses_floor_band` is false for
@@ -560,6 +563,7 @@ disabled. An agent receives only themselves.
 | `unqualified` | boolean | optional | Default false. `true` leaves the lead out of matching and records `lead.unqualified`. Only a manager or the super admin may set it; an agent gets `403 forbidden_role` and the lead is not created. Omitting it does not record that event. The same rules as PATCH: an incomplete lead is `422 invalid` and is not created |
 | `typology_ids` | **array** of string | **required** | At least one. Sending the key replaces the whole set. Omit the key on a create-from-project (`project_id` set) to copy the project's configurations. An empty array does not copy |
 | `locality_ids` | **array** of string | **required** | At least one preferred locality. Sending the key replaces the whole set. Omit the key on a create-from-project to copy that project's locality. An empty array does not copy. A microsite enquiry copies the project's locality and still saves when the project has none |
+| `near_place` | object or null | optional | `{ label, address, lat, lng, google_place_id }`. `label` is required when the pin is set, up to 40 characters, stripped. `address` is up to 255. `lat` and `lng` are both set or both blank, and when set they sit inside India (lat 6–37, lng 68–98). Outside India is `422` with "The place must be inside India." `null` clears all five columns. Omitting the key leaves them alone. Detail only: the list card does not include it, and no payload another firm can see includes it |
 | `project_id` | string | optional | Create-from-project. Copies a blank budget into `budget_max` (not min), plus possession / notes, and inserts a `LeadProject`. Own or catalog. **Create only** — ignored on PATCH |
 
 > **`property_type_id` is a single string. `typology_ids` is an array.**
@@ -731,8 +735,10 @@ List-card fields (also on detail, which extends this shape):
 
 The **detail** adds `alt_mobile`, `source_detail`,
 `dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
-`mapped_properties[]`, `activities[]` (latest 20) and `status_history[]`.
-There is no `first_visit_at`.
+`mapped_properties[]`, `activities[]` (latest 20), `status_history[]` and
+`near_place`. There is no `first_visit_at`. `near_place` is
+`{ label, address, lat, lng, google_place_id }` or `null`. It is not on the
+list card.
 
 Detail includes `emi` or `null`. The list card does not. `emi` is the last Quick EMI save:
 
@@ -783,36 +789,61 @@ Without `q`, the body is the first 50. The first group fills those slots.
 `truncated` is true when more unmapped matches exist, including a later group
 that did not fit. Search returns those.
 
-Until nearby matching is turned on, a row is listed only when a preferred
-locality overlaps, highest score first. After `bin/rails matches:nearby_enable`,
-groups are fixed. A higher score does not move a row into an earlier group:
+Anchor matching is the live rule once `bin/rails matches:anchor_enable` has
+run. A lead has up to three anchors: the place on the lead, then visited
+listings newest first, then shortlisted listings newest first. A listing
+counts once. A project whose shortlist entry was withdrawn is not an anchor,
+even if it was visited. A listing with no pin of its own is skipped and the
+next one is taken. The circle uses that listing's own pin only, ignores the
+city line, and is graded. The rings sit at a third, two thirds and the full
+radius, for 30, 25 and 20 location points. The radius starts at 6 km, so the
+rings are 2, 4 and 6 km. At 3 km they are 1, 2 and 3 km.
+`bin/rails matches:anchor_radius METRES=3000` changes it and rewrites digests
+without a notification. Past the radius, rows match by preferred locality and
+then by neighbor locality, as below. A row in a preferred locality scores 30
+even in an outer ring. Groups are fixed. A higher score does not move a row
+into an earlier group:
 
-1. When the lead has a mapped project or property with a usable pin, listings
-   within 6 km of the nearest such pin, in any locality. Several tags use the
-   nearest pin. A mapped project with no usable pin uses its locality center
-   for this circle. The mapped row itself is not a result. A site visit does
-   not add a pin.
-2. Preferred localities, as one block. Inside it: price and configuration,
-   then distance from the locality center, then name.
+1. Inside an anchor ring, nearest ring first, then score, then distance. A
+   visited or shortlisted anchor sets `near_shortlist`. A placed anchor does
+   not. The row's `anchor` is `{ kind, name }`.
+2. Preferred localities, as one block. No distance is shown.
 3. Whole neighbor localities whose centers are within 6 km, nearest center
-   first. A listing anywhere in that locality is included. This is one hop.
-   A locality whose center is further than 6 km is left out, and price cannot
-   carry it in. Neighbors are only added when the first groups have not
-   already filled the 50.
+   first. One hop. A listing anywhere in that locality is included. The shown
+   distance is from the listing's own pin to the nearest preferred centre, and
+   is omitted when the listing has no pin of its own.
+
+The response also carries `anchors`: `{ kind, name, listing_kind, listing_id }`
+for each anchor the lead kept. `listing_kind` and `listing_id` are null for the
+place. A visited or shortlisted listing is left out of that lead's matches, and
+a listing is never measured from itself.
+
+While anchor matching is off, a row is listed only when a preferred locality
+overlaps until `bin/rails matches:nearby_enable`. After that, the first group
+is listings within 6 km of the nearest shortlisted pin, in that pin's city. A
+mapped project with no usable pin uses its locality centre. A site visit does
+not add a pin, and the place on the lead is ignored. Preferred localities are
+the next group, then neighbor localities whose centres are within 6 km and in
+the same city. `anchors` is `[]` and each row's `anchor` is null.
 
 A pin outside Maharashtra, or more than 20 km from its own locality center,
 is ignored and the center is used instead. The saved pin is left as entered.
-A withdrawn project mapping is not a pin. Removing a property mapping removes
-its pin. Another firm's private inventory never enters the pin box. Own stock,
-catalog projects, and shared listings do.
+Shown distances use a real pin on both ends. A preferred-locality row has no
+distance. A pin-circle row whose pin is a centre fallback has no distance.
+Another firm's property, an anchor that is another firm's property, and
+another firm's lead round the shown distance to the nearest 500 m and never
+below 500 m (`distance_rounded` is true). Catalog projects stay exact.
+`distance_m` on a lead's matches and on the firm's own listing leads is that
+shown distance. Another firm's lead rows keep today's keys and always round.
 
 Own projects and own properties need a score above 30. Catalog projects and
 another firm's shared properties need a score above 50. A preferred locality
 is 30 points (`matched_on` includes `locality`). A neighbor, or a listing that
-is only inside the 6 km pin circle, is 20 (`matched_on` includes `nearby`).
-Catalog nearby still needs a configuration and a price that scores, because
-20 + 30 is not above 50. Own nearby clears the floor with a configuration
-(40) or a price within 15% (50). Locality points alone are left out.
+is only inside an outer ring or the old 6 km pin circle, is 20
+(`matched_on` includes `nearby`). The middle ring is 25. Catalog nearby still
+needs a configuration and a price that scores, because 20 + 30 is not above 50.
+Own nearby clears the floor with a configuration (40) or a price within 15%
+(50). Locality points alone are left out.
 
 A rent lead sees available rental properties only. A ready-possession sale lead
 sees available sale properties plus active projects whose possession month is
@@ -820,12 +851,24 @@ this month in Asia/Kolkata, at most two months ahead, or any earlier month.
 An under-construction sale lead sees active projects only. A possession label
 with no date that starts with the word Ready, such as Ready to move or Ready
 possession, counts as ready. A lead with no
-preferred locality still matches listings within 6 km of a shortlisted project
-or property once nearby matching is on. Archived projects and booked or sold-out properties
-are left out. A catalog project and the firm's booking copy are both listed
-when both are active; the catalog row has `source: "catalog"` and
+preferred locality still matches listings inside an anchor circle, or within
+6 km of a shortlisted project or property while anchor matching is off and
+nearby matching is on. Archived projects and booked or sold-out properties
+are left out. While a firm's booking copy and its catalog row are both active,
+anchor matching lists only the catalog row, in lead matches, in a listing's
+leads and in the digest. A shortlist entry for either marks both. Once the
+catalog row is archived, the copy is listed. While anchor matching is off,
+both are listed. The catalog row has `source: "catalog"` and
 `marketplace: true`, with `listed_by` set to the builder. Another firm's shared
 property has `marketplace: true` and `listed_by` set to that firm's name.
+
+`bin/rails matches:anchor_disable` turns anchor matching off, rebuilds
+same-city neighbor pairs, and rewrites digests without a notification. It
+leaves nearby matching as it is. `bin/rails matches:anchor_compare` prints old
+against new for every eligible firm's lead that has a place, a visit with a
+site, or a shortlist entry, and writes `tmp/anchor_compare.csv`. It refuses to
+run in production and rolls back what it changes. `RADIUS=3000` tries a smaller
+circle. None of these tasks send a notification.
 
 A listing is scored only inside the lead's category. Commercial and Plot & Land
 also require the configuration the lead chose. Residential still scores every
@@ -854,8 +897,9 @@ The score is 100 points and is not stored:
 
 | Points | When |
 | --- | --- |
-| 30 | A preferred locality. `group` is `locality` |
-| 20 | Not a preferred locality, and either within 6 km of a tagged pin or in a neighbor locality. `group` is `nearby` |
+| 30 | A preferred locality, or the inner third of the anchor radius. `group` is `locality` when the locality is preferred |
+| 25 | Anchor matching only. The middle third of the radius, and not a preferred locality. `group` is `nearby` |
+| 20 | Not a preferred locality, and either the outer third of the radius, within 6 km of a tagged pin while anchor matching is off, or in a neighbor locality. `group` is `nearby` |
 | 50 | The chosen price is at or under the budget plus 2% |
 | 30 | That band was missed, and the price is at or under the budget plus 15% |
 | 20 | Both of those were missed, and the price is at or under the budget plus 25% |
@@ -895,10 +939,12 @@ chosen configuration is the only one scored.
     "score_breakdown": { "location": 30, "price": 50, "fit": 20, "configuration": 20, "area": null, "bonus": 0 },
     "matched_price": 14200000, "matched_configuration": "2 BHK",
     "mapped": false, "matched_on": ["locality", "price", "configuration"],
-    "distance_m": 800, "group": "locality", "near_shortlist": false }
+    "distance_m": 800, "distance_rounded": false, "group": "locality",
+    "near_shortlist": true, "anchor": { "kind": "visited", "name": "Mehta Marquina" } }
 ], "truncated": false,
   "interest_localities": [{ "id": "…", "name": "Kolshet" }],
-  "neighbor_localities": [{ "id": "…", "name": "Balkum", "distance_m": 3200 }] }
+  "neighbor_localities": [{ "id": "…", "name": "Balkum", "distance_m": 3200 }],
+  "anchors": [{ "kind": "placed", "name": "Office", "listing_kind": null, "listing_id": null }] }
 ```
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
@@ -914,12 +960,17 @@ points, or 0. `matched_on` lists the dimensions that scored: `locality` or
 no-budget points, `configuration` when those points are above 0, `area`
 when the area points are 20, and `pre_leased` when the bonus was earned. `group` is
 `locality` when the row's locality is one the lead named, otherwise `nearby`.
-A pin-circle row in a named locality stays `group: "locality"` and sets
-`near_shortlist` to true. `distance_m` is metres to the hook in use: the
-nearest tagged pin, or the locality center when there is no pin. It is null
-while nearby matching is off. `interest_localities` is what the lead named.
-`neighbor_localities` is empty until nearby matching is on. Rows already
-mapped to the lead are omitted. A catalog mapping does not mark the booking
+A pin-circle or anchor row in a named locality stays `group: "locality"` and
+sets `near_shortlist` to true, except a placed anchor, which leaves it false.
+`distance_m` is the shown distance: metres to the nearest real anchor or pin,
+or from the listing's own pin to the preferred centre on a neighbor row. It is
+null on a preferred row, when either end is a centre fallback, and while
+nearby matching is off. `distance_rounded` is true when that distance was
+rounded. `anchor` is null outside the anchor band. `interest_localities` is
+what the lead named. `neighbor_localities` is empty until nearby matching is
+on. Rows already mapped to the lead are omitted. While anchor matching is on,
+a shortlist entry for a catalog project also marks the firm's booking copy,
+and the reverse. While it is off, a catalog mapping does not mark the booking
 copy, and the reverse is also separate.
 
 ### `GET /match_digest`
@@ -972,7 +1023,9 @@ has `new_count` 0 and does not cause a ping. A quiet scan still returns the
 rows and does not notify.
 `bin/rails matches:rebaseline` rewrites every eligible firm's digest under the
 same lock and does not notify, so a scoring change can land without pinging
-brokers. It does not turn nearby matching on.
+brokers. It does not turn nearby matching or anchor matching on.
+`matches:anchor_enable`, `matches:anchor_disable` and `matches:anchor_radius`
+rewrite digests the same way.
 `listing_items[].kind` is `project` or `property`. A property row includes
 `listing_for` (`sale` or `rent`) so two listings with the same title can be
 told apart. A project row omits it. A lead row also carries `category`,

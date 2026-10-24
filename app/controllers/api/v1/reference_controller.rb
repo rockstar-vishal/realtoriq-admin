@@ -29,7 +29,7 @@ module Api
           builders.maximum(:updated_at), Typology.maximum(:updated_at),
           ConfigurationAlias.maximum(:updated_at),
           LeadSource.maximum(:updated_at), LeadStatus.maximum(:updated_at),
-          PropertyType.maximum(:updated_at) ].map(&:to_s).join("/")
+          PropertyType.maximum(:updated_at), AnchorMatching.maximum(:updated_at) ].map(&:to_s).join("/")
       end
 
       def builders = Builder.available_to(current_firm)
@@ -73,7 +73,8 @@ module Api
             { code: "following", name: "Following" },
             { code: "interested", name: "Interested" },
             { code: "not_interested", name: "Not interested" }
-          ]
+          ],
+          matching: { anchor_radius_m: AnchorMatching.radius_m }
         }
       end
     end

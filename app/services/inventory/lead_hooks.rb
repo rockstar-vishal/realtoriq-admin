@@ -5,7 +5,8 @@ module Inventory
   # pins for one lead. Derived on read. A withdrawn project mapping is not a
   # pin. Nearby stays dark until NearbyMatching has a row.
   class LeadHooks
-    attr_reader :preferred_ids, :neighbor_distance, :pins, :centers, :preferred_localities, :neighbor_localities
+    attr_reader :preferred_ids, :neighbor_distance, :pins, :anchors, :centers,
+      :preferred_localities, :neighbor_localities, :visited_project_ids, :visited_property_ids
 
     def self.for(lead, index: nil)
       new(lead, index:).tap(&:load)
@@ -17,6 +18,9 @@ module Inventory
       @preferred_ids = []
       @neighbor_distance = {}
       @pins = []
+      @anchors = []
+      @visited_project_ids = []
+      @visited_property_ids = []
       @centers = []
       @preferred_localities = []
       @neighbor_localities = []
@@ -30,6 +34,9 @@ module Inventory
 
       if index
         index.fill(self, lead)
+      elsif anchor_mode?
+        load_neighbors
+        load_anchors
       else
         load_neighbors
         load_pins
@@ -38,7 +45,18 @@ module Inventory
     end
 
     def ranking?
-      nearby_enabled? && (centers.any? || neighbor_distance.any? || pins.any?)
+      return false unless nearby_enabled?
+
+      circles = anchor_mode? ? anchors.any? : pins.any?
+      centers.any? || neighbor_distance.any? || circles
+    end
+
+    def anchor_mode?
+      index ? index.anchors : own_anchor_mode?
+    end
+
+    def anchor_radius_m
+      index ? index.radius_m : own_anchor_radius
     end
 
     def preferred?(locality_id)
@@ -61,6 +79,12 @@ module Inventory
       pin_list.each { |pin| pins << pin }
     end
 
+    def install_anchors(list, visited_projects: [], visited_properties: [])
+      @anchors = Array(list)
+      @visited_project_ids = Array(visited_projects)
+      @visited_property_ids = Array(visited_properties)
+    end
+
     private
 
     attr_reader :lead, :index
@@ -68,9 +92,35 @@ module Inventory
     # Memoized on this object only. A thread or class cache would keep a stale
     # false after the enable rake, or leak across requests.
     def nearby_enabled?
+      return index.nearby if index
       return @nearby_enabled unless @nearby_enabled.nil?
 
-      @nearby_enabled = index ? index.nearby : NearbyMatching.enabled?
+      @nearby_enabled = NearbyMatching.enabled? || own_anchor_mode?
+    end
+
+    def read_own_anchor_switch
+      return if defined?(@own_anchor_radius)
+
+      @own_anchor_radius = AnchorMatching.pick(:radius_m)
+    end
+
+    def own_anchor_mode?
+      read_own_anchor_switch
+      !@own_anchor_radius.nil?
+    end
+
+    def own_anchor_radius
+      read_own_anchor_switch
+      @own_anchor_radius
+    end
+
+    def load_anchors
+      bundle = LeadAnchors.for([ lead ])
+      install_anchors(
+        bundle[lead.id],
+        visited_projects: bundle.visited_project_ids[lead.id],
+        visited_properties: bundle.visited_property_ids[lead.id]
+      )
     end
 
     def load_neighbors
@@ -102,15 +152,19 @@ module Inventory
 
       properties = Property.unscoped.where(id: property_ids).includes(:locality).to_a
       properties.each do |property|
-        remember_pin(property.lat, property.lng, property.locality, property.city_id)
+        remember_pin(
+          property.lat, property.lng, property.locality, property.city_id,
+          other_firm: property.firm_id != lead.firm_id
+        )
       end
     end
 
-    def remember_pin(lat, lng, locality, city_id)
+    def remember_pin(lat, lng, locality, city_id, other_firm: false)
+      own = Geo.own_pin(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
       point = Geo.listing_point(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
       return if point.nil? || city_id.blank?
 
-      pins << point.merge(city_id:)
+      pins << point.merge(city_id:, own: !own.nil?, other_firm:)
     end
 
     def center_point(locality)

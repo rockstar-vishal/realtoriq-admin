@@ -9,22 +9,30 @@ module IndiaPin
   LNG_RANGE = 68..98
   PIN_MESSAGE = "Place the pin on the map"
 
+  def self.pin_inside_india?(lat, lng)
+    lat_d = coordinate(lat)
+    lng_d = coordinate(lng)
+    return false if lat_d.nil? || lng_d.nil?
+
+    LAT_RANGE.cover?(lat_d) && LNG_RANGE.cover?(lng_d)
+  end
+
+  def self.coordinate(value)
+    return if value.nil?
+    return if value.is_a?(String) && value.strip.empty?
+
+    BigDecimal(value.to_s)
+  rescue ArgumentError
+    nil
+  end
+
   class_methods do
     def pin_inside_india?(lat, lng)
-      lat_d = coordinate(lat)
-      lng_d = coordinate(lng)
-      return false if lat_d.nil? || lng_d.nil?
-
-      LAT_RANGE.cover?(lat_d) && LNG_RANGE.cover?(lng_d)
+      IndiaPin.pin_inside_india?(lat, lng)
     end
 
     def coordinate(value)
-      return if value.nil?
-      return if value.is_a?(String) && value.strip.empty?
-
-      BigDecimal(value.to_s)
-    rescue ArgumentError
-      nil
+      IndiaPin.coordinate(value)
     end
   end
 

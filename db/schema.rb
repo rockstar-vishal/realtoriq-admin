@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_24_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -62,6 +62,14 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_admin_users_on_email", unique: true
+  end
+
+  create_table "anchor_matchings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "enabled_at", null: false
+    t.integer "radius_m", default: 6000, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.check_constraint "radius_m >= 1000 AND radius_m <= 6000", name: "anchor_matchings_radius_m_check"
   end
 
   create_table "audit_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -724,6 +732,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
     t.integer "area_min_sqft"
     t.integer "area_max_sqft"
     t.boolean "prefers_pre_leased", default: false, null: false
+    t.string "near_label"
+    t.string "near_address"
+    t.decimal "near_lat", precision: 10, scale: 7
+    t.decimal "near_lng", precision: 10, scale: 7
+    t.string "near_place_id"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
@@ -733,6 +746,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
     t.index ["firm_id"], name: "index_leads_on_firm_id"
     t.index ["lead_source_id"], name: "index_leads_on_lead_source_id"
     t.index ["lead_status_id"], name: "index_leads_on_lead_status_id"
+    t.index ["near_lat", "near_lng"], name: "index_leads_on_near_pin", where: "((near_lat IS NOT NULL) AND (near_lng IS NOT NULL))"
     t.index ["next_action_at"], name: "index_leads_on_next_action_at"
     t.index ["property_type_id"], name: "index_leads_on_property_type_id"
     t.check_constraint "area_max_sqft IS NULL OR area_min_sqft IS NULL OR area_max_sqft >= area_min_sqft", name: "leads_area_range_check"
@@ -1028,6 +1042,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
     t.index ["firm_id", "source", "external_ref"], name: "index_projects_on_firm_source_and_external_ref", unique: true, where: "(external_ref IS NOT NULL)"
     t.index ["firm_id", "status"], name: "index_projects_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_projects_on_firm_id"
+    t.index ["lat", "lng"], name: "index_projects_on_pin", where: "((lat IS NOT NULL) AND (lng IS NOT NULL))"
     t.index ["locality_id"], name: "index_projects_on_locality_id"
     t.index ["name"], name: "index_projects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["rera_number"], name: "index_projects_on_rera_number_trgm", opclass: :gin_trgm_ops, using: :gin
@@ -1086,6 +1101,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
     t.index ["firm_id", "slug"], name: "index_properties_on_firm_id_and_slug", unique: true
     t.index ["firm_id", "status"], name: "index_properties_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_properties_on_firm_id"
+    t.index ["lat", "lng"], name: "index_properties_on_pin", where: "((lat IS NOT NULL) AND (lng IS NOT NULL))"
     t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
     t.index ["locality_id"], name: "index_properties_on_locality_id"
     t.index ["typology_id"], name: "index_properties_on_typology_id"

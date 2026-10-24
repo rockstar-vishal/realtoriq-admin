@@ -90,7 +90,16 @@ module Inventory
     end
 
     def pin_lead_ids(base)
-      return [] unless nearby_on? && listing_point && listing_city_id
+      return [] unless nearby_on?
+
+      if anchors_on?
+        point = listing_own_pin
+        return [] if point.nil?
+
+        box = Geo.box(point[:lat], point[:lng], metres: anchor_radius + 150)
+        return AnchoredLeads.ids(box:, lead_scope: base, unscoped: false)
+      end
+      return [] unless listing_point && listing_city_id
 
       box = Geo.box(listing_point[:lat], listing_point[:lng])
       center_ids = Geo.center_locality_ids(
@@ -103,7 +112,37 @@ module Inventory
     def nearby_on?
       return @nearby_on unless @nearby_on.nil?
 
-      @nearby_on = NearbyMatching.enabled?
+      @nearby_on = NearbyMatching.enabled? || anchors_on?
+    end
+
+    def read_anchor_switch
+      return if defined?(@anchor_radius)
+
+      @anchor_radius = AnchorMatching.pick(:radius_m)
+    end
+
+    def anchors_on?
+      read_anchor_switch
+      !@anchor_radius.nil?
+    end
+
+    def anchor_radius
+      read_anchor_switch
+      @anchor_radius
+    end
+
+    def listing_own_pin
+      @listing_own_pin ||= if project
+        Geo.own_pin(
+          lat: project.lat, lng: project.lng,
+          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+        )
+      elsif property
+        Geo.own_pin(
+          lat: property.lat, lng: property.lng,
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+        )
+      end
     end
 
     def listing_point
@@ -144,7 +183,7 @@ module Inventory
 
     def scored
       rows = leads
-      index = HookIndex.for(rows, nearby: nearby_on?)
+      index = HookIndex.for(rows, nearby: nearby_on?, anchors: anchors_on?, radius_m: anchor_radius)
       rows.filter_map { |lead| serialize(lead, index) }
     end
 
@@ -156,7 +195,9 @@ module Inventory
         lat: project&.lat || property&.lat,
         lng: project&.lng || property&.lng,
         locality_lat: project&.locality&.lat || property&.locality&.lat,
-        locality_lng: project&.locality&.lng || property&.locality&.lng
+        locality_lng: project&.locality&.lng || property&.locality&.lng,
+        round_distance: property.present? && property.firm_id != user.firm_id,
+        skip_listing:
       )
       return unless decision
 
@@ -194,7 +235,9 @@ module Inventory
         matched_configuration: breakdown[:matched_configuration],
         mapped: mapped?(lead),
         matched_on: MatchScore.matched_on(breakdown, nearby: decision.nearby),
-        distance_m: decision.distance_m,
+        distance_m: decision.shown_distance_m,
+        distance_rounded: decision.distance_rounded,
+        anchor: anchor_payload(decision),
         group: decision.group,
         near_shortlist: decision.near_shortlist,
         category: lead.category,
@@ -239,10 +282,25 @@ module Inventory
 
     def mapped?(lead)
       if project
-        lead.lead_projects.any? { |row| row.project_id == project.id && row.withdrawn_at.nil? }
+        ids = anchors_on? ? ProjectTwins.expand([ project.id ], firm_id: user.firm_id) : [ project.id ]
+        lead.lead_projects.any? { |row| ids.include?(row.project_id) && row.withdrawn_at.nil? }
       else
         lead.lead_properties.any? { |row| row.property_id == property.id }
       end
+    end
+
+    def skip_listing
+      if project
+        { kind: "project", ids: ProjectTwins.expand([ project.id ], firm_id: user.firm_id) }
+      else
+        { kind: "property", ids: [ property.id ] }
+      end
+    end
+
+    def anchor_payload(decision)
+      return if decision.anchor.nil?
+
+      { kind: decision.anchor.kind, name: decision.anchor.name }
     end
   end
 end

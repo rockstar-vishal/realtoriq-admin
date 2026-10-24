@@ -48,7 +48,8 @@ module Matches
     end
 
     def items_for(previous)
-      nearby = ::NearbyMatching.enabled?
+      read_anchor_switch
+      nearby = nearby_on?
       locality_ids = matching_leads.joins(:lead_localities).distinct.pluck("lead_localities.locality_id")
       if nearby
         locality_ids |= LocalityNeighbor.where(locality_id: locality_ids).pluck(:neighbor_locality_id)
@@ -56,7 +57,9 @@ module Matches
       boxes = pin_boxes(nearby:)
       return [ [], [] ] if locality_ids.empty? && boxes.empty?
 
-      pool = InventoryPool.call(locality_ids:, price_cap:, boxes:)
+      pool = InventoryPool.call(
+        locality_ids:, price_cap:, boxes:, centers: !anchors_on?, hide_listed_copies: anchors_on?
+      )
       previous_leads = index_items(previous&.lead_items, "lead_id")
       previous_listings = index_listings(previous&.listing_items)
       buckets = {}
@@ -64,7 +67,7 @@ module Matches
 
       matching_leads.find_in_batches(batch_size: 100) do |batch|
         preload_leads(batch)
-        index = Inventory::HookIndex.for(batch, nearby:)
+        index = Inventory::HookIndex.for(batch, nearby:, anchors: anchors_on?, radius_m: anchor_radius)
         batch.each do |lead|
           hooks = Inventory::LeadHooks.for(lead, index:)
           scored = score_lead(lead, pool, hooks)
@@ -97,12 +100,20 @@ module Matches
     end
 
     def score_lead(lead, pool, hooks)
-      return [] if hooks.preferred_ids.empty? && hooks.pins.empty?
+      circles = hooks.anchor_mode? ? hooks.anchors : hooks.pins
+      return [] if hooks.preferred_ids.empty? && circles.empty?
 
       @decisions = {}
       keys = lead.typologies.map { |typology| Inventory::ConfigurationKey.call(typology.name) }
-      mapped_projects = lead.lead_projects.reject { |row| row.withdrawn_at.present? }.map(&:project_id).to_set
-      mapped_properties = lead.lead_properties.map(&:property_id).to_set
+      mapped_projects = lead.lead_projects.reject { |row| row.withdrawn_at.present? }.map(&:project_id)
+      mapped_properties = lead.lead_properties.map(&:property_id)
+      if hooks.anchor_mode?
+        mapped_projects = Inventory::ProjectTwins.expand(mapped_projects, firm_id: firm.id)
+        mapped_projects |= Inventory::ProjectTwins.expand(hooks.visited_project_ids, firm_id: firm.id)
+        mapped_properties |= hooks.visited_property_ids
+      end
+      mapped_projects = mapped_projects.to_set
+      mapped_properties = mapped_properties.to_set
       candidates = candidates_for(lead, pool, hooks)
 
       candidates.filter_map { |item| scored_row(item, lead, keys, mapped_projects, mapped_properties, hooks) }
@@ -149,7 +160,8 @@ module Matches
         hooks:,
         locality_id: item.locality_id,
         lat: item.lat, lng: item.lng,
-        locality_lat: item.locality_lat, locality_lng: item.locality_lng
+        locality_lat: item.locality_lat, locality_lng: item.locality_lng,
+        round_distance: item.kind == "property" && item.marketplace
       )
     end
 
@@ -186,6 +198,7 @@ module Matches
 
     def pin_boxes(nearby:)
       return [] unless nearby
+      return anchor_boxes if anchors_on?
 
       projects = Project.unscoped.where(
         id: LeadProject.where(lead_id: matching_leads.select(:id), withdrawn_at: nil).select(:project_id)
@@ -212,6 +225,41 @@ module Matches
         box = Inventory::Geo.box(point[:lat], point[:lng])
         { city_id: point[:city_id], min_lat: box.min_lat, max_lat: box.max_lat, min_lng: box.min_lng, max_lng: box.max_lng }
       }
+    end
+
+    def anchor_boxes
+      points = []
+      matching_leads.find_in_batches(batch_size: 500) do |batch|
+        Inventory::LeadAnchors.for(batch).anchors.each_value do |anchors|
+          anchors.each { |anchor| points << [ anchor.lat, anchor.lng ] }
+        end
+      end
+      points.uniq.map do |lat, lng|
+        box = Inventory::Geo.box(lat, lng, metres: anchor_radius + 150)
+        { min_lat: box.min_lat, max_lat: box.max_lat, min_lng: box.min_lng, max_lng: box.max_lng }
+      end
+    end
+
+    def read_anchor_switch
+      return if defined?(@anchor_radius)
+
+      @anchor_radius = ::AnchorMatching.pick(:radius_m)
+    end
+
+    def anchors_on?
+      read_anchor_switch
+      !@anchor_radius.nil?
+    end
+
+    def anchor_radius
+      read_anchor_switch
+      @anchor_radius
+    end
+
+    def nearby_on?
+      return @nearby_on unless @nearby_on.nil?
+
+      @nearby_on = ::NearbyMatching.enabled? || anchors_on?
     end
 
     def collect_listing(buckets, lead, row, hooks)

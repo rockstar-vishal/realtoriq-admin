@@ -22,7 +22,7 @@ module Leads
     def initialize(firm:, actor:, attributes:, typology_ids: [],
                    copy_project_typologies: false, locality_ids: [],
                    copy_project_localities: false, require_locality: true,
-                   project_id: nil, followup: nil)
+                   project_id: nil, followup: nil, near_place: nil, near_place_supplied: false)
       @firm = firm
       @actor = actor
       @attributes = attributes
@@ -33,6 +33,8 @@ module Leads
       @require_locality = require_locality
       @project_id = project_id.presence
       @followup_attrs = followup
+      @near_place = near_place
+      @near_place_supplied = near_place_supplied
     end
 
     def call
@@ -55,6 +57,7 @@ module Leads
         # and a unique-index collision would otherwise abort that outer
         # transaction instead of retrying here.
         Lead.transaction(requires_new: true) do
+          apply_near_place(lead)
           lead.save!
           assign_typologies(lead)
           assign_localities(lead)
@@ -91,12 +94,30 @@ module Leads
     private
 
     attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies,
-      :locality_ids, :copy_project_localities, :require_locality, :project_id, :followup_attrs
+      :locality_ids, :copy_project_localities, :require_locality, :project_id, :followup_attrs,
+      :near_place, :near_place_supplied
 
     # `budget` is not a column — it is written to budget_max with min cleared.
     # budget_min on the payload is ignored so a leftover range cannot be stored.
     # NCD and follow-up comments are not lead columns on write; they go through
     # RecordFollowup so a client cannot overwrite the log or the current NCD.
+    def apply_near_place(lead)
+      return unless near_place_supplied
+
+      if near_place.nil?
+        lead.assign_attributes(
+          near_label: nil, near_address: nil, near_lat: nil, near_lng: nil, near_place_id: nil
+        )
+        return
+      end
+
+      lead.near_label = near_place[:label]
+      lead.near_address = near_place[:address]
+      lead.near_lat = near_place[:lat]
+      lead.near_lng = near_place[:lng]
+      lead.near_place_id = near_place[:google_place_id]
+    end
+
     def non_column_keys
       [
         :assigned_user_id, "assigned_user_id", :budget, "budget", :budget_min, "budget_min",

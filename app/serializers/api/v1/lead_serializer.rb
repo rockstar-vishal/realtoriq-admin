@@ -59,7 +59,8 @@ module Api
             visit_passes: lead.lead_visit_passes.sort_by { |pass| pass.created_at || Time.current }.reverse.map { |pass|
               LeadVisitPassSerializer.call(pass)
             },
-            emi: emi(lead)
+            emi: emi(lead),
+            near_place: near_place(lead)
           )
         end
 
@@ -97,6 +98,18 @@ module Api
             annual_rate: lead.emi_annual_rate.to_s("F"),
             tenure_years: lead.emi_tenure_years,
             saved_at: lead.emi_saved_at
+          }
+        end
+
+        def near_place(lead)
+          return nil if lead.near_lat.blank? || lead.near_lng.blank?
+
+          {
+            label: lead.near_label,
+            address: lead.near_address,
+            lat: lead.near_lat.to_f,
+            lng: lead.near_lng.to_f,
+            google_place_id: lead.near_place_id
           }
         end
 
