@@ -4,28 +4,33 @@ module Bookings
   # A booking always hangs off a lead — the design's flow starts by finding one
   # by phone, and says so: "every booking is tied to a lead record".
   #
-  # Deliberately does NOT touch the lead's status. Creating and cancelling both
-  # leave it alone, so Booked is set by hand.
+  # The lead's status moves only when the caller sends `mark_lead_booked`, and
+  # then through Leads::TransitionStatus so the timeline matches a manual
+  # change. Cancelling a booking still leaves the lead alone.
   class Create
     Result = Struct.new(:ok?, :booking, :errors, :error_code, :error_message, :details,
-                        keyword_init: true)
+                        :lead_status_unchanged, keyword_init: true)
 
     MAX_CODE_ATTEMPTS = 5
     UNIT_INDEX = "index_bookings_on_live_project_unit"
 
-    def initialize(firm:, actor:, lead:, attributes:, use_existing: false, new_name: nil)
+    def initialize(firm:, actor:, lead:, attributes:, use_existing: false, new_name: nil,
+      mark_lead_booked: false)
       @firm = firm
       @actor = actor
       @lead = lead
       @attributes = attributes
       @use_existing = ActiveModel::Type::Boolean.new.cast(use_existing)
       @new_name = new_name
+      @mark_lead_booked = ActiveModel::Type::Boolean.new.cast(mark_lead_booked)
     end
 
     def call
       copy_error = nil
       booking = nil
       attempts = 0
+      lead_status_unchanged = false
+      status_error = nil
 
       begin
         Booking.transaction do
@@ -37,8 +42,10 @@ module Bookings
 
           lead.lock_for_activity!
           booking = build
-          booking.project = copy.project if copy
+          self.class.apply_copy(booking, copy, attributes[:project_id])
           booking.save!
+          status_error, lead_status_unchanged = apply_booked_status(booking)
+          raise ActiveRecord::Rollback if status_error
         end
       rescue ActiveRecord::RecordNotUnique => e
         if e.message.include?(UNIT_INDEX)
@@ -55,9 +62,10 @@ module Bookings
         retry
       end
 
+      return status_failure(status_error) if status_error
       return copy_failure(copy_error) if copy_error
 
-      Result.new(ok?: true, booking:)
+      Result.new(ok?: true, booking:, lead_status_unchanged:)
     rescue ActiveRecord::RecordInvalid => e
       record = e.record
       return unit_taken(record) if record.errors.of_kind?(:unit_no, :taken)
@@ -67,7 +75,7 @@ module Bookings
 
     private
 
-    attr_reader :firm, :actor, :lead, :attributes, :use_existing, :new_name
+    attr_reader :firm, :actor, :lead, :attributes, :use_existing, :new_name, :mark_lead_booked
 
     def self.copy_catalog(project_id:, use_existing: false, new_name: nil)
       project_id = project_id.presence
@@ -82,6 +90,34 @@ module Bookings
         use_existing: ActiveModel::Type::Boolean.new.cast(use_existing),
         new_name:
       ).call
+    end
+
+    # A catalog or marketplace id is replaced by the firm's copy. A configuration
+    # id sent for the source row moves with it, matched on typology and label.
+    # When the copy has no such row, the booking keeps the snapshot from the
+    # source and stores no pointer, so the broker is not blocked.
+    def self.apply_copy(booking, copy, source_project_id)
+      return unless copy
+
+      booking.project = copy.project
+      sent_id = booking.project_typology_id
+      return if sent_id.blank?
+
+      source = ProjectTypology.find_by(id: sent_id)
+      return unless source && source.project_id.to_s == source_project_id.to_s
+
+      mapped = ConfigurationMap.call(
+        typology_id: sent_id,
+        source_project_id:,
+        project: copy.project
+      )
+      if mapped
+        booking.project_typology_id = mapped
+      else
+        booking.project_typology_id = nil
+        booking.typology_id = source.typology_id
+        booking.configuration_label = source.label
+      end
     end
 
     def catalog_copy_result
@@ -113,6 +149,27 @@ module Bookings
         ok?: false, booking:, error_code: "unit_taken",
         error_message: "That unit is already booked on this project.",
         details: { project_id: booking.project_id, unit_no: booking.unit_no }
+      )
+    end
+
+    # Missing booked status is not a failure: the booking is the record the
+    # broker asked for, and the response says the lead was left as it was.
+    def apply_booked_status(booking)
+      return [ nil, false ] unless mark_lead_booked
+
+      status = LeadStatus.active.booked.ordered.first
+      return [ nil, true ] if status.nil?
+
+      # The day the unit was booked, not the day the row was typed in.
+      booked_at = booking.booked_on.in_time_zone(Lead::NCD_ZONE).beginning_of_day
+      result = Leads::TransitionStatus.new(lead:, to_status: status, actor:, booked_at:).call
+      result.ok? ? [ nil, false ] : [ result, false ]
+    end
+
+    def status_failure(result)
+      Result.new(
+        ok?: false, error_code: result.error_code, error_message: result.error_message,
+        details: result.error_details
       )
     end
 

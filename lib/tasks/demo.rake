@@ -334,6 +334,7 @@ namespace :demo do
       firm:, invoice:, received_on: Date.current, amount: 400_000,
       transaction_no: "8842190", mode: "neft_rtgs"
     )
+    booking.refresh_money!
   end
 
   desc "Remove the demo firm and everything under it"

@@ -38,8 +38,11 @@ module Bookings
       booking.with_lock do
         return cancelled_booking if booking.cancelled?
 
-        available = booking.invoiceable_balance
-        return over_invoiced(amount, available) if amount > available
+        # The stored total can lag this insert. The lock is only useful if the
+        # balance is the invoices actually on the row, read after the lock.
+        already = booking.live_invoiced_sum
+        available = booking.net_income - already
+        return over_invoiced(amount, available, already) if amount > available
 
         invoice = booking.invoices.new(attributes)
         invoice.firm = booking.firm
@@ -47,6 +50,7 @@ module Bookings
 
         AuditEvent.record!(subject: invoice, firm: booking.firm, actor:,
                            action: "invoice.raised", metadata: { amount:, number: invoice.number })
+        booking.refresh_money!
       end
 
       Result.new(ok?: true, invoice:)
@@ -60,13 +64,13 @@ module Bookings
 
     attr_reader :booking, :attributes, :actor
 
-    def over_invoiced(amount, available)
+    def over_invoiced(amount, available, already)
       Result.new(
         ok?: false, error_code: "over_invoiced",
         error_message: "That would invoice more than this booking earned.",
         details: {
           net_income: booking.net_income,
-          already_invoiced: booking.invoiced_total,
+          already_invoiced: already,
           attempted: amount,
           available: [ available, 0 ].max
         }

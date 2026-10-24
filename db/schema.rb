@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_24_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -144,6 +144,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
     t.integer "client_paid_percent"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "invoiced_amount", default: 0, null: false
+    t.bigint "collected_amount", default: 0, null: false
+    t.uuid "project_typology_id"
+    t.uuid "typology_id"
+    t.string "configuration_label"
     t.index ["created_by_user_id"], name: "index_bookings_on_created_by_user_id"
     t.index ["firm_id", "booked_on"], name: "index_bookings_on_firm_id_and_booked_on"
     t.index ["firm_id", "code"], name: "index_bookings_on_firm_id_and_code", unique: true
@@ -152,9 +157,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
     t.index ["lead_id"], name: "index_bookings_on_lead_id"
     t.index ["project_id", "unit_no"], name: "index_bookings_on_live_project_unit", unique: true, where: "(((status)::text = 'live'::text) AND (project_id IS NOT NULL) AND (unit_no IS NOT NULL))"
     t.index ["project_id"], name: "index_bookings_on_project_id"
+    t.index ["project_typology_id"], name: "index_bookings_on_project_typology_id"
+    t.index ["typology_id"], name: "index_bookings_on_typology_id"
     t.check_constraint "agreement_value >= 0", name: "bookings_agreement_value_check"
     t.check_constraint "client_paid_percent IS NULL OR client_paid_percent >= 0 AND client_paid_percent <= 100", name: "bookings_client_paid_percent_check"
+    t.check_constraint "collected_amount >= 0", name: "bookings_collected_amount_nonnegative"
     t.check_constraint "commission_percent >= 0::numeric AND commission_percent <= 100::numeric", name: "bookings_commission_percent_check"
+    t.check_constraint "invoiced_amount >= 0", name: "bookings_invoiced_amount_nonnegative"
     t.check_constraint "status::text = ANY (ARRAY['live'::character varying::text, 'cancelled'::character varying::text])", name: "bookings_status_check"
   end
 
@@ -438,6 +447,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
     t.decimal "lng", precision: 10, scale: 7
     t.string "google_place_id"
     t.datetime "discarded_at"
+    t.jsonb "form6", default: {}, null: false
     t.index ["city_id"], name: "index_firms_on_city_id"
     t.index ["code"], name: "index_firms_on_code", unique: true
     t.index ["discarded_at"], name: "index_firms_on_discarded_at"
@@ -1282,7 +1292,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_120000) do
   add_foreign_key "booking_documents", "users", column: "uploaded_by_user_id", on_delete: :nullify
   add_foreign_key "bookings", "firms"
   add_foreign_key "bookings", "leads"
+  add_foreign_key "bookings", "project_typologies", on_delete: :nullify
   add_foreign_key "bookings", "projects"
+  add_foreign_key "bookings", "typologies"
   add_foreign_key "bookings", "users", column: "created_by_user_id", on_delete: :nullify
   add_foreign_key "builders", "firms"
   add_foreign_key "buildings", "cities"

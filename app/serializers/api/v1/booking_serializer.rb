@@ -15,6 +15,7 @@ module Api
             unit_no: booking.unit_no,
             booked_on: booking.booked_on,
             status: booking.status,
+            stage: booking.stage,
             agreement_value: booking.agreement_value,
             area_kind: booking.lead&.category == "land" ? "plot" : "carpet",
             net_income: booking.net_income,
@@ -22,15 +23,21 @@ module Api
             invoiced: booking.invoiced_total,
             collected: booking.collected_total,
             outstanding: booking.outstanding,
+            to_invoice: booking.to_invoice_amount,
             registration_done: booking.registration_done?,
             registration_done_on: booking.registration_done_on,
+            oldest_due_invoice_on: booking.oldest_due_invoice_on,
             client_paid_percent: booking.client_paid_percent,
+            configuration: configuration(booking),
+            category: booking.typology&.category,
+            cancellation_reason: booking.cancellation_reason,
             lead: { id: booking.lead_id, code: booking.lead&.code }
           }
         end
 
         def detail(booking)
           list(booking).merge(
+            created_by_name: booking.created_by_user&.name,
             carpet_area_sqft: booking.carpet_area_sqft,
             other_details: booking.other_details,
             # The revenue block, itemised the way the design's screen breaks it
@@ -52,6 +59,20 @@ module Api
             created_at: booking.created_at,
             updated_at: booking.updated_at
           )
+        end
+
+        # Label and category are the snapshot. id is the project's current row
+        # with that typology and label, so the edit form can preselect it
+        # after a configuration save replaces the old row.
+        def configuration(booking)
+          return nil if booking.typology_id.blank?
+
+          {
+            id: booking.configuration_choice_id,
+            label: booking.configuration_display_name,
+            category: booking.typology&.category,
+            typology_id: booking.typology_id
+          }
         end
 
         def document(doc)

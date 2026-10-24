@@ -248,8 +248,10 @@ Answering the two UI cases you raised:
 `GET /api/v1/bookings` already returns a `totals` block over the filtered set:
 
 ```json
-"totals": { "net_income": …, "invoiced": …, "collected": …, "outstanding": … }
+"totals": { "agreement_value": …, "net_income": …, "invoiced": …, "collected": …, "outstanding": …, "to_invoice": … }
 ```
+
+The index also returns `stage_counts`. Creating a booking moves the lead only when `mark_lead_booked` is true, and the lead's booked date is that booking's `booked_on`. `q` with 4 or more digits matches the customer phone on the digits alone.
 
 Combined with `booked_from` / `booked_to`, that covers **Revenue Till Date**,
 **Bookings count**, **Brokerage Earned** and **Outstanding**.

@@ -76,20 +76,125 @@ RSpec.describe Booking do
         kicker: 0, passback: 0)
     end
 
-    it "counts only raised invoices" do
+    it "counts only raised invoices, from the stored total" do
       create(:invoice, firm:, booking:, amount: 200_000)
       create(:invoice, firm:, booking:, amount: 100_000, status: "cancelled")
 
+      # A factory invoice does not rewrite the column. The readers are the
+      # columns; RaiseInvoice is what fills them.
+      expect(booking.invoiced_total).to eq(0)
+
+      booking.refresh_money!
+
+      expect(booking.invoiced_amount).to eq(200_000)
       expect(booking.invoiced_total).to eq(200_000)
       expect(booking.invoiceable_balance).to eq(300_000)
     end
 
-    it "reports what is still outstanding" do
+    it "reports what is still outstanding from the stored totals" do
       create(:invoice, firm:, booking:, amount: 400_000)
       create(:collection, firm:, booking:, amount: 150_000)
 
+      expect(booking.collected_total).to eq(0)
+      booking.refresh_money!
+
+      expect(booking.collected_amount).to eq(150_000)
       expect(booking.collected_total).to eq(150_000)
       expect(booking.outstanding).to eq(250_000)
+    end
+
+    it "reads the stored columns even when the live sums disagree" do
+      create(:invoice, firm:, booking:, amount: 200_000)
+      booking.update_columns(invoiced_amount: 12, collected_amount: 7)
+
+      expect(booking.invoiced_total).to eq(12)
+      expect(booking.collected_total).to eq(7)
+      expect(booking.outstanding).to eq(5)
+    end
+
+    it "sums each booking's still-to-invoice balance, not the gap between the sums" do
+      under = create(:booking, firm:, agreement_value: 10_000_000, commission_percent: 1,
+        kicker: 0, passback: 0)
+      over = create(:booking, firm:, agreement_value: 10_000_000, commission_percent: 1,
+        kicker: 0, passback: 0)
+      under.update_columns(net_income: 100, invoiced_amount: 80, collected_amount: 10)
+      over.update_columns(net_income: 100, invoiced_amount: 150, collected_amount: 40)
+
+      totals = described_class.money_totals(described_class.where(id: [ under.id, over.id ]))
+
+      expect(totals).to include(invoiced: 230, collected: 50, outstanding: 180, to_invoice: 20)
+    end
+  end
+
+  describe "stage" do
+    def staged(status:, net:, invoiced:, collected:)
+      booking = create(:booking, firm:, agreement_value: 1_000_000, commission_percent: 1,
+        kicker: 0, passback: 0)
+      booking.update_columns(
+        status:, net_income: net, invoiced_amount: invoiced, collected_amount: collected,
+        cancelled_at: status == "cancelled" ? Time.current : nil,
+        cancellation_reason: status == "cancelled" ? "Client withdrew" : nil
+      )
+      booking.reload
+    end
+
+    # Paid wins over awaiting. Cancelled wins over paid. An invoice that has
+    # been collected in full is to_invoice, not awaiting.
+    [
+      { status: "cancelled", net: 100, invoiced: 200, collected: 200, stage: "cancelled" },
+      { status: "live", net: 0, invoiced: 0, collected: 0, stage: "paid" },
+      { status: "live", net: -40, invoiced: 0, collected: 0, stage: "paid" },
+      { status: "live", net: 100, invoiced: 120, collected: 100, stage: "paid" },
+      { status: "live", net: 100, invoiced: 100, collected: 100, stage: "paid" },
+      { status: "live", net: 500, invoiced: 100, collected: 100, stage: "to_invoice" },
+      { status: "live", net: 500, invoiced: 100, collected: 0, stage: "awaiting_payment" },
+      { status: "live", net: 500, invoiced: 0, collected: 0, stage: "to_invoice" }
+    ].each do |row|
+      it "is #{row[:stage]} when status=#{row[:status]} net=#{row[:net]} invoiced=#{row[:invoiced]} collected=#{row[:collected]}" do
+        booking = staged(**row.except(:stage))
+
+        expect(booking.stage).to eq(row[:stage])
+        Booking::STAGES.each do |stage|
+          expect(Booking.in_stage(stage).where(id: booking.id).exists?).to eq(stage == row[:stage])
+        end
+      end
+    end
+  end
+
+  describe "configuration" do
+    it "must be a configuration of the booking's project" do
+      project = create(:project, firm:)
+      other = create(:project_typology, project: create(:project, firm:))
+
+      booking = build(:booking, firm:, project:, unit_no: "A-1", project_typology: other)
+
+      expect(booking).not_to be_valid
+      expect(booking.errors[:project_typology_id]).to include("isn't a configuration of this project")
+    end
+
+    it "drops a configuration when the booking has no project" do
+      row = create(:project_typology)
+      booking = build(:booking, firm:, project: nil, unit_no: nil, project_typology: row, typology: row.typology,
+        configuration_label: "Ultima")
+
+      expect(booking).to be_valid
+      expect(booking.project_typology_id).to be_nil
+      expect(booking.typology_id).to be_nil
+      expect(booking.configuration_label).to be_nil
+    end
+
+    it "keeps the snapshot when the configuration row is deleted" do
+      project = create(:project, firm:)
+      typology = create(:typology, name: "2 BHK")
+      row = create(:project_typology, project:, typology:, label: "Ultima")
+      booking = create(:booking, firm:, project:, unit_no: "A-1", project_typology: row)
+
+      row.destroy!
+
+      booking.reload
+      expect(booking.project_typology_id).to be_nil
+      expect(booking.typology_id).to eq(typology.id)
+      expect(booking.configuration_label).to eq("Ultima")
     end
   end
 

@@ -128,6 +128,12 @@ class Firm < ApplicationRecord
 
   def display_name = name.presence || legal_name
 
+  # Form 6 is a Maharashtra return. The firm's city is the only signal —
+  # a firm with no city, or a city in another state, does not file it.
+  def form6_available?
+    city&.state.to_s.strip.casecmp("maharashtra").zero?
+  end
+
   # The public site. Inactive, suspended, and lapsed firms are the same 404.
   def website_public?
     !discarded? && active? && website_enabled? && current_subscription&.entitled?

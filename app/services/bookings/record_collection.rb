@@ -35,7 +35,9 @@ module Bookings
         # on one booking can never deadlock by taking them the other way round.
         invoice&.lock!
 
-        if (failure = over_total?(amount)) then return failure end
+        invoiced = booking.live_invoiced_sum
+        collected = booking.live_collected_sum
+        if (failure = over_total?(amount, invoiced, collected)) then return failure end
         if (failure = over_invoice?(amount)) then return failure end
 
         collection = booking.collections.new(attributes)
@@ -56,6 +58,7 @@ module Bookings
 
         AuditEvent.record!(subject: collection, firm: booking.firm, actor:,
                            action: "collection.recorded", metadata: { amount: })
+        booking.refresh_money!
       end
 
       Result.new(ok?: true, collection:)
@@ -68,16 +71,16 @@ module Bookings
 
     attr_reader :booking, :attributes, :invoice, :proof_signed_id, :actor
 
-    def over_total?(amount)
-      available = booking.invoiced_total - booking.collected_total
+    def over_total?(amount, invoiced, collected)
+      available = invoiced - collected
       return nil if amount <= available
 
       Result.new(
         ok?: false, error_code: "over_collected",
         error_message: "That would collect more than has been invoiced.",
         details: {
-          invoiced: booking.invoiced_total,
-          already_collected: booking.collected_total,
+          invoiced:,
+          already_collected: collected,
           attempted: amount,
           available: [ available, 0 ].max
         }

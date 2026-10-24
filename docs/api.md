@@ -1790,6 +1790,8 @@ by rupees from what the reports sum.
 | `kicker` / `passback` | integer | optional | Default 0 |
 | `customer_name` / `customer_mobile` | string | optional | **Snapshotted** — see below |
 | `project_id` | string | optional | |
+| `project_typology_id` | string | optional | A configuration of that project. The booking stores that typology and label, so a later project save can replace the row without blanking the booking. On a catalog or marketplace booking the id is matched to the firm's copy by typology and label. When the copy has no such row, the booking still saves with the snapshot and `project_typology_id` null. A configuration of some other project is `422 invalid`. On PATCH, omit the key to keep the snapshot; send null to clear it. Removing the project clears it. Nothing is backfilled |
+| `mark_lead_booked` | boolean | optional | When true, the lead moves to the active Booked status in the same transaction, with the same timeline entry as `POST /leads/:id/status`. `booked_at` is `booked_on` at the start of that day in Asia/Kolkata, not the time the booking was entered. When the firm has no Booked status the booking still saves and the response adds top-level `lead_status_unchanged: true`. A failed move (for example `duplicate_lead`) rolls the booking back. Omit it, or send false, and the lead stays as it is |
 | `unit_no` | string | conditional | **Required when `project_id` is set.** Unique among **live** bookings on that project. Cancel frees the unit |
 | `builder_ref_no` | string | optional | |
 | `use_existing` | boolean | optional | Catalog booking name clash — reuse the existing My Projects row |
@@ -1832,21 +1834,39 @@ already has that name: **`422 project_name_clash`** with
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Substring of customer name, unit, builder ref, booking code, or **project name** |
-| `status` | `live` (default, when omitted) · `cancelled` |
+| `q` | Substring of customer name, customer phone, unit, builder ref, booking code, or **project name**. When it contains 4 or more digits, the phone is also matched on those digits alone, so `98201 55011` and `+91 98201-55011` find `+919820155011` |
+| `stage` | `to_invoice` · `awaiting_payment` · `paid` · `cancelled`. Replaces the default of live. Anything else is `422 invalid` |
+| `status` | Still accepted for older clients: `live` (the default when neither `stage` nor `status` is sent) · `cancelled` |
+| `registration` | `done` · `pending`. Anything else is `422 invalid` |
 | `client_phone`, `project_id` | |
 | `booked_from`, `booked_to` | |
 | `page`, `per_page` | 25 per page by default |
 
-`totals` is agreement value and net income over **live** rows in the filtered set, so `status=cancelled` returns zero totals. Status is `live` or `cancelled` — never `Cancelled` / `Completed`.
+`totals` is over the **live** rows in the filtered set (`status=cancelled` and `stage=cancelled` therefore return zeros):
+
+```json
+"totals": {
+  "agreement_value": 15600000, "net_income": 686000,
+  "invoiced": 686000, "collected": 400000, "outstanding": 286000, "to_invoice": 0
+}
+```
+
+`invoiced` and `collected` are the stored booking totals. `outstanding` is invoiced minus collected. `to_invoice` is the sum of `max(net_income − invoiced, 0)` per booking.
+
+`stage_counts` uses the same filters **except** `stage`, so the pills do not collapse when one is selected. `all` counts live bookings. `{ "all", "to_invoice", "awaiting_payment", "paid", "cancelled" }`.
+
+A row's `stage` is `cancelled`, else `paid` when `net_income <= 0` or the collected total has reached it, else `awaiting_payment` when invoiced is ahead of collected, else `to_invoice`. `registration` is not a stage.
 
 ### Payload
 
 ```json
 {
-  "code": "B-0001", "status": "live",
+  "code": "B-0001", "status": "live", "stage": "awaiting_payment",
   "agreement_value": 15600000, "net_income": 686000,
-  "invoiced": 686000, "collected": 400000, "outstanding": 286000,
+  "invoiced": 686000, "collected": 400000, "outstanding": 286000, "to_invoice": 0,
+  "registration_done_on": null, "oldest_due_invoice_on": "2026-08-04",
+  "configuration": { "id": "…", "label": "2 BHK Ultima", "category": "residential", "typology_id": "…" },
+  "category": "residential", "cancellation_reason": null,
   "revenue": {
     "agreement_value": 15600000, "commission_percent": 4.5,
     "commission_amount": 702000, "kicker": 50000, "passback": 66000,
@@ -1855,8 +1875,9 @@ already has that name: **`422 project_name_clash`** with
 }
 ```
 
-The three list-card figures are top level; the itemised breakdown is under
-`revenue`. The detail also carries `documents[]`, `invoices[]`, `collections[]`.
+`configuration` is null until a booking is saved with one. `label` and `category` come from the snapshot taken then, not from the project's current row. `typology_id` is that typology. `id` is `project_typology_id` while that row still exists; after the project is saved in the configuration editor it is the new row with the same typology and label, or null if the project no longer has one. `category` is repeated at the top level (`residential`, `commercial`, `land`) and is null without a configuration. `oldest_due_invoice_on` is the issue date of the oldest raised invoice that still has a balance of its own; an unlinked collection does not settle an invoice, and a cancelled invoice is ignored.
+
+The list-card figures are top level; the itemised breakdown is under `revenue`. The detail also carries `created_by_name` (who recorded the booking), `documents[]`, `invoices[]`, and `collections[]`.
 
 ### Invoices and collections
 
@@ -1904,8 +1925,8 @@ The third is what catches a payment filed against the wrong invoice.
 - Sets status to `cancelled` and **nothing else**. Invoices already raised stay
   on record.
 - The booking leaves `Booking.live`, which is where every money query starts.
-- **The lead is untouched.** Cancelling does not reopen it, and booking does not
-  set it to `Booked` — that is a separate `POST /leads/:id/status` call.
+- **Cancelling does not touch the lead.** It does not reopen it. Creating a
+  booking moves the lead only when `mark_lead_booked` is true.
 - Cancelling twice is `422 already_cancelled`. Updating a cancelled booking is
   refused.
 
@@ -1916,6 +1937,43 @@ The third is what catches a payment filed against the wrong invoice.
 `other` may hold more than one file**; a second file in a named slot is
 `422 slot_taken`, not a silent overwrite. `DELETE /bookings/:id/documents/:id`
 purges the blob too.
+
+### MahaRERA Form 6
+
+Managers and the super admin. An agent is `403 forbidden_role`.
+
+Form 6 is a Maharashtra return. `available` is true when the firm's city is in
+Maharashtra. `GET /form6/settings` always answers. `PATCH /form6/settings`,
+`GET /form6/preview` and `GET /form6/download` are `403 form6_unavailable`
+when it is false.
+
+`GET /form6/settings` returns the saved answers plus `firm_rera_number`,
+`firm_legal_name`, `available`, and `periods`. Each period is
+`{ id, from, to, due_on }`. Ids look like `2026-04` (1 Apr–30 Sep, due 20 Oct)
+and `2025-10` (1 Oct–31 Mar, due 20 Apr). `periods` is the six newest halves
+that have fully ended, newest first.
+
+`PATCH /form6/settings` merges. Unknown keys are dropped. A person object
+replaces that person. Send JSON:
+
+| Key | |
+| --- | --- |
+| `registered_name` | Falls back to the legal name, then the firm name, on the form |
+| `competency_certificate_no` | |
+| `signatory_name`, `signatory_designation` | The signature block |
+| `designated_project_ids` | This firm's project ids, or a LaunchIQ catalog project (no firm, `source` catalog, any status), in the order Table A should print them. Another firm's project is refused |
+| `turnover_20l_or_more` | `true` or `false` only |
+| `principal_officer`, `designated_director` | `{ name, appointed_on, mobile, email, address }`. `appointed_on` is `YYYY-MM-DD`. `mobile` is an Indian mobile |
+
+`GET /form6/preview?period=2026-04` returns `period`, `bookings_count` (live
+bookings on a project, booked in the half), `left_out` (`cancelled`,
+`without_project`), `designated_projects_count`, `gaps`
+(`projects_without_rera`, `bookings_without_configuration`, `missing_settings`)
+and `filename`. A cancelled booking with no project counts only as cancelled.
+A half that has not ended, or a bad id, is `422 invalid`.
+
+`GET /form6/download?period=2026-04` sends that `.docx`
+(`application/vnd.openxmlformats-officedocument.wordprocessingml.document`).
 
 ---
 
@@ -2393,6 +2451,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `already_cancelled` | 422 | |
 | `unit_taken` | 422 | A live booking already has this `project_id` + `unit_no`. `details.project_id`, `details.unit_no` |
 | `project_name_clash` | 422 | Booking a catalog project whose name already exists in My Projects. `details.existing_project_id`, `details.name`. Retry with `use_existing` or `new_name` |
+| `form6_unavailable` | 403 | Form 6 write, preview and download, when the firm's city is not in Maharashtra |
 
 ### Files
 

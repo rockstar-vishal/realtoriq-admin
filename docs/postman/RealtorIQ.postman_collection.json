@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b7f1e4a2-9c3d-4f8a-b512-6a0d9e4c1f77",
     "name": "RealtorIQ — Broker API v1",
-    "description": "The JSON API the React broker app talks to.\n\n**The flow chains itself.** Run the Auth folder top to bottom: `Request sign-in code` saves `request_id`, `Verify code` saves `access_token` and `refresh_token`, and every other request picks the token up from collection auth. Nothing needs copy-pasting.\n\n**Prerequisites**\n\n1. `bin/rails db:seed` — reference data\n2. `bin/rails demo:seed` — a firm you can sign into (Sethi Realty)\n3. `bin/dev` — the server on :3000\n\n**Sign-in codes are `888888` in development.** Nothing is delivered. That is a development-only bypass; the app refuses to boot in production with it set.\n\n**Error shape.** Every failure is `{ \"error\": { \"code\", \"message\", \"details\" } }`. Switch on `code`, never on the prose. The codes are: `not_registered`, `account_disabled`, `otp_locked`, `invalid_code`, `account_suspended`, `subscription_lapsed`, `device_limit_reached`, `forbidden_role`, `rate_limited`, `delivery_failed`, `unauthorized`, `not_found`, `invalid_request`.",
+    "description": "The JSON API the React broker app talks to.\n\n**The flow chains itself.** Run the Auth folder top to bottom: `Request sign-in code` saves `request_id`, `Verify code` saves `access_token` and `refresh_token`, and every other request picks the token up from collection auth. Nothing needs copy-pasting.\n\n**Prerequisites**\n\n1. `bin/rails db:seed` — reference data\n2. `bin/rails demo:seed` — a firm you can sign into (Sethi Realty)\n3. `bin/dev` — the server on :3000\n\n**Sign-in codes are `888888` in development.** Nothing is delivered. That is a development-only bypass; the app refuses to boot in production with it set.\n\n**Error shape.** Every failure is `{ \"error\": { \"code\", \"message\", \"details\" } }`. Switch on `code`, never on the prose. The codes are: `not_registered`, `account_disabled`, `otp_locked`, `invalid_code`, `account_suspended`, `subscription_lapsed`, `device_limit_reached`, `forbidden_role`, `rate_limited`, `delivery_failed`, `unauthorized`, `not_found`, `invalid_request`, `form6_unavailable`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -4101,7 +4101,7 @@
     },
     {
       "name": "Bookings and money",
-      "description": "Recording a sale and the brokerage on it.\n\n**Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.\n\n**Net income is computed server-side and stored:**\n\n```\nround(agreement_value × commission_percent / 100) + kicker − passback\n```\n\nThe design's own example is the fixture: ₹1,56,00,000 at 4.5% is ₹7,02,000, plus a ₹50,000 kicker, minus a ₹66,000 passback = **₹6,86,000** — the \"₹6.86 L\" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.\n\n**Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.\n\n**Cancelling** sets the booking's status and nothing else — the lead is untouched and invoices already raised stay on record.",
+      "description": "Recording a sale and the brokerage on it.\n\n**Managers and super admins only.** An agent gets `forbidden_role` on every request in this folder, including bookings for a lead of their own.\n\n**Net income is computed server-side and stored:**\n\n```\nround(agreement_value × commission_percent / 100) + kicker − passback\n```\n\nThe design's own example is the fixture: ₹1,56,00,000 at 4.5% is ₹7,02,000, plus a ₹50,000 kicker, minus a ₹66,000 passback = **₹6,86,000** — the \"₹6.86 L\" on its booking screen. The client never recomputes money; `revenue` carries every line already worked out.\n\n**Two hard blocks.** Invoices cannot exceed net income; collections cannot exceed what was invoiced, and a payment naming an invoice cannot exceed that invoice. Refusals carry the arithmetic in `error.details` so the app can explain itself.\n\n**Cancelling** sets the booking's status and nothing else — the lead is left as it is, and invoices already raised stay on record. **Creating** moves the lead to Booked only when `mark_lead_booked` is true.",
       "item": [
         {
           "name": "Create a booking",
@@ -4122,10 +4122,10 @@
                 "bookings"
               ]
             },
-            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` — retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
+            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` — retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`project_typology_id` snapshots the typology and label. Omit it on PATCH to keep that snapshot; send null to clear it. A catalog booking whose copy has no matching configuration still saves, with the snapshot and no configuration id.\n\n`mark_lead_booked` sets the lead's booked date to `booked_on` (the start of that day, IST).\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"project_typology_id\": \"{{project_typology_id}}\",\n  \"mark_lead_booked\": true,\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
             }
           },
           "event": [
@@ -4182,7 +4182,7 @@
                 "bookings"
               ]
             },
-            "description": "Cancelled bookings are excluded unless you ask for them — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q` (customer, unit, code, builder ref, project name), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default · `cancelled`).\n\n`totals` carries the firm's live agreement value and net income for the header."
+            "description": "Cancelled bookings are excluded unless you ask for them with `status` or `stage` — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q` (customer, phone, unit, code, builder ref, project name), `stage` (`to_invoice` · `awaiting_payment` · `paid` · `cancelled`), `registration` (`done` · `pending`), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default when no stage is sent · `cancelled`).\n\n`totals` is the live agreement value, net income, invoiced, collected, outstanding and to_invoice for the filtered set. `stage_counts` uses the same filters except `stage`."
           },
           "event": [
             {
@@ -4206,7 +4206,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{api_base}}/bookings?q=Rhea&status=live&client_phone=9820166666&project_id={{project_id}}&booked_from=2026-01-01&booked_to=2027-12-31&per_page=5&page=1",
+              "raw": "{{api_base}}/bookings?q=Rhea&stage=awaiting_payment&registration=pending&status=live&client_phone=9820166666&project_id={{project_id}}&booked_from=2026-01-01&booked_to=2027-12-31&per_page=5&page=1",
               "host": [
                 "{{api_base}}"
               ],
@@ -4217,6 +4217,14 @@
                 {
                   "key": "q",
                   "value": "Rhea"
+                },
+                {
+                  "key": "stage",
+                  "value": "awaiting_payment"
+                },
+                {
+                  "key": "registration",
+                  "value": "pending"
                 },
                 {
                   "key": "status",
@@ -4248,7 +4256,7 @@
                 }
               ]
             },
-            "description": "Every filter on the bookings index. `status` is `live` or `cancelled`; every money query starts from `live`.\n\n`client_phone` matches the **snapshot** on the booking, not the lead's current number.\n\nThe `totals` block is computed over the filtered set by re-selecting on id — never over a scope carrying `includes(:invoices, :collections)`, which becomes a LEFT JOIN and counts a booking once per associated row. That bug reported 3.12 Cr against a true 1.56 Cr."
+            "description": "Every filter on the bookings index. `stage` is `to_invoice`, `awaiting_payment`, `paid` or `cancelled`. `status` is still `live` or `cancelled` for older clients. `registration` is `done` or `pending`.\n\n`client_phone` matches the **snapshot** on the booking, not the lead's current number. `q` also matches the customer phone and the booking code. A `q` with 4 or more digits matches the phone on those digits alone, so `98201 55011` finds `+919820155011`.\n\n`totals` is the live money for the filtered set. `stage_counts` ignores `stage` and counts the other filters. Both re-select by id — never over a scope carrying `includes(:invoices, :collections)`, which becomes a LEFT JOIN and counts a booking once per associated row. That bug reported 3.12 Cr against a true 1.56 Cr."
           },
           "event": [
             {
@@ -4269,6 +4277,8 @@
                   "});",
                   "pm.test(\"totals are present and non-negative\", () => {",
                   "  pm.expect(body.totals.net_income).to.be.at.least(0);",
+                  "  pm.expect(body.totals).to.have.property(\"to_invoice\");",
+                  "  pm.expect(body.stage_counts).to.have.property(\"awaiting_payment\");",
                   "});"
                 ]
               }
@@ -4290,7 +4300,7 @@
                 "{{booking_id}}"
               ]
             },
-            "description": "The detail the design's tabs are built from: the itemised `revenue` block, documents, invoices and collections, plus `invoiced` / `collected` / `outstanding`."
+            "description": "The detail the design's tabs are built from: the itemised `revenue` block, documents, invoices and collections, plus `stage`, `invoiced` / `collected` / `outstanding` / `to_invoice`, `configuration` (`id`, `label`, `category`, `typology_id`), and `created_by_name`. `label` and `category` are the snapshot. `id` follows the project's current row with that typology and label."
           },
           "event": [
             {
@@ -4808,6 +4818,122 @@
                   "pm.test(\"422 reason_required\", () => {",
                   "  pm.response.to.have.status(422);",
                   "  pm.expect(pm.response.json().error.code).to.eql(\"reason_required\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MahaRERA Form 6",
+      "description": "Half-yearly return for a firm whose city is in Maharashtra. Managers and the super admin. GET settings answers everywhere (`available` is false outside Maharashtra). PATCH, preview and download are `403 form6_unavailable` then.\n\nPeriods are `2026-04` (1 Apr–30 Sep, due 20 Oct) and `2025-10` (1 Oct–31 Mar, due 20 Apr). Preview and download accept only a half that has fully ended.",
+      "item": [
+        {
+          "name": "Get Form 6 settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_base}}/form6/settings",
+            "description": "Saved answers, the firm's MahaRERA number and legal name, `available`, and `periods` (newest completed half first)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"says whether Form 6 applies\", () => {",
+                  "  pm.expect(pm.response.json()).to.have.property(\"available\");",
+                  "  pm.expect(pm.response.json().periods).to.be.an(\"array\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Form 6 settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_base}}/form6/settings",
+            "description": "Merges. Unknown keys are dropped. A person object replaces that person. `turnover_20l_or_more` is true or false only. Project ids must belong to this firm, or be a LaunchIQ catalog project (no firm, source catalog, any status). Another firm's project is refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registered_name\": \"Aarav Realty\",\n  \"competency_certificate_no\": \"CC-100\",\n  \"signatory_name\": \"Aarav Sethi\",\n  \"signatory_designation\": \"Partner\",\n  \"designated_project_ids\": [\"{{project_id}}\"],\n  \"turnover_20l_or_more\": false,\n  \"principal_officer\": {\n    \"name\": \"Priya Shah\",\n    \"appointed_on\": \"2024-01-15\",\n    \"mobile\": \"9876543210\",\n    \"email\": \"priya@example.com\",\n    \"address\": \"1 Marine Drive, Mumbai\"\n  },\n  \"designated_director\": {\n    \"name\": null,\n    \"appointed_on\": null,\n    \"mobile\": null,\n    \"email\": null,\n    \"address\": null\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"keeps the signatory\", () => {",
+                  "  pm.expect(pm.response.json().signatory_name).to.eql(\"Aarav Sethi\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview Form 6",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/form6/preview?period=2026-04",
+              "host": [ "{{api_base}}" ],
+              "path": [ "form6", "preview" ],
+              "query": [ { "key": "period", "value": "2026-04" } ]
+            },
+            "description": "Counts, what was left out, and the gaps the Word file will leave blank. `period` is the half's start month."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"names the file\", () => pm.expect(pm.response.json().filename).to.match(/\\.docx$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download Form 6",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/form6/download?period=2026-04",
+              "host": [ "{{api_base}}" ],
+              "path": [ "form6", "download" ],
+              "query": [ { "key": "period", "value": "2026-04" } ]
+            },
+            "description": "The .docx. Same period as preview."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"is a Word file\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"wordprocessingml\");",
                   "});"
                 ]
               }

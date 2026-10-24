@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <% letterhead_lines.each do |line| %>
+      <%= paragraph(line, align: "center", bold: true, size: 24, after: 40) %>
+    <% end %>
+    <%= paragraph("ANNEXURE ‘A’", align: "center", bold: true, size: 28, after: 40) %>
+    <%= paragraph("FORM 6", align: "center", bold: true, size: 32, after: 80) %>
+    <%= paragraph("DISCLOSURE OF REAL ESTATE TRANSACTIONS FACILITATED AND OTHER PARTICULARS", align: "center", bold: true, size: 22, after: 40) %>
+    <%= paragraph("(MahaRERA registered real estate agent shall be in public view except the portion marked *)", align: "center", size: 22, after: 160) %>
+    <%= labeled("Date:", dmy(today), align: "right") %>
+    <%= labeled("Name:", agent_name) %>
+    <%= labeled("Maharera Registration No. :", firm.rera_number) %>
+    <%= labeled("Maharera Real Estate Agent Certificate of Competency No. :", competency_certificate_no) %>
+    <%= paragraph(after: 160, runs: [
+      [ "Information for the period commencing from ", true, false ],
+      [ dmy(period.from), false, false ],
+      [ " to ", true, false ],
+      [ dmy(period.to), false, false ]
+    ]) %>
+    <%= paragraph("Table A: Real Estate Projects where real estate agents are designated by promoter to act as real estate agent under section 4(2)(j) of the Act", bold: true, underline: true, size: 22, before: 240, after: 120, keep_next: true) %>
+    <%= grid(TABLE_A_HEADERS, table_a_rows, TABLE_A_WIDTHS, nowrap_columns: TABLE_A_NOWRAP) %>
+    <%= paragraph("Table B: Details of Plot, apartments, units or buildings where booking/sale was facilitated by the Real Estate Agent during the reporting period", bold: true, underline: true, size: 22, before: 240, after: 120, keep_next: true) %>
+    <%= grid(TABLE_B_HEADERS, table_b_rows, TABLE_B_WIDTHS, nowrap_columns: TABLE_B_NOWRAP) %>
+    <%= paragraph("Table C: Applicable for real estate agents, whose annual turnover is Rs. 20 (Twenty) lakhs and above, the following data also needs to be provided*:", bold: true, underline: true, size: 22, before: 240, after: 120, keep_next: true) %>
+    <%= grid(TABLE_C_HEADERS, table_c_rows, TABLE_C_WIDTHS) %>
+    <%= paragraph("Signature of Agent", bold: true, indent: 5000, before: 200, after: 0, keep_next: true, keep_lines: true) %>
+    <%= paragraph("", indent: 5000, after: 0, keep_next: true, keep_lines: true) %>
+    <%= paragraph("", indent: 5000, after: 0, keep_next: true, keep_lines: true) %>
+    <%= paragraph("", indent: 5000, after: 0, keep_next: true, keep_lines: true) %>
+    <%= labeled("Name:", signatory_name, indent: 5000, keep_next: true, keep_lines: true) %>
+    <%= labeled("Designation:", signatory_designation, indent: 5000, keep_next: true, keep_lines: true) %>
+    <%= labeled("Seal/Rubber Stamp:", "", indent: 5000, keep_next: true, keep_lines: true) %>
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>

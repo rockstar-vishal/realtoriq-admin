@@ -69,6 +69,10 @@ gem "image_processing", "~> 1.2"
 # The registration acceptance PDF. Noto Sans is vendored so the rupee sign renders.
 gem "prawn", "~> 2.5"
 
+# MahaRERA Form 6 is a .docx of WordprocessingML. selenium-webdriver already
+# pulls rubyzip into the test group; the generator needs it in every environment.
+gem "rubyzip", "~> 3.4", require: false
+
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
