@@ -4897,7 +4897,7 @@
               "path": [ "form6", "preview" ],
               "query": [ { "key": "period", "value": "2026-04" } ]
             },
-            "description": "Counts, what was left out, and the gaps the Word file will leave blank. `period` is the half's start month."
+            "description": "Counts, what was left out, and the gaps the Word file will leave blank. `period` is the half's start month. `gaps.missing_settings` is in form order. Example with turnover on and nothing filled, and no firm registration number: firm_rera_number, competency_certificate_no, signatory_name, signatory_designation, then principal_officer.name, principal_officer.appointed_on, principal_officer.mobile, principal_officer.email, principal_officer.address, then the same five for designated_director. firm_rera_number is omitted when the firm has a MahaRERA number. The person keys are omitted when turnover is off."
           },
           "event": [
             {

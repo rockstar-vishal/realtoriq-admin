@@ -1972,6 +1972,15 @@ bookings on a project, booked in the half), `left_out` (`cancelled`,
 and `filename`. A cancelled booking with no project counts only as cancelled.
 A half that has not ended, or a bad id, is `422 invalid`.
 
+`missing_settings` lists blanks in form order. `firm_rera_number` is first when
+the firm's registration number is empty — brokers cannot set it; ops adds it
+on the firm, and the Word file's letterhead drops the line. Then
+`competency_certificate_no`, `signatory_name` and `signatory_designation`.
+When `turnover_20l_or_more` is true, each blank field of the two people
+follows: `principal_officer.name`, `principal_officer.appointed_on`,
+`principal_officer.mobile`, `principal_officer.email`, `principal_officer.address`,
+then the same five for `designated_director`.
+
 `GET /form6/download?period=2026-04` sends that `.docx`
 (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`).
 

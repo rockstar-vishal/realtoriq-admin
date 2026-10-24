@@ -45,11 +45,14 @@ module Form6
 
       # Keys that will leave a blank on the form. The agent's name falls back
       # to the legal name and the firm name, so an empty registered_name is
-      # not a gap. Table C is only a gap when the firm says turnover is
-      # ₹20 lakh or more.
+      # not a gap. The firm's MahaRERA number is not a Form 6 answer — ops sets
+      # it — but the letterhead drops the line when it is blank. Table C is
+      # only a gap when the firm says turnover is ₹20 lakh or more.
       def missing_keys(firm)
         data = read(firm)
-        keys = %w[competency_certificate_no signatory_name signatory_designation].select { |key| data[key].blank? }
+        keys = []
+        keys << "firm_rera_number" if firm.rera_number.blank?
+        keys.concat(%w[competency_certificate_no signatory_name signatory_designation].select { |key| data[key].blank? })
         return keys unless data["turnover_20l_or_more"] == true
 
         PERSONS.each do |person|

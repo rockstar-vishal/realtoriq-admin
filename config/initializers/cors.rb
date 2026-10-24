@@ -48,7 +48,9 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
     resource "/api/*",
       headers: :any,
       methods: %i[get post patch put delete options head],
-      expose: %w[ETag],
+      # Content-Disposition is not CORS-safelisted. Form 6's download reads it
+      # for the server filename; otherwise the browser only sees the preview name.
+      expose: %w[ETag Content-Disposition],
       max_age: 600
 
     # Direct uploads do NOT go to /api. `POST /api/v1/uploads` returns a
