@@ -211,6 +211,21 @@ RSpec.describe "API v1 Form 6" do
       expect(body["filename"]).to eq("Form6_Aarav-Realty_Apr-Sep-2026.docx")
     end
 
+    it "puts a blank firm registration number first among the blanks" do
+      firm.update!(rera_number: nil, form6: { "turnover_20l_or_more" => true, "signatory_name" => "Aarav Sethi" })
+
+      travel_to Time.zone.local(2026, 10, 24, 12, 0, 0) do
+        get "/api/v1/form6/preview", params: { period: "2026-04" }, headers: headers
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("gaps", "missing_settings")).to eq(
+        %w[firm_rera_number competency_certificate_no signatory_designation] +
+        %w[name appointed_on mobile email address].map { |field| "principal_officer.#{field}" } +
+        %w[name appointed_on mobile email address].map { |field| "designated_director.#{field}" }
+      )
+    end
+
     it "downloads the same file" do
       travel_to Time.zone.local(2026, 10, 24, 12, 0, 0) do
         get "/api/v1/form6/download", params: { period: "2026-04" }, headers: headers

@@ -810,6 +810,33 @@ RSpec.describe "API v1 bookings" do
       expect(stored.configuration_label).to be_nil
     end
 
+    it "leaves the project, configuration and money unchanged when only the registration date is sent" do
+      project = create(:project, firm:)
+      typology = create(:typology, name: "2 BHK")
+      row = create(:project_typology, project:, typology:, label: "Ultima")
+      headers = auth
+      create_booking(headers, project_id: project.id, unit_no: "U-reg", project_typology_id: row.id)
+      id = response.parsed_body.dig("booking", "id")
+      before = Booking.across_firms.find(id)
+
+      patch "/api/v1/bookings/#{id}",
+        params: { registration_done_on: "2026-10-24" },
+        headers: headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      stored = Booking.across_firms.find(id)
+      expect(stored.registration_done_on).to eq(Date.new(2026, 10, 24))
+      expect(stored.project_id).to eq(before.project_id)
+      expect(stored.project_typology_id).to eq(before.project_typology_id)
+      expect(stored.typology_id).to eq(before.typology_id)
+      expect(stored.configuration_label).to eq(before.configuration_label)
+      expect(stored.agreement_value).to eq(before.agreement_value)
+      expect(stored.commission_percent).to eq(before.commission_percent)
+      expect(stored.kicker).to eq(before.kicker)
+      expect(stored.passback).to eq(before.passback)
+      expect(stored.net_income).to eq(before.net_income)
+    end
+
     it "keeps the booked configuration when the project is saved in the configuration editor" do
       owner = create(:user, :super_admin, firm:)
       project = create(:project, firm:, locality: create(:locality), lat: 19.07, lng: 73.02,
