@@ -50,7 +50,21 @@ class Project < ApplicationRecord
 
   # Photos live on the detail screen, not the create form — the design is
   # explicit about that, so they arrive through their own endpoint.
-  has_many_attached :photos
+  #
+  # Thumb and large are smaller copies of the original. preprocessed enqueues
+  # both as soon as a photo is attached, including LaunchIQ copies.
+  has_many_attached :photos do |attachable|
+    attachable.variant :thumb,
+      resize_to_limit: [ 480, 480 ],
+      format: :webp,
+      saver: { quality: 75, strip: true },
+      preprocessed: true
+    attachable.variant :large,
+      resize_to_limit: [ 1600, 1600 ],
+      format: :webp,
+      saver: { quality: 80, strip: true },
+      preprocessed: true
+  end
   has_one_attached :brochure
   has_one_attached :brokerage_ladder
 

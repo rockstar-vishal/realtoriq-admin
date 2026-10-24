@@ -38,7 +38,9 @@ RSpec.describe Realtoriq::SyncProjectAssets do
     )
 
     Current.set(firm_scope_bypassed: true) do
-      perform_enqueued_jobs
+      # Attaching a photo also enqueues thumb and large transforms. These bytes
+      # are not images. Only the purge of the dropped photo has to run.
+      perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
       project.reload
       expect(project.photos.blobs.map(&:checksum)).to eq([ checksum(kept) ])
       expect(Rails.application.routes.url_helpers.rails_blob_url(project.brochure.reload, only_path: true)).to eq(brochure_url)
@@ -103,7 +105,9 @@ RSpec.describe Realtoriq::SyncProjectAssets do
     )
 
     Current.set(firm_scope_bypassed: true) do
-      perform_enqueued_jobs
+      # The original is on a service that has no file. Performing its variant
+      # job would try to open it. The example only checks the replacement.
+      perform_enqueued_jobs(only: ActiveStorage::PurgeJob)
       project.reload
       expect(project.photos.blobs.map(&:service_name)).to eq([ "test" ])
       expect(project.photos.blobs.map(&:checksum)).to eq([ checksum(bytes) ])

@@ -30,11 +30,7 @@ module Api
 
         blob = attachment.try(:blob) || attachment
 
-        # .dup matters: Hash#to_h returns self, so without it this writes
-        # expires_in into ActiveStorage::Current.url_options and every later URL
-        # in the same request inherits it — including the photo URLs that are
-        # supposed to be permanent. A spec pins this.
-        options = ActiveStorage::Current.url_options.presence.to_h.dup
+        options = url_options
         options[:expires_in] = expires_in if expires_in
 
         helper = proxy ? :rails_storage_proxy_url : :rails_blob_url
@@ -54,6 +50,57 @@ module Api
       # /rails/active_storage/* already allows the app, so the reader has to
       # stay on the API.
       def self.proxy(attachment) = call(attachment, proxy: true)
+
+      # A smaller copy. The original stays on `.call` — share links are pasted
+      # into WhatsApp and have to keep working if a variant is missing.
+      def self.variant(attachment, name)
+        return nil if attachment.blank?
+
+        blob = attachment.try(:blob) || attachment
+        return call(attachment) unless blob.variable?
+
+        Rails.application.routes.url_helpers.rails_representation_url(
+          attachment.variant(name), **url_options
+        )
+      end
+
+      def self.photo(attachment)
+        prepare(attachment)
+        {
+          id: attachment.id,
+          url: call(attachment),
+          thumb_url: variant(attachment, :thumb),
+          large_url: variant(attachment, :large),
+          width: dimension(attachment, "width"),
+          height: dimension(attachment, "height")
+        }
+      end
+
+      # Lists preload variant_records through with_attached_photos. Touching
+      # the association is free when that preload ran, and one query per photo
+      # when it did not — the list spec fails if the preload goes away.
+      def self.prepare(attachment)
+        blob = attachment&.try(:blob)
+        return if blob.nil?
+
+        records = blob.variant_records
+        records.load unless records.loaded?
+      end
+
+      def self.dimension(attachment, key)
+        meta = attachment.blob.metadata
+        return nil if meta.blank?
+
+        meta[key] || meta[key.to_sym]
+      end
+
+      def self.url_options
+        # .dup matters: Hash#to_h returns self, so without it this writes
+        # expires_in into ActiveStorage::Current.url_options and every later URL
+        # in the same request inherits it — including the photo URLs that are
+        # supposed to be permanent. A spec pins this.
+        ActiveStorage::Current.url_options.presence.to_h.dup
+      end
     end
   end
 end

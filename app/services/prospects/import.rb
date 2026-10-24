@@ -7,7 +7,11 @@ module Prospects
   # rows already added. The firm row stays locked for the whole file so two
   # imports cannot both pass the 5,000 cap.
   class Import
-    MAX_ROWS = Prospect::MAX_PER_FIRM
+    # Not `Prospect::MAX_PER_FIRM`. A spec stubs that constant down to test the
+    # per-row cap. If this copied the constant the first time the class loaded,
+    # and that happened to be during the stub, every later file was rejected
+    # as too long. The file gate stays at the real limit.
+    MAX_ROWS = 5_000
     EXAMPLE_NAME = "example caller"
     EXAMPLE_MOBILE_DIGITS = "9000000000"
     EXAMPLE_ONLY = "The example row was skipped. Replace Example caller with your own clients and import that file."
