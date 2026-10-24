@@ -30,11 +30,13 @@
     <div class="field">
       <%= f.label :max_users, "Max users" %>
       <%= f.number_field :max_users, class: "input", min: 1, placeholder: "Blank for unlimited" %>
+      <p class="mt-1 text-[12px] text-[var(--color-neutral-600)]">Disabled members count towards this.</p>
     </div>
 
     <div class="field">
       <%= f.label :max_devices, "Max devices per user *" %>
       <%= f.number_field :max_devices, class: "input", min: 1 %>
+      <p class="mt-1 text-[12px] text-[var(--color-neutral-600)]">Each person can stay signed in on this many devices. Signing in on one more signs out the oldest.</p>
     </div>
 
     <div class="field">

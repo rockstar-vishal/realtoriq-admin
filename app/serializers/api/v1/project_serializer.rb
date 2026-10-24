@@ -33,6 +33,7 @@ module Api
             promo: project.promo_live? ? { text: project.promo_text, ends_on: project.promo_ends_on } : nil,
             configurations: configuration_names(project),
             cover_photo_url: cover_photo_url(project),
+            cover_thumb_url: cover_thumb_url(project),
             photo_count: photo_attachments(project).size,
             has_pin: project.has_pin?,
             created_at: project.created_at
@@ -150,6 +151,13 @@ module Api
           first && BlobUrl.call(first)
         end
 
+        def cover_thumb_url(project)
+          attachments = photo_attachments(project)
+          attachments.each { |attachment| BlobUrl.prepare(attachment) }
+          first = attachments.first
+          first && BlobUrl.variant(first, :thumb)
+        end
+
         # Attachment ids are random UUIDs, so sorting by id shuffles the gallery.
         # created_at is upload order. The first upload is the banner.
         def photo_attachments(project)
@@ -163,7 +171,7 @@ module Api
         # bare urls, because an id is of no use to a client and share payloads
         # get pasted into WhatsApp.
         def photos(project)
-          photo_attachments(project).map { |a| { id: a.id, url: BlobUrl.call(a) } }
+          photo_attachments(project).map { |attachment| BlobUrl.photo(attachment) }
         end
 
         def photo_urls(project) = photo_attachments(project).map { |a| BlobUrl.call(a) }

@@ -36,11 +36,11 @@ module Users
 
       User.transaction do
         firm.lock!
-        if over_user_limit?
+        if (max = over_user_limit?)
           return Result.new(
             ok?: false,
             error_code: "user_limit_reached",
-            error_message: "This plan's user limit has been reached."
+            error_message: "All #{max} seats on this plan are in use, including disabled members."
           )
         end
 
@@ -79,13 +79,14 @@ module Users
       found
     end
 
+    # The plan's max when the firm is already at it, otherwise nil. Disabled
+    # accounts still occupy a seat — disabling is not a way around the plan.
     def over_user_limit?
       max = firm.current_subscription&.plan&.max_users
-      return false if max.nil?
+      return nil if max.nil?
+      return nil unless firm.users.count >= max
 
-      # Disabled accounts still occupy a seat — disabling is not a way around
-      # the plan.
-      firm.users.count >= max
+      max
     end
 
     def invalid_role(user)

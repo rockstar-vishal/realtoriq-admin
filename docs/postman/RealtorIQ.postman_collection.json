@@ -3523,7 +3523,7 @@
                 "photos"
               ]
             },
-            "description": "Photos live on the detail screen, not the create form.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. The pre-request script does the first two, so this request stands alone.\n\n**Note:** there is no matching request for `DELETE /projects/:id/photos/:photo_id` because no response returns an attachment id — only `photo_urls`. The endpoint exists but no client can address it. See the README.",
+            "description": "Photos live on the detail screen, not the create form.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. The pre-request script does the first two, so this request stands alone.\n\nEach photo returns `thumb_url` and `large_url` (WebP variants) plus `width` and `height` (null until the file is analyzed). The list adds `cover_thumb_url`. `url`, `photo_urls`, `cover_photo_url` and `shareable.photo_urls` stay the original.\n\n**Note:** there is no matching request for `DELETE /projects/:id/photos/:photo_id` because no response returns an attachment id — only `photo_urls`. The endpoint exists but no client can address it. See the README.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
@@ -3572,6 +3572,7 @@
                   "const p = pm.response.json().project;",
                   "pm.test(\"the photo is on the project\", () => pm.expect(p.photo_count).to.be.above(0));",
                   "pm.test(\"and a cover url comes back\", () => pm.expect(p.cover_photo_url).to.be.a(\"string\"));",
+                  "pm.test(\"and a cover thumb\", () => pm.expect(p.cover_thumb_url).to.include(\"representations\"));",
                   "",
                   "// `photos` carries the attachment id; `photo_urls` does not. The id is",
                   "// what DELETE /photos/:photo_id takes — the signed blob URL encodes the",
@@ -3580,9 +3581,14 @@
                   "pm.test(\"each photo comes back with an addressable id\", () => {",
                   "  pm.expect(p.photos[0].id).to.be.a(\"string\");",
                   "  pm.expect(p.photos[0].url).to.be.a(\"string\");",
+                  "  pm.expect(p.photos[0].thumb_url).to.include(\"representations\");",
+                  "  pm.expect(p.photos[0].large_url).to.include(\"representations\");",
+                  "  pm.expect(p.photos[0]).to.have.property(\"width\");",
+                  "  pm.expect(p.photos[0]).to.have.property(\"height\");",
                   "});",
                   "pm.test(\"but the shareable payload carries no ids\", () => {",
                   "  pm.expect(p.shareable).to.not.have.property(\"photos\");",
+                  "  pm.expect(p.shareable.photo_urls[0]).to.not.include(\"representations\");",
                   "});"
                 ]
               }
@@ -3989,7 +3995,7 @@
                 "photos"
               ]
             },
-            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`. A ticket from another firm, or issued for a different purpose, is `invalid_upload`.\n\nThe same attach check applies to brochures, booking documents and collection proofs.\n\nThe pre-request script does the first two steps, so this request works on its own.",
+            "description": "Photos live on the detail screen, not the create form — the design is explicit about that.\n\nThree steps: `POST /uploads` for a ticket, PUT the file to the returned url, then send the `signed_id` here. Attaching before the PUT lands returns `upload_incomplete`. A ticket from another firm, or issued for a different purpose, is `invalid_upload`.\n\nThe same attach check applies to brochures, booking documents and collection proofs.\n\nThe pre-request script does the first two steps, so this request works on its own.\n\nEach photo returns `thumb_url` and `large_url` (WebP variants) plus `width` and `height` (null until the file is analyzed). The list adds `cover_thumb_url`. `url`, `photo_urls`, `cover_photo_url` and `shareable.photo_urls` stay the original.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"photo_signed_ids\": [\n    \"{{signed_id}}\"\n  ]\n}"
@@ -4039,6 +4045,7 @@
                   "  const property = pm.response.json().property;",
                   "  pm.expect(property.photo_count).to.be.above(0);",
                   "  pm.expect(property.cover_photo_url).to.be.a(\"string\");",
+                  "  pm.expect(property.cover_thumb_url).to.include(\"representations\");",
                   "});",
                   "",
                   "const p = pm.response.json().property;",
@@ -4050,9 +4057,14 @@
                   "pm.test(\"each photo comes back with an addressable id\", () => {",
                   "  pm.expect(p.photos[0].id).to.be.a(\"string\");",
                   "  pm.expect(p.photos[0].url).to.be.a(\"string\");",
+                  "  pm.expect(p.photos[0].thumb_url).to.include(\"representations\");",
+                  "  pm.expect(p.photos[0].large_url).to.include(\"representations\");",
+                  "  pm.expect(p.photos[0]).to.have.property(\"width\");",
+                  "  pm.expect(p.photos[0]).to.have.property(\"height\");",
                   "});",
                   "pm.test(\"but the shareable payload carries no ids\", () => {",
                   "  pm.expect(p.shareable).to.not.have.property(\"photos\");",
+                  "  pm.expect(p.shareable.photo_urls[0]).to.not.include(\"representations\");",
                   "});"
                 ]
               }

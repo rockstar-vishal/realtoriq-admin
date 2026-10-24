@@ -148,7 +148,7 @@ module Api
       end
 
       def base_scope
-        Property.includes(:typology, :created_by_user, :city, :locality)
+        Property.includes(:typology, :created_by_user, :city, :locality).with_attached_photos
       end
 
       def filtered_scope

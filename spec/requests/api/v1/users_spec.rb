@@ -111,6 +111,9 @@ RSpec.describe "API v1 users" do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body.dig("error", "code")).to eq("user_limit_reached")
+      expect(response.parsed_body.dig("error", "message")).to eq(
+        "All 4 seats on this plan are in use, including disabled members."
+      )
     end
 
     it "treats a nil max_users as unlimited" do

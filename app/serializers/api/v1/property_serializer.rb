@@ -33,6 +33,7 @@ module Api
             **location_fields(property),
             building: building_summary(property),
             cover_photo_url: photo_urls(property).first,
+            cover_thumb_url: cover_thumb_url(property),
             photo_count: property.photos.attachments.size,
             created_by: named_user(property.created_by_user),
             created_at: property.created_at,
@@ -180,7 +181,14 @@ module Api
         # only: `shareable` keeps the bare urls, since an id is of no use to a
         # client and that payload is built to be pasted into a message.
         def photos(property)
-          photo_attachments(property).map { |a| { id: a.id, url: BlobUrl.call(a) } }
+          photo_attachments(property).map { |attachment| BlobUrl.photo(attachment) }
+        end
+
+        def cover_thumb_url(property)
+          attachments = photo_attachments(property)
+          attachments.each { |attachment| BlobUrl.prepare(attachment) }
+          first = attachments.first
+          first && BlobUrl.variant(first, :thumb)
         end
 
         def photo_urls(property) = photo_attachments(property).map { |a| BlobUrl.call(a) }

@@ -29,7 +29,20 @@ class Property < ApplicationRecord
   has_many :lead_properties, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_visit_properties, -> { unscope(where: :firm_id) }, dependent: :restrict_with_error
 
-  has_many_attached :photos
+  # Thumb and large are smaller copies of the original. preprocessed enqueues
+  # both as soon as a photo is attached.
+  has_many_attached :photos do |attachable|
+    attachable.variant :thumb,
+      resize_to_limit: [ 480, 480 ],
+      format: :webp,
+      saver: { quality: 75, strip: true },
+      preprocessed: true
+    attachable.variant :large,
+      resize_to_limit: [ 1600, 1600 ],
+      format: :webp,
+      saver: { quality: 80, strip: true },
+      preprocessed: true
+  end
 
   PIN_FREE_CHANGES = %w[status listed_on_marketplace on_website].freeze
 

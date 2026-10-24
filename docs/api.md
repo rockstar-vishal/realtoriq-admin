@@ -306,8 +306,9 @@ Super admin only. `{ name, mobile, role, email?, rera_number?, notification_mode
 manager here (they already see the whole firm). The new user can sign in at
 once.
 
-`422 user_limit_reached` when the plan's `max_users` is hit. **Disabled users
-count toward the cap.** `max_users: null` is unlimited.
+`422 user_limit_reached` when the plan's `max_users` is hit. The message is
+"All {n} seats on this plan are in use, including disabled members." **Disabled
+users count toward the cap.** `max_users: null` is unlimited.
 
 ### `PATCH /users/:id`
 
@@ -1798,10 +1799,20 @@ broker earns is not the client's business.
 A detail returns **both**:
 
 ```json
-"photos":     [ { "id": "59418d74-…", "url": "https://…/flat.jpg" } ],
+"photos": [
+  {
+    "id": "59418d74-…",
+    "url": "https://…/flat.jpg",
+    "thumb_url": "https://…/representations/…/flat.webp",
+    "large_url": "https://…/representations/…/flat.webp",
+    "width": 1600,
+    "height": 1200
+  }
+],
 "photo_urls": [ "https://…/flat.jpg" ],
 "photo_count": 1,
-"cover_photo_url": "https://…/flat.jpg"
+"cover_photo_url": "https://…/flat.jpg",
+"cover_thumb_url": "https://…/representations/…/flat.webp"
 ```
 
 **`photos[].id` is the attachment id that `DELETE` takes.** It is not the id
@@ -1810,6 +1821,14 @@ gives you a 404. Max **20** photos per listing (`too_many_photos`). Attachment
 ids are random, so they do not sort by time. `photos`, `photo_urls` and
 `cover_photo_url` follow upload order (`created_at`). The first upload is the
 cover. There is no reordering.
+
+`thumb_url` is a WebP at most 480×480. `large_url` is a WebP at most 1600×1600.
+`width` and `height` are the original's pixel size, or null before analysis.
+A list row carries `cover_thumb_url` (the first photo's thumb) and does not
+carry `photos`. `url`, `photo_urls`, `cover_photo_url` and
+`shareable.photo_urls` stay the original file, because those links are pasted
+into WhatsApp. A file that cannot be resized returns that same original URL
+for `thumb_url` and `large_url`. Marketplace property cards still omit photos.
 
 ---
 
@@ -2485,7 +2504,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `invalid_request` | 400 | A required parameter is missing |
 | `not_found` | 404 | Also returned for another firm's — or another agent's — record |
 | `unknown_user` | 404 | That user isn't in this firm, or isn't in the caller's assignable set |
-| `user_limit_reached` | 422 | The plan's `max_users` is full. Disabled accounts still occupy a seat |
+| `user_limit_reached` | 422 | All {n} seats on this plan are in use, including disabled members. Disabled accounts still occupy a seat |
 | `reporting_cycle` | 422 | That manager/report pair would loop the reporting graph |
 | `query_too_short` | 422 | Search needs 3+ letters or numbers. `details.min_length`, and `details.length` counted the same way |
 | `duplicate_lead` | 422 | That mobile already has an open lead of this transaction type and category. Also when reviving a dead lead, changing status through a follow-up, changing a lead onto a taken category, or marking a prospect interested. The message names the type and the category, for example "A sale Commercial lead already exists for this number." `details.lead_id` (omitted on a prospect follow-up when the caller cannot open the lead), `details.transaction_type`, `details.category`, and on a prospect follow-up `details.lead_code` and `details.lead_accessible` |
