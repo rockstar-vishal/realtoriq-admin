@@ -117,10 +117,11 @@ class Typology < ApplicationRecord
   def referenced?
     Property.unscoped.exists?(typology_id: id) ||
       LeadTypology.exists?(typology_id: id) ||
-      ProjectTypology.exists?(typology_id: id)
+      ProjectTypology.exists?(typology_id: id) ||
+      Booking.unscoped.exists?(typology_id: id)
   end
 
-  # Repoint every listing, lead and project row, then hide this configuration.
+  # Repoint every listing, lead, project row and booking, then hide this configuration.
   # A confirmed configuration cannot cross categories. An active in-use source
   # makes an inactive target active, so the old project editor still sees it.
   def merge_into!(target, admin: nil)
@@ -138,6 +139,7 @@ class Typology < ApplicationRecord
     transaction do
       target.update!(active: true) if active? && referenced? && !target.active?
       repoint_properties(target)
+      repoint_bookings(target)
       lead_ids = repoint_leads(target)
       repoint_project_rows(target)
       @alias_written = remember_alias(target, admin)
@@ -187,6 +189,10 @@ class Typology < ApplicationRecord
 
   def repoint_properties(target)
     Property.unscoped.where(typology_id: id).update_all(typology_id: target.id, updated_at: Time.current)
+  end
+
+  def repoint_bookings(target)
+    Booking.unscoped.where(typology_id: id).update_all(typology_id: target.id, updated_at: Time.current)
   end
 
   def repoint_leads(target)

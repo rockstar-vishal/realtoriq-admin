@@ -168,6 +168,22 @@ RSpec.describe "Configuration categories" do
       )
     end
 
+    it "moves a booking onto the target, and Form 6 reads that category" do
+      flat = create(:typology, name: "2 BHK", code: "flat_merge", category: "residential")
+      shop = create(:typology, name: "Shop", code: "shop_merge", category: "commercial")
+      project = create(:project, firm:)
+      booking = create(:booking, firm:, project:, unit_no: "A-1", typology: flat, booked_on: Date.new(2026, 5, 1))
+
+      expect(flat.referenced?).to be(true)
+
+      flat.merge_into!(shop)
+      booking.reload
+
+      expect(booking.typology_id).to eq(shop.id)
+      row = Form6::Report.new(firm:, period: Form6::Period.parse("2026-04")).table_b_rows.find { |item| item.id == booking.id }
+      expect(Form6::Classification.category_label(row.typology)).to eq("Commercial")
+    end
+
     it "leaves a review alias in place when the same name is merged" do
       shop = create(:typology, name: "Shop", code: "shop", category: "commercial")
       showroom = create(:typology, name: "Showroom", code: "showroom", category: "commercial")

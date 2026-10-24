@@ -10,19 +10,26 @@ module Api
       before_action :set_booking, only: %i[show update cancel]
 
       def index
-        scope = filtered_scope
-        # Totals come off the bare scope, and the eager loading is applied only
-        # to the page being rendered. `includes` + `sum` becomes a LEFT JOIN, so
+        return if invalid_list_filter?
+
+        listed = listed_scope
+        # Totals and stage counts come off the bare scope. Eager loading is
+        # applied only to the page. `includes` + `sum` becomes a LEFT JOIN, so
         # a booking with an invoice and two collections would be counted three
         # times and the revenue figure would silently inflate.
-        @pagy, records = pagy(scope.includes(:lead, :project, :invoices, :collections),
-                              limit: per_page)
+        @pagy, records = pagy(
+          listed.includes(
+            :lead, :invoices, :collections, :typology,
+            project_typology: :typology, project: :project_typologies
+          ),
+          limit: per_page
+        )
 
         render json: {
-          bookings: records.map { |b| BookingSerializer.list(b) },
+          bookings: records.map { |booking| BookingSerializer.list(booking) },
           meta: pagination_meta(@pagy),
-          # The list header in the design shows firm totals alongside the count.
-          totals: totals_for(scope)
+          totals: Booking.money_totals(listed),
+          stage_counts: Booking.stage_counts(filtered_scope)
         }, status: :ok
       end
 
@@ -40,7 +47,8 @@ module Api
           firm: current_firm, actor: current_user, lead:,
           attributes: booking_params,
           use_existing: params[:use_existing],
-          new_name: params[:new_name]
+          new_name: params[:new_name],
+          mark_lead_booked: params[:mark_lead_booked]
         ).call
 
         unless result.ok?
@@ -52,7 +60,9 @@ module Api
           return render_validation_errors(result.errors)
         end
 
-        render json: { booking: BookingSerializer.detail(result.booking) }, status: :created
+        payload = { booking: BookingSerializer.detail(result.booking) }
+        payload[:lead_status_unchanged] = true if result.lead_status_unchanged
+        render json: payload, status: :created
       end
 
       def update
@@ -81,7 +91,11 @@ module Api
           raise ActiveRecord::Rollback if copy && !copy.ok?
 
           @booking.assign_attributes(booking_params)
-          @booking.project = copy.project if copy
+          # Null clears the snapshot. Omitting the key must not: the pointer
+          # may already be null because the project replaced its rows.
+          @booking.clear_booked_configuration = params.key?(:project_typology_id) &&
+            params[:project_typology_id].blank?
+          ::Bookings::Create.apply_copy(@booking, copy, params[:project_id].presence)
           stranded = stranded_invoice_details
           raise ActiveRecord::Rollback if stranded
 
@@ -127,33 +141,53 @@ module Api
       def base_scope = Booking.all
 
       def set_booking
-        @booking = Booking.includes(:lead, :project, :invoices, :collections)
-                          .find_by(id: params[:id])
+        @booking = Booking.includes(
+          :lead, :invoices, :collections, :created_by_user, :typology,
+          project_typology: :typology, project: :project_typologies
+        ).find_by(id: params[:id])
         return if @booking
 
         render_error("not_found", "Booking not found", status: :not_found)
       end
 
+      def invalid_list_filter?
+        if params[:stage].present? && Booking::STAGES.exclude?(params[:stage].to_s)
+          render_error(
+            "invalid",
+            "stage must be to_invoice, awaiting_payment, paid, or cancelled.",
+            status: :unprocessable_content
+          )
+          return true
+        end
+
+        if params[:registration].present? && %w[done pending].exclude?(params[:registration].to_s)
+          render_error("invalid", "registration must be done or pending.", status: :unprocessable_content)
+          return true
+        end
+
+        false
+      end
+
+      # Every filter except stage, and except the default of "live". Stage
+      # counts are this set, so the pills stay put while one pill is selected.
+      # `status` still narrows it: old clients send status and no stage.
       def filtered_scope
         scope = base_scope
           .search(params[:q])
           .for_phone(params[:client_phone])
           .booked_between(params[:booked_from], params[:booked_to])
-
+          .with_registration(params[:registration])
         scope = scope.where(project_id: params[:project_id]) if params[:project_id].present?
-        scope = params[:status].present? ? scope.where(status: params[:status]) : scope.live
-
+        scope = scope.where(status: params[:status]) if params[:status].present?
         scope.recent_first
       end
 
-      def totals_for(scope)
-        # Re-selects by id so no join from the caller can duplicate rows.
-        live = Booking.where(id: scope.select(:id)).live
+      def listed_scope
+        scope = filtered_scope
+        return scope.in_stage(params[:stage]) if params[:stage].present?
+        return scope if params[:status].present?
 
-        {
-          agreement_value: live.sum(:agreement_value),
-          net_income: live.sum(:net_income)
-        }
+        scope.live
       end
 
       # Runs against the *pending* figures: assign_attributes has been called but
@@ -164,7 +198,7 @@ module Api
           commission_percent: @booking.commission_percent,
           kicker: @booking.kicker, passback: @booking.passback
         )
-        already_invoiced = @booking.invoiced_total
+        already_invoiced = @booking.live_invoiced_sum
         # Nothing raised yet, so nothing can be stranded — whatever the new
         # figure works out to. (A booking can legitimately compute to a negative
         # net income when the passback exceeds the commission plus the kicker;
@@ -214,7 +248,7 @@ module Api
       end
 
       def booking_params
-        params.permit(:project_id, :builder_ref_no, :unit_no, :carpet_area_sqft,
+        params.permit(:project_id, :project_typology_id, :builder_ref_no, :unit_no, :carpet_area_sqft,
                       :customer_name, :customer_mobile, :booked_on, :agreement_value,
                       :commission_percent, :kicker, :passback, :other_details,
                       :registration_done_on, :client_paid_percent)

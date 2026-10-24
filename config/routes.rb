@@ -260,6 +260,14 @@ Rails.application.routes.draw do
 
       # Bookings and the money against them. Managers and super admins only —
       # these are commission records.
+      # MahaRERA Form 6. Same roles. GET settings answers for every firm
+      # (`available` says whether the city is in Maharashtra); the other
+      # actions are 403 form6_unavailable outside Maharashtra.
+      get "form6/settings", to: "form6#show"
+      patch "form6/settings", to: "form6#update"
+      get "form6/preview", to: "form6#preview"
+      get "form6/download", to: "form6#download"
+
       resources :bookings, only: %i[index create show update] do
         member { post :cancel }
 

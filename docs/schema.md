@@ -409,9 +409,9 @@ rather than only that it said no.
 
 **Behaviours worth knowing before writing a query:**
 
-- **Bookings never touch the lead.** Neither creating nor cancelling changes lead status, so
-  `Booked` and `lead.booked_at` are set by hand. This departs from the design's cancel copy
-  ("reopens the lead") deliberately.
+- **Cancelling a booking does not touch the lead.** Creating one changes lead status only
+  when `mark_lead_booked` is true, via `Leads::TransitionStatus`. This departs from the
+  design's cancel copy ("reopens the lead") deliberately.
 - **Cancelling sets status and nothing else.** Invoices already raised stay on record, and the
   booking leaves `Booking.live`, which is where every money query starts.
 - **`customer_name` / `customer_mobile` are snapshots** taken at booking time — correcting a lead
@@ -423,9 +423,19 @@ rather than only that it said no.
   that id. A lead mapping does not. A global marketplace row is copied by project
   code, never linked to a same-named project the firm added itself. A firm-owned
   catalog row still returns `project_name_clash` when the name is taken.
+- `invoiced_amount` and `collected_amount` store the raised-invoice and collection sums.
+  `Booking#refresh_money!` rewrites them from `RaiseInvoice` and `RecordCollection`. The
+  over-invoice and over-collect locks read the live sums, not these columns. The list's
+  `invoiced` / `collected` / `outstanding` / `stage` read the columns.
+- `typology_id` and `configuration_label` are the configuration that was booked.
+  `project_typology_id` points at the project's row and nulls when that row is
+  deleted, which a configuration-editor save does. The snapshot stays, so Form 6
+  keeps the unit type and the label. Nothing is backfilled.
 - Never sum totals over a scope carrying `includes(:invoices, :collections)` — it becomes a LEFT
   JOIN and counts a booking once per associated row, inflating revenue.
-  `BookingsController#totals_for` re-selects by id for exactly that reason.
+  `Booking.money_totals` re-selects by id for exactly that reason.
+- `firms.form6` is the MahaRERA Form 6 answers (jsonb). Unknown keys are dropped on write.
+  The return is only for a firm whose city is in Maharashtra.
 
 Invoice numbers are entered by the broker (`INV-2026-041`) so they match what was raised outside
 the system, and are unique per firm. Cancelling an invoice is not built — the design shows no
