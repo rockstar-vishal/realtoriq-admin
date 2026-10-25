@@ -153,7 +153,8 @@ module Inventory
 
         point = Geo.own_pin(
           lat: project.lat, lng: project.lng,
-          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+          approximate: project.pin_approximate
         )
         return if point.nil?
 
@@ -167,7 +168,8 @@ module Inventory
 
         point = Geo.own_pin(
           lat: property.lat, lng: property.lng,
-          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+          approximate: property.pin_approximate
         )
         return if point.nil?
 

@@ -143,7 +143,7 @@ module Inventory
       project_ids = LeadProject.unscoped.where(lead_id: lead.id, withdrawn_at: nil).pluck(:project_id)
       if project_ids.any?
         Project.unscoped.where(id: project_ids).includes(:locality).find_each do |project|
-          remember_pin(project.lat, project.lng, project.locality, project.city_id)
+          remember_pin(project.lat, project.lng, project.locality, project.city_id, approximate: project.pin_approximate)
         end
       end
 
@@ -154,14 +154,14 @@ module Inventory
       properties.each do |property|
         remember_pin(
           property.lat, property.lng, property.locality, property.city_id,
-          other_firm: property.firm_id != lead.firm_id
+          other_firm: property.firm_id != lead.firm_id, approximate: property.pin_approximate
         )
       end
     end
 
-    def remember_pin(lat, lng, locality, city_id, other_firm: false)
-      own = Geo.own_pin(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
-      point = Geo.listing_point(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
+    def remember_pin(lat, lng, locality, city_id, other_firm: false, approximate: false)
+      own = Geo.own_pin(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng, approximate:)
+      point = Geo.listing_point(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng, approximate:)
       return if point.nil? || city_id.blank?
 
       pins << point.merge(city_id:, own: !own.nil?, other_firm:)

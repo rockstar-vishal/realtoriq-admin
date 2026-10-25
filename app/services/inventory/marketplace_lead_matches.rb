@@ -39,7 +39,8 @@ module Inventory
     def listing_point
       @listing_point ||= Geo.listing_point(
         lat: property.lat, lng: property.lng,
-        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+        approximate: property.pin_approximate
       )
     end
 
@@ -135,7 +136,8 @@ module Inventory
     def listing_own_pin
       @listing_own_pin ||= Geo.own_pin(
         lat: property.lat, lng: property.lng,
-        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+        approximate: property.pin_approximate
       )
     end
 
@@ -152,7 +154,8 @@ module Inventory
         lat: property.lat, lng: property.lng,
         locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
         round_distance: true,
-        skip_listing: { kind: "property", ids: [ property.id ] }
+        skip_listing: { kind: "property", ids: [ property.id ] },
+        approximate: property.pin_approximate
       )
       return unless decision
 

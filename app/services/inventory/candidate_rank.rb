@@ -17,10 +17,10 @@ module Inventory
     end
 
     def self.decide(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:,
-      round_distance: false, skip_listing: nil)
+      round_distance: false, skip_listing: nil, approximate: false)
       new(
         hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:,
-        round_distance:, skip_listing:
+        round_distance:, skip_listing:, approximate:
       ).decide
     end
 
@@ -41,11 +41,11 @@ module Inventory
     end
 
     def initialize(hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:,
-      round_distance: false, skip_listing: nil)
+      round_distance: false, skip_listing: nil, approximate: false)
       @hooks = hooks
       @locality_id = locality_id
-      @own_point = Geo.own_pin(lat:, lng:, locality_lat:, locality_lng:)
-      @point = Geo.listing_point(lat:, lng:, locality_lat:, locality_lng:)
+      @own_point = Geo.own_pin(lat:, lng:, locality_lat:, locality_lng:, approximate:)
+      @point = Geo.listing_point(lat:, lng:, locality_lat:, locality_lng:, approximate:)
       @round_distance = round_distance
       @skip_listing = skip_listing
     end

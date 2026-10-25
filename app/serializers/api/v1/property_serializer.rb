@@ -139,6 +139,7 @@ module Api
             address: property.address,
             lat: property.lat&.to_f,
             lng: property.lng&.to_f,
+            pin_approximate: property.pin_approximate,
             google_place_id: property.google_place_id,
             has_pool: property.has_pool,
             has_gym: property.has_gym,

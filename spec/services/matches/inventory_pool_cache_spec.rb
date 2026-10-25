@@ -13,7 +13,7 @@ RSpec.describe Matches::InventoryPool do
   before { Current.firm = firm }
   after { Current.reset }
 
-  it "caches marketplace projects and shared properties under v3 keys" do
+  it "caches marketplace projects and shared properties under the current keys" do
     memory = ActiveSupport::Cache::MemoryStore.new
     allow(Rails).to receive(:cache).and_return(memory)
     catalog = Current.set(firm: nil, firm_scope_bypassed: true) do
@@ -29,12 +29,12 @@ RSpec.describe Matches::InventoryPool do
 
     described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)
 
-    projects_key = "matches/marketplace-projects/v3/#{locality.id}"
-    properties_key = "matches/shared-properties/v4/#{locality.id}"
+    projects_key = "matches/marketplace-projects/v4/#{locality.id}"
+    properties_key = "matches/shared-properties/v5/#{locality.id}"
     expect(memory.exist?(projects_key)).to be(true)
     expect(memory.exist?(properties_key)).to be(true)
-    expect(memory.exist?("matches/marketplace-projects/v2/#{locality.id}")).to be(false)
-    expect(memory.exist?("matches/shared-properties/v2/#{locality.id}")).to be(false)
+    expect(memory.exist?("matches/marketplace-projects/v3/#{locality.id}")).to be(false)
+    expect(memory.exist?("matches/shared-properties/v4/#{locality.id}")).to be(false)
 
     project_row = memory.read(projects_key).find { |row| row["id"] == catalog.id }
     expect(project_row["categories"]).to eq(%w[residential commercial])

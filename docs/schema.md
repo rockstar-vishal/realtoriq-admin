@@ -298,6 +298,10 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`properties` own their location.** `building_name` (required, 160),
   `city_id`, `locality_id`, `address`, `lat`, `lng` (`decimal(10,7)`),
   `google_place_id`, `has_pool`, and `has_gym` were copied from `buildings`.
+  `pin_approximate` (boolean, not null, default false) is on `properties` and
+  `projects`. It marks a pin that `locations:approximate_pins` copied from the
+  locality centre. A save that changes `lat` or `lng` clears it. Matching and
+  map links treat it as no pin.
   `building_id` stays nullable for the old grouping. Indexes:
   `(firm_id, locality_id)`, `(locality_id)`, and
   `(city_id, lat, lng)` where both coordinates are present.

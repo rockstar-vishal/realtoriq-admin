@@ -280,6 +280,131 @@ RSpec.describe "Property location", type: :request do
     expect(empty["lng"]).to be_nil
   end
 
+  it "places an approximate pin at the locality centre, keeps it until the pin moves, and can clear it" do
+    headers = auth
+    locality.update!(lat: 19.04, lng: 73.06)
+    blank = create(:locality, city:, name: "No centre yet")
+    building = create(:building, firm:, city:, locality:)
+    property = create(:property, firm:, typology:, building:)
+    project = create(:project, firm:, city:, locality:, name: "Unpinned Vista", starting_budget: 8_000_000,
+      possession_on: Date.new(2027, 6, 1))
+    skipped = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality: blank))
+    kept = create(:property, firm:, typology:, building:, lat: 19.2, lng: 72.9)
+    stamp = property.updated_at
+
+    with_dry_run(nil) do
+      dry = rake("locations:approximate_pins")
+      expect(dry).to start_with("would set\t2\n")
+      expect(dry).to include("#{skipped.code}\t#{skipped.title}")
+      expect(dry).not_to include(kept.code)
+      expect(property.reload.lat).to be_nil
+      expect(property.pin_approximate).to be(false)
+    end
+
+    with_dry_run("0") do
+      written = rake("locations:approximate_pins")
+      expect(written).to start_with("set\t2\n")
+    end
+
+    property.reload
+    project.reload
+    expect(property.lat).to eq(locality.lat)
+    expect(property.lng).to eq(locality.lng)
+    expect(property.pin_approximate).to be(true)
+    expect(property.updated_at).to eq(stamp)
+    expect(project.pin_approximate).to be(true)
+    expect(project.lat).to eq(locality.lat)
+    expect(skipped.reload.lat).to be_nil
+    expect(kept.reload.pin_approximate).to be(false)
+    expect(kept.lat.to_f).to eq(19.2)
+
+    missing = rake("locations:missing")
+    unpinned, approximate = missing.split(/^approximate\n/, 2)
+    expect(unpinned).to include(skipped.code)
+    expect(unpinned).not_to include(property.code)
+    expect(approximate).to include(property.code, project.code, "\tproperty", "\tproject")
+    expect(approximate).to include("approximate\t2")
+    expect(approximate).not_to include(skipped.code)
+
+    get "/api/v1/properties/#{property.id}", headers: headers
+    body = response.parsed_body["property"]
+    expect(body["pin_approximate"]).to be(true)
+    expect(body["lat"]).to eq(19.04)
+    expect(body["lng"]).to eq(73.06)
+
+    get "/api/v1/projects/#{project.id}", headers: headers
+    detail = response.parsed_body["project"]
+    expect(detail["pin_approximate"]).to be(true)
+    expect(detail["lat"]).to eq(19.04)
+
+    patch "/api/v1/properties/#{property.id}", params: { description: "Same pin" }, headers:, as: :json
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig("property", "pin_approximate")).to be(true)
+    expect(property.reload.pin_approximate).to be(true)
+
+    property.lat = property.lat
+    property.lng = property.lng
+    property.save!
+    expect(property.pin_approximate).to be(true)
+
+    project.update!(address: "Same centre")
+    expect(project.reload.pin_approximate).to be(true)
+
+    patch "/api/v1/properties/#{property.id}", params: { lat: 19.05, lng: 73.06 }, headers:, as: :json
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig("property", "pin_approximate")).to be(false)
+    expect(property.reload.pin_approximate).to be(false)
+
+    project.update!(lat: locality.lat + 0.01)
+    expect(project.reload.pin_approximate).to be(false)
+
+    property.update_columns(lat: locality.lat, lng: locality.lng, pin_approximate: true)
+    project.update_columns(lat: locality.lat, lng: locality.lng, pin_approximate: true)
+    with_dry_run(nil) do
+      expect(rake("locations:clear_approximate_pins")).to eq("would clear\t2\n")
+      expect(property.reload.pin_approximate).to be(true)
+    end
+    with_dry_run("0") do
+      expect(rake("locations:clear_approximate_pins")).to eq("cleared\t2\n")
+    end
+    expect(property.reload.lat).to be_nil
+    expect(property.lng).to be_nil
+    expect(property.pin_approximate).to be(false)
+    expect(project.reload.has_pin?).to be(false)
+    expect(project.pin_approximate).to be(false)
+  end
+
+  it "publishes no map link for an approximate pin" do
+    locality.update!(lat: 19.04, lng: 73.06)
+    project = create(:project, firm:, city:, locality:, name: "Site Vista", starting_budget: 8_000_000,
+      possession_on: Date.new(2027, 6, 1), lat: 19.04, lng: 73.06, on_website: true)
+    project.update_columns(pin_approximate: true)
+
+    listing = Sites::Catalog.new(firm).show_project(project)
+    helper = Object.new.extend(Sites::PagesHelper)
+    expect(helper.maps_href(listing[:lat], listing[:lng])).to be_nil
+
+    project.update_columns(pin_approximate: false)
+    placed = Sites::Catalog.new(firm).show_project(project)
+    expect(helper.maps_href(placed[:lat], placed[:lng])).to include("19.0400000")
+  end
+
+  def with_dry_run(value)
+    previous = ENV.fetch("DRY_RUN", nil)
+    if value.nil?
+      ENV.delete("DRY_RUN")
+    else
+      ENV["DRY_RUN"] = value
+    end
+    yield
+  ensure
+    if previous.nil?
+      ENV.delete("DRY_RUN")
+    else
+      ENV["DRY_RUN"] = previous
+    end
+  end
+
   def ingest_payload(code, lat:, lng:, address: "Harbour Road", pushed_at: "2026-10-20T12:00:00Z")
     {
       event: "upsert",

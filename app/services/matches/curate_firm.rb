@@ -161,7 +161,8 @@ module Matches
         locality_id: item.locality_id,
         lat: item.lat, lng: item.lng,
         locality_lat: item.locality_lat, locality_lng: item.locality_lng,
-        round_distance: item.kind == "property" && item.marketplace
+        round_distance: item.kind == "property" && item.marketplace,
+        approximate: item.approximate
       )
     end
 
@@ -210,14 +211,16 @@ module Matches
       projects.find_each do |project|
         point = Inventory::Geo.listing_point(
           lat: project.lat, lng: project.lng,
-          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+          approximate: project.pin_approximate
         )
         points << point.merge(city_id: project.city_id) if point && project.city_id
       end
       properties.each do |property|
         point = Inventory::Geo.listing_point(
           lat: property.lat, lng: property.lng,
-          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+          approximate: property.pin_approximate
         )
         points << point.merge(city_id: property.city_id) if point && property.city_id
       end

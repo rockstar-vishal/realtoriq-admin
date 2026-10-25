@@ -135,12 +135,14 @@ module Inventory
       @listing_own_pin ||= if project
         Geo.own_pin(
           lat: project.lat, lng: project.lng,
-          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+          approximate: project.pin_approximate
         )
       elsif property
         Geo.own_pin(
           lat: property.lat, lng: property.lng,
-          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+          approximate: property.pin_approximate
         )
       end
     end
@@ -149,12 +151,14 @@ module Inventory
       @listing_point ||= if project
         Geo.listing_point(
           lat: project.lat, lng: project.lng,
-          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+          locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+          approximate: project.pin_approximate
         )
       elsif property
         Geo.listing_point(
           lat: property.lat, lng: property.lng,
-          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+          locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+          approximate: property.pin_approximate
         )
       end
     end
@@ -197,7 +201,8 @@ module Inventory
         locality_lat: project&.locality&.lat || property&.locality&.lat,
         locality_lng: project&.locality&.lng || property&.locality&.lng,
         round_distance: property.present? && property.firm_id != user.firm_id,
-        skip_listing:
+        skip_listing:,
+        approximate: (project || property)&.pin_approximate
       )
       return unless decision
 

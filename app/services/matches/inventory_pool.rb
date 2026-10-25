@@ -8,7 +8,7 @@ module Matches
     Candidate = Struct.new(
       :kind, :id, :name, :locality_id, :marketplace, :listing_for, :ready,
       :offers, :fallback_price, :floor,
-      :lat, :lng, :locality_lat, :locality_lng,
+      :lat, :lng, :locality_lat, :locality_lng, :approximate,
       :categories, :starting_prices,
       keyword_init: true
     ) do
@@ -89,7 +89,7 @@ module Matches
     end
 
     def cached_marketplace_projects(locality_id)
-      Rails.cache.fetch("matches/marketplace-projects/v3/#{locality_id}", expires_in: CACHE_TTL) do
+      Rails.cache.fetch("matches/marketplace-projects/v4/#{locality_id}", expires_in: CACHE_TTL) do
         Project.marketplace.where(locality_id:)
           .includes(:locality, project_typologies: :typology)
           .map { |project| project_payload(project) }
@@ -97,7 +97,7 @@ module Matches
     end
 
     def cached_shared_properties(locality_id)
-      Rails.cache.fetch("matches/shared-properties/v4/#{locality_id}", expires_in: CACHE_TTL) do
+      Rails.cache.fetch("matches/shared-properties/v5/#{locality_id}", expires_in: CACHE_TTL) do
         Property.unscoped
           .where(listed_on_marketplace: true, status: "available", locality_id:)
           .includes(:typology, :firm, :locality)
@@ -199,7 +199,8 @@ module Matches
         starting_prices: project.starting_prices,
         floor: marketplace ? Inventory::MatchInventory::MARKETPLACE_FLOOR : Inventory::MatchInventory::OWN_FLOOR,
         lat: project.lat, lng: project.lng,
-        locality_lat: project.locality&.lat, locality_lng: project.locality&.lng
+        locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
+        approximate: project.pin_approximate
       )
     end
 
@@ -222,7 +223,8 @@ module Matches
         starting_prices: row["starting_prices"],
         floor: Inventory::MatchInventory::MARKETPLACE_FLOOR,
         lat: row["lat"], lng: row["lng"],
-        locality_lat: row["locality_lat"], locality_lng: row["locality_lng"]
+        locality_lat: row["locality_lat"], locality_lng: row["locality_lng"],
+        approximate: row["pin_approximate"] == true
       )
     end
 
@@ -239,7 +241,8 @@ module Matches
         fallback_price: nil,
         floor: marketplace ? Inventory::MatchInventory::MARKETPLACE_FLOOR : Inventory::MatchInventory::OWN_FLOOR,
         lat: property.lat, lng: property.lng,
-        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng
+        locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
+        approximate: property.pin_approximate
       )
     end
 
@@ -259,7 +262,8 @@ module Matches
         fallback_price: nil,
         floor: Inventory::MatchInventory::MARKETPLACE_FLOOR,
         lat: row["lat"], lng: row["lng"],
-        locality_lat: row["locality_lat"], locality_lng: row["locality_lng"]
+        locality_lat: row["locality_lat"], locality_lng: row["locality_lng"],
+        approximate: row["pin_approximate"] == true
       )
     end
 
@@ -290,6 +294,7 @@ module Matches
         "starting_prices" => project.starting_prices,
         "lat" => project.lat, "lng" => project.lng,
         "locality_lat" => project.locality&.lat, "locality_lng" => project.locality&.lng,
+        "pin_approximate" => project.pin_approximate,
         "offers" => offers_for(project).map { |offer| offer_payload(offer) }
       }
     end
@@ -304,6 +309,7 @@ module Matches
         "price" => property.price,
         "lat" => property.lat, "lng" => property.lng,
         "locality_lat" => property.locality&.lat, "locality_lng" => property.locality&.lng,
+        "pin_approximate" => property.pin_approximate,
         "offers" => [ offer_payload(Inventory::MatchScore.offer_for_property(property)) ]
       }
     end

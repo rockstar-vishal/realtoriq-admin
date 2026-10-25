@@ -38,6 +38,7 @@ module IndiaPin
 
   included do
     validate :pin_is_inside_india
+    before_save :forget_approximate_pin_when_it_moves
   end
 
   def has_pin?
@@ -45,6 +46,17 @@ module IndiaPin
   end
 
   private
+
+  # The centre pin is only a stand-in. Moving either coordinate means the
+  # broker placed a real spot, so the flag cannot survive that save. A save
+  # that leaves both coordinates where they are keeps it. update_columns
+  # (the one-off rake) does not come through here.
+  def forget_approximate_pin_when_it_moves
+    return unless has_attribute?(:pin_approximate)
+    return unless will_save_change_to_lat? || will_save_change_to_lng?
+
+    self.pin_approximate = false
+  end
 
   def pin_is_inside_india
     return if lat.blank? && lng.blank?

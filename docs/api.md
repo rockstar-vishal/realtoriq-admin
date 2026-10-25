@@ -1326,11 +1326,15 @@ the same way, in their own list. The same name may exist once in each.
 | `brokerage_percent` | number | optional | Starting brokerage, 0–100 |
 | `brokerage_ladder_signed_id` | string | optional | Image of the brokerage ladder. Detail returns `brokerage_ladder_url`. Omitted from `shareable` |
 | `rera_number`, `address`, `google_place_id` | string | optional | |
-| `lat` / `lng` | number | required on an own project's form | −90..90 / −180..180, and inside India (lat 6–37, lng 68–98). Missing on that form is `422` with "Place the pin on the map". Catalog rows and a status-only save do not require one. List, detail, and search include `has_pin` |
+| `lat` / `lng` | number | required on an own project's form | −90..90 / −180..180, and inside India (lat 6–37, lng 68–98). Missing on that form is `422` with "Place the pin on the map". Catalog rows and a status-only save do not require one. List, detail, and search include `has_pin`. List and detail also include `pin_approximate` |
 | `promo_text`, `promo_ends_on` | string / date | optional | `promo_text` has no length limit |
 | `status` | enum | optional | `active` (default) · `archived` |
 | `brochure_signed_id` | string | optional | See [uploads](#file-uploads) |
 | `typologies` | array of object | **required** | `{ typology_id, starting_price, starting_carpet_sqft, label, area_value, area_unit }`. `label`, `area_value` and `area_unit` are optional. At least one row needs `starting_price` > 0. On PATCH, sending `typologies` replaces the set and must still leave a priced row. The same configuration can appear twice only with different labels |
+
+`pin_approximate` is returned on list and detail, beside `lat` and `lng` on
+detail. It is true only for a pin placed at the locality centre. It is not a
+request field.
 
 **Derived, never sent and never stored**: `price_band`, `area_band` (min/max
 across the typologies), per-config `rate_per_sqft`, and list/detail **`avg_psf`**
@@ -1519,8 +1523,13 @@ carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 `carpet_max`, `listing_for`.
 
 List and detail add `building_name`, `city` and `locality` (each `{ id, name }`),
-`address`, `lat`, `lng`, `google_place_id`, `has_pool`, `has_gym`, and
-`has_pin`. `building` is still present and **deprecated**: it is built from
+`address`, `lat`, `lng`, `pin_approximate`, `google_place_id`, `has_pool`,
+`has_gym`, and `has_pin`. `pin_approximate` is true when the pin is the
+locality centre placed for a demo listing, not a spot the broker chose.
+Matching, anchors, shown distance, and map links treat that pin as missing.
+Sending `lat` or `lng` that differs from the stored pin clears the flag.
+Sending the same pin, or omitting it, keeps the flag. Clients do not send
+`pin_approximate`. `building` is still present and **deprecated**: it is built from
 those fields, and its `id` is the old `building_id` (null on a new listing).
 They also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).

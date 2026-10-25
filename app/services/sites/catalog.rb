@@ -53,8 +53,8 @@ module Sites
         rera_number: record.rera_number,
         promo_text: record.promo_live? ? record.promo_text : nil,
         brochure_url: brochure_url(record),
-        lat: coordinate(record.lat),
-        lng: coordinate(record.lng),
+        lat: record.pin_approximate? ? nil : coordinate(record.lat),
+        lng: record.pin_approximate? ? nil : coordinate(record.lng),
         configurations: record.project_typologies.map { |row| configuration(row) }
       )
     end
