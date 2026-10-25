@@ -70,4 +70,32 @@ RSpec.describe "Facebook OAuth callback" do
     expect(attempt_row(attempt.id)).to be_completed
     expect(response.location).to eq("#{origin}/settings/facebook?facebook_attempt=#{attempt.id}")
   end
+
+  it "sends a handoff attempt to the done page and still only saves the attempt" do
+    connected = create(:facebook_oauth_attempt, status: "started", handoff: true)
+    allow(service).to receive(:exchange_code).and_return(
+      long_lived_token: "user-token", expires_at: 30.days.from_now, fb_user_id: "fb-9",
+      fb_user_name: "Harbour", token_kind: "user_access", pages: []
+    )
+    get "/facebook/callback", params: { state: Facebook::State.encrypt(connected.id), code: "ok" }
+    expect(attempt_row(connected.id)).to be_completed
+    expect(FacebookConnection.across_firms.where(firm_id: connected.firm_id)).to be_empty
+    expect(response).to redirect_to("#{origin}/facebook/done?result=connected")
+
+    denied = create(:facebook_oauth_attempt, status: "started", handoff: true)
+    get "/facebook/callback", params: { state: Facebook::State.encrypt(denied.id), error: "access_denied" }
+    expect(attempt_row(denied.id).error_code).to eq("denied")
+    expect(response).to redirect_to("#{origin}/facebook/done?result=denied")
+
+    failed = create(:facebook_oauth_attempt, status: "started", handoff: true)
+    allow(service).to receive(:exchange_code).and_raise(Facebook::Errors::OAuthError, "nope")
+    get "/facebook/callback", params: { state: Facebook::State.encrypt(failed.id), code: "bad" }
+    expect(attempt_row(failed.id).error_code).to eq("exchange_failed")
+    expect(response).to redirect_to("#{origin}/facebook/done?result=failed")
+
+    stale = create(:facebook_oauth_attempt, status: "started", handoff: true, expires_at: 1.minute.ago)
+    get "/facebook/callback", params: { state: Facebook::State.encrypt(stale.id), code: "late" }
+    expect(attempt_row(stale.id)).to be_started
+    expect(response).to redirect_to("#{origin}/facebook/done?result=expired")
+  end
 end

@@ -202,7 +202,7 @@ module Prospects
 
     def prepare(fields)
       extracted = Phone.extract_indian_mobile(fields[:mobile])
-      return extracted.error unless extracted.ok?
+      return mobile_error(extracted.error) unless extracted.ok?
 
       name = fields[:name].to_s.strip.presence
       return "Client name is too long." if name && name.length > Prospect::NAME_MAX
@@ -221,6 +221,12 @@ module Prospects
       return property if property.is_a?(String)
 
       { name:, mobile: extracted.mobile, comment:, project:, property: }
+    end
+
+    def mobile_error(error)
+      return "Client number must be a 10-digit mobile number." if error == Phone::NOT_A_MOBILE
+
+      error
     end
 
     def firm_prospects

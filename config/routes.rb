@@ -7,8 +7,11 @@ Rails.application.routes.draw do
   # realtoriq.webhook_url on the turbo side.
   post "turbo/events", to: "turbo/events#create"
 
-  # Meta calls these. No broker JWT. The callback only redirects to web_origin.
+  # Meta calls the webhook and the callback. No broker JWT.
+  # /facebook/start is the installed app's handoff. The ticket is the only
+  # credential, and the browser still has no RealtorIQ session.
   get "facebook/callback", to: "facebook/callback#show", as: :facebook_callback
+  get "facebook/start", to: "facebook/start#show"
   get "facebook/webhook", to: "facebook/webhooks#verify"
   post "facebook/webhook", to: "facebook/webhooks#receive"
 
@@ -123,6 +126,7 @@ Rails.application.routes.draw do
       namespace :facebook do
         get "integration", to: "integration#show"
         post "connect", to: "connect#create"
+        get "connect/:attempt_id", to: "connect#show"
         post "connections", to: "connections#create"
         delete "connection", to: "connection#destroy"
         post "connection/health_check", to: "connection#health_check"

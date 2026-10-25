@@ -120,7 +120,79 @@ RSpec.describe "API v1 Facebook Lead Ads" do
     end
   end
 
+  describe "connect" do
+    let(:service) { instance_double(Facebook::OauthService) }
+
+    before do
+      allow(Facebook::Credentials).to receive(:configured?).and_return(true)
+      allow(Facebook::Credentials).to receive(:web_origin).and_return("https://brokers.example.com")
+      allow(Facebook::OauthService).to receive(:new).and_return(service)
+      allow(service).to receive(:authorization_url).and_return("https://www.facebook.com/dialog/oauth")
+    end
+
+    it "returns a one-time handoff url and still returns the authorization url" do
+      post "/api/v1/facebook/connect",
+        params: { nonce: "n" * 32, handoff: true }, headers: auth(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      ticket = URI.decode_www_form(URI(body.fetch("handoff_url")).query).to_h.fetch("ticket")
+      attempt = FacebookOauthAttempt.across_firms.find(body.fetch("attempt_id"))
+      expect(body["authorization_url"]).to eq("https://www.facebook.com/dialog/oauth")
+      expect(body["handoff_url"]).to start_with("https://brokers.example.com/facebook/start?ticket=")
+      expect(Base64.urlsafe_decode64(ticket).bytesize).to eq(32)
+      expect(attempt).to be_handoff
+      expect(attempt.handoff_ticket_digest).to eq(Digest::SHA256.hexdigest(ticket))
+      expect(attempt.handoff_expires_at).to be_within(5.seconds).of(10.minutes.from_now)
+      expect(response.body).not_to include(attempt.handoff_ticket_digest)
+    end
+
+    it "leaves a normal connect without a handoff ticket" do
+      post "/api/v1/facebook/connect", params: { nonce: "n" * 32 }, headers: auth(owner), as: :json
+
+      body = response.parsed_body
+      attempt = FacebookOauthAttempt.across_firms.find(body.fetch("attempt_id"))
+      expect(body).not_to have_key("handoff_url")
+      expect(attempt).not_to be_handoff
+      expect(attempt.handoff_ticket_digest).to be_nil
+    end
+
+    it "returns the attempt only to the user who started it" do
+      attempt = create(:facebook_oauth_attempt, firm:, user: owner, error_code: nil)
+      headers = auth(owner)
+
+      get "/api/v1/facebook/connect/#{attempt.id}", headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include(
+        "status" => "started",
+        "error_code" => nil
+      )
+      expect(Time.zone.parse(response.parsed_body.fetch("expires_at"))).to be_within(1.second).of(attempt.expires_at)
+
+      get "/api/v1/facebook/connect/#{attempt.id}", headers: auth(manager)
+      expect(response).to have_http_status(:not_found)
+
+      other = create(:firm, status: :active)
+      create(:subscription, firm: other, plan:)
+      outsider = create(:user, :super_admin, firm: other)
+      get "/api/v1/facebook/connect/#{attempt.id}", headers: auth(outsider)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "confirm" do
+    it "does not store a handoff connection without the nonce" do
+      attempt, = completed_attempt(owner, pages: [ page_grant ])
+      Current.set(firm:) { attempt.update!(handoff: true) }
+
+      post "/api/v1/facebook/connections", params: { attempt_id: attempt.id },
+        headers: auth(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body.dig("error", "code")).to eq("not_yours")
+      expect(FacebookConnection.across_firms.where(firm_id: firm.id)).to be_empty
+    end
+
     it "voids a wrong nonce, and the right nonce cannot use it afterwards" do
       attempt, nonce = completed_attempt(owner, pages: [ page_grant ])
 
