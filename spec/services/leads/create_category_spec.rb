@@ -33,7 +33,7 @@ RSpec.describe Leads::Create do
   it "turns a race on the new duplicate index into duplicate_lead" do
     existing = create(:lead, firm:, lead_status: status, mobile: "+919820100100",
       transaction_type: "sale", property_type:)
-    allow_any_instance_of(Lead).to receive(:duplicate_on_mobile_and_type).and_return(nil, existing)
+    allow_any_instance_of(Lead).to receive(:duplicate_open_lead).and_return(nil, existing)
     allow_any_instance_of(Lead).to receive(:save!).and_raise(
       ActiveRecord::RecordNotUnique.new(
         'duplicate key value violates unique constraint "index_leads_on_firm_type_category_open_identity"'

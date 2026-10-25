@@ -15,10 +15,10 @@ RSpec.describe Leads::TransitionStatus do
     described_class.new(lead: dead, to_status: dead_status, actor:, reason: "Gone quiet").call
     live = create(:lead, firm:, mobile: dead.mobile, lead_status: new_status, transaction_type: "sale")
     dead.reload
-    allow(dead).to receive(:duplicate_on_mobile_and_type).and_return(nil, live)
+    allow(dead).to receive(:duplicate_open_lead).and_return(nil, live)
     allow(dead).to receive(:save!).and_raise(
       ActiveRecord::RecordNotUnique.new(
-        'duplicate key value violates unique constraint "index_leads_on_firm_type_and_open_identity"'
+        'duplicate key value violates unique constraint "index_leads_on_firm_type_category_open_identity"'
       )
     )
 

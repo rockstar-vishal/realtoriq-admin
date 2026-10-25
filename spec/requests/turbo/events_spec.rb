@@ -233,7 +233,7 @@ RSpec.describe "Turbo marketplace events" do
         result
       end
       checks = 0
-      allow_any_instance_of(Lead).to receive(:duplicate_on_mobile_and_type).and_wrap_original do |method|
+      allow_any_instance_of(Lead).to receive(:duplicate_open_lead).and_wrap_original do |method|
         checks += 1
         checks <= 2 ? nil : method.call
       end

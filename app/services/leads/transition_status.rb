@@ -30,7 +30,7 @@ module Leads
 
       from_status = lead.lead_status
       if reviving?(from_status)
-        existing = lead.duplicate_on_mobile_and_type
+        existing = lead.duplicate_open_lead
         return duplicate_failure(existing) if existing
       end
 
@@ -47,7 +47,7 @@ module Leads
     rescue ActiveRecord::RecordNotUnique => e
       raise unless Lead.duplicate_index_violation?(e)
 
-      duplicate_failure(lead.duplicate_on_mobile_and_type)
+      duplicate_failure(lead.duplicate_open_lead)
     end
 
     private

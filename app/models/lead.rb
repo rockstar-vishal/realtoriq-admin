@@ -5,11 +5,10 @@ class Lead < ApplicationRecord
   include FirmScoped
 
   TRANSACTION_TYPES = %w[sale rent].freeze
-  # Both names, for the deploy where the code and the index swap are briefly
-  # out of step. A second category must come back as duplicate_lead, not a 500.
+  # The category index is the only duplicate index. The old firm-and-type
+  # index is gone, so there is no deploy where both exist.
   DUPLICATE_INDEXES = %w[
     index_leads_on_firm_type_category_open_identity
-    index_leads_on_firm_type_and_open_identity
   ].freeze
   # Convenience for the Hot / Negotiation card. Same as status[]=hot&status[]=negotiation.
   DERIVED_STATUS_HOT_NEGOTIATION = "hot_negotiation"
@@ -389,7 +388,7 @@ class Lead < ApplicationRecord
   def display_name = name.presence || Phone.format_for_display(mobile)
 
   # Same number, the other transaction type — sale and rent may coexist. Same
-  # type is refused (see #duplicate_on_mobile_and_type); this is informational.
+  # type is refused (see #duplicate_open_lead); this is informational.
   def possible_duplicates
     return self.class.none if mobile.blank?
 
@@ -397,16 +396,11 @@ class Lead < ApplicationRecord
   end
 
   # The other live lead on this mobile, transaction type and category.
-  # A dead lead does not count. `duplicate_on_mobile_and_type` is the old
-  # name, kept for one release.
+  # A dead lead does not count.
   def duplicate_open_lead
     return if mobile.blank? || transaction_type.blank? || firm_id.blank? || category.blank?
 
     self.class.unscoped.where(firm_id:, transaction_type:, category:, open_identity: mobile).where.not(id:).first
-  end
-
-  def duplicate_on_mobile_and_type
-    duplicate_open_lead
   end
 
   def self.duplicate_index_violation?(error)
@@ -509,7 +503,7 @@ class Lead < ApplicationRecord
   end
 
   def mobile_unique_per_transaction_type
-    return if duplicate_on_mobile_and_type.nil?
+    return if duplicate_open_lead.nil?
 
     errors.add(:mobile, "already has an open #{transaction_type} #{category_label} lead")
   end

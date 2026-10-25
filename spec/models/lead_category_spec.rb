@@ -62,7 +62,6 @@ RSpec.describe Lead do
     expect(other).to be_persisted
     duplicate = build(:lead, firm:, mobile: commercial.mobile, category: "commercial")
     expect(duplicate).not_to be_valid
-    expect(duplicate.duplicate_on_mobile_and_type).to eq(commercial)
     expect(duplicate.duplicate_open_lead).to eq(commercial)
   end
 

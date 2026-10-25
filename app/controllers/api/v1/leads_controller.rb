@@ -180,7 +180,7 @@ module Api
       end
 
       def render_lead_save_failure(lead)
-        existing = lead.duplicate_on_mobile_and_type
+        existing = lead.duplicate_open_lead
         if existing
           return render_error(
             "duplicate_lead",
