@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_24_230000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_25_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -1031,6 +1031,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_230000) do
     t.string "portal_housing_code"
     t.string "slug"
     t.boolean "on_website", default: true, null: false
+    t.boolean "pin_approximate", default: false, null: false
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_projects_firm_portal_99acres_code", unique: true, where: "((portal_99acres_code IS NOT NULL) AND (firm_id IS NOT NULL))"
@@ -1093,6 +1094,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_230000) do
     t.string "google_place_id"
     t.boolean "has_pool", default: false, null: false
     t.boolean "has_gym", default: false, null: false
+    t.boolean "pin_approximate", default: false, null: false
     t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_properties_firm_portal_99acres_code", unique: true, where: "(portal_99acres_code IS NOT NULL)"
     t.index "firm_id, lower((portal_housing_code)::text)", name: "index_properties_firm_portal_housing_code", unique: true, where: "(portal_housing_code IS NOT NULL)"
     t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_properties_firm_portal_magicbricks_code", unique: true, where: "(portal_magicbricks_code IS NOT NULL)"

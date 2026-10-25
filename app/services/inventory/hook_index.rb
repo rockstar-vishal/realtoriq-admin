@@ -100,7 +100,9 @@ module Inventory
 
       points = {}
       Project.unscoped.where(id: ids).includes(:locality).each do |project|
-        points[project.id] = pin_point(project.lat, project.lng, project.locality, project.city_id)
+        points[project.id] = pin_point(
+          project.lat, project.lng, project.locality, project.city_id, approximate: project.pin_approximate
+        )
       end
       points
     end
@@ -110,16 +112,18 @@ module Inventory
 
       rows = Property.unscoped.where(id: ids).includes(:locality).to_a
       rows.each_with_object({}) do |property, points|
-        point = pin_point(property.lat, property.lng, property.locality, property.city_id)
+        point = pin_point(
+          property.lat, property.lng, property.locality, property.city_id, approximate: property.pin_approximate
+        )
         next if point.nil?
 
         points[property.id] = point.merge(firm_id: property.firm_id)
       end
     end
 
-    def pin_point(lat, lng, locality, city_id)
-      own = Geo.own_pin(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
-      point = Geo.listing_point(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng)
+    def pin_point(lat, lng, locality, city_id, approximate: false)
+      own = Geo.own_pin(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng, approximate:)
+      point = Geo.listing_point(lat:, lng:, locality_lat: locality&.lat, locality_lng: locality&.lng, approximate:)
       return if point.nil? || city_id.blank?
 
       point.merge(city_id:, own: !own.nil?, other_firm: false)

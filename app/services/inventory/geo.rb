@@ -57,7 +57,11 @@ module Inventory
 
     # The listing's own pin, or nil when listing_point would use the locality
     # centre or nothing. listing_point calls this so the two cannot drift.
-    def own_pin(lat:, lng:, locality_lat:, locality_lng:)
+    # An approximate pin is the centre copied on as a stand-in, so it is not
+    # an own pin: callers fall back to the centre, the same as no pin.
+    def own_pin(lat:, lng:, locality_lat:, locality_lng:, approximate: false)
+      return if approximate
+
       center = pair(locality_lat, locality_lng)
       pin = pair(lat, lng)
       return unless pin && inside_maharashtra?(*pin) && (center.nil? || distance_m(*pin, *center) <= PIN_DRIFT_M)
@@ -68,8 +72,8 @@ module Inventory
     # A property or project pin. Outside Maharashtra, or more than 20 km from
     # its own locality center, the center is used instead. A pin with no
     # center is kept only inside Maharashtra. Nil when nothing is usable.
-    def listing_point(lat:, lng:, locality_lat:, locality_lng:)
-      own = own_pin(lat:, lng:, locality_lat:, locality_lng:)
+    def listing_point(lat:, lng:, locality_lat:, locality_lng:, approximate: false)
+      own = own_pin(lat:, lng:, locality_lat:, locality_lng:, approximate:)
       return own if own
 
       center = pair(locality_lat, locality_lng)

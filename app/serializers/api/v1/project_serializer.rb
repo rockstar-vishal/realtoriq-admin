@@ -36,6 +36,7 @@ module Api
             cover_thumb_url: cover_thumb_url(project),
             photo_count: photo_attachments(project).size,
             has_pin: project.has_pin?,
+            pin_approximate: project.pin_approximate,
             created_at: project.created_at
           }
         end
@@ -46,6 +47,7 @@ module Api
             address: project.address,
             lat: project.lat&.to_f,
             lng: project.lng&.to_f,
+            pin_approximate: project.pin_approximate,
             google_place_id: project.google_place_id,
             typologies: project.project_typologies.map { |pt| typology(pt) },
             photos: photos(project),

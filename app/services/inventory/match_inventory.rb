@@ -182,7 +182,8 @@ module Inventory
         locality_id: project.locality_id,
         lat: project.lat, lng: project.lng,
         locality_lat: project.locality&.lat, locality_lng: project.locality&.lng,
-        offers:, fallback_price: Fit.fallback_price(lead, project), name: project.name, listing: project
+        offers:, fallback_price: Fit.fallback_price(lead, project), name: project.name, listing: project,
+        approximate: project.pin_approximate
       )
       return unless ranked
 
@@ -233,7 +234,8 @@ module Inventory
         locality_id: property.locality_id,
         lat: property.lat, lng: property.lng,
         locality_lat: property.locality&.lat, locality_lng: property.locality&.lng,
-        offers:, name: property.title, listing: property
+        offers:, name: property.title, listing: property,
+        approximate: property.pin_approximate
       )
       return unless ranked
 
@@ -305,10 +307,11 @@ module Inventory
       value.to_s.downcase.gsub(/[^a-z0-9.]/, "")
     end
 
-    def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, listing:, fallback_price: nil)
+    def rank_listing(locality_id:, lat:, lng:, locality_lat:, locality_lng:, offers:, name:, listing:, fallback_price: nil, approximate: false)
       decision = CandidateRank.decide(
         hooks:, locality_id:, lat:, lng:, locality_lat:, locality_lng:,
-        round_distance: listing.is_a?(Property) && listing.firm_id != Current.firm_id
+        round_distance: listing.is_a?(Property) && listing.firm_id != Current.firm_id,
+        approximate:
       )
       return unless decision
 

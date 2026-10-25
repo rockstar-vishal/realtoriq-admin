@@ -431,12 +431,20 @@ module Realtoriq
     end
 
     def repoint_copies(project, previous_builder_id)
+      # update_all skips the model callback. A coordinate that actually moves
+      # is a real pin, so the centre stand-in flag has to clear with it.
       Project.unscoped.where(external_ref: project.external_ref, source: "own").update_all(
-        builder_id: project.builder_id,
-        address: project.address,
-        lat: project.lat,
-        lng: project.lng,
-        updated_at: Time.current
+        [
+          <<~SQL.squish,
+            builder_id = ?, address = ?, lat = ?, lng = ?, updated_at = ?,
+            pin_approximate = CASE
+              WHEN lat IS DISTINCT FROM ? OR lng IS DISTINCT FROM ? THEN FALSE
+              ELSE pin_approximate
+            END
+          SQL
+          project.builder_id, project.address, project.lat, project.lng, Time.current,
+          project.lat, project.lng
+        ]
       )
       return if previous_builder_id.blank? || previous_builder_id == project.builder_id
 
