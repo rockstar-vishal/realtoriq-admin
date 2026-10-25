@@ -3,20 +3,21 @@
 module Api
   module V1
     class LeadPropertiesController < AuthenticatedController
+      ALREADY_SHORTLISTED = "That property is already on this lead's shortlist."
+
       before_action :set_lead
 
       def create
         mapping = @lead.lead_properties.build(property_id: params[:property_id], firm: current_firm)
 
         unless mapping.save
-          return render_error("invalid", mapping.errors.full_messages.to_sentence,
+          return render_error("invalid", mapping_message(mapping),
                               status: :unprocessable_content, details: mapping.errors.to_hash)
         end
 
         render json: { lead: lead_detail }, status: :created
       rescue ActiveRecord::RecordNotUnique
-        render_error("invalid", "That property is already mapped to this lead.",
-                     status: :unprocessable_content)
+        render_error("invalid", ALREADY_SHORTLISTED, status: :unprocessable_content)
       end
 
       def destroy
@@ -30,6 +31,12 @@ module Api
       end
 
       private
+
+      def mapping_message(mapping)
+        return ALREADY_SHORTLISTED if mapping.errors.of_kind?(:property_id, :taken)
+
+        mapping.errors.full_messages.to_sentence
+      end
 
       def set_lead
         @lead = Lead.visible_to(current_user).find_by(id: params[:lead_id])

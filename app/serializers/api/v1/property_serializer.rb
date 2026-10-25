@@ -86,7 +86,7 @@ module Api
             shareable: shareable(property),
             portal_codes: property.portal_codes_payload,
             updated_at: property.updated_at
-          )
+          ).tap { |body| attach_live_booking(body, property) }
         end
 
         # Everything that may go to a client, and nothing else. Add to this
@@ -111,6 +111,25 @@ module Api
         end
 
         private
+
+        # Managers of the owning firm. Agents never see it, including an agent
+        # who recorded the listing.
+        def attach_live_booking(body, property)
+          viewer = Current.user
+          return unless viewer&.firm_id == property.firm_id
+          return unless viewer.manager? || viewer.super_admin?
+
+          body[:live_booking] = live_booking(property)
+        end
+
+        def live_booking(property)
+          booking = Booking.unscoped.where(
+            firm_id: property.firm_id, property_id: property.id, status: "live"
+          ).order(booked_on: :desc, created_at: :desc).first
+          return nil if booking.nil?
+
+          { id: booking.id, code: booking.code, customer_name: booking.customer_name }
+        end
 
         def match_label(property)
           return "Rent" if property.for_rent?

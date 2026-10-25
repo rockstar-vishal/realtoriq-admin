@@ -434,6 +434,12 @@ rather than only that it said no.
 - **Managers and super admins only.** Agents get `forbidden_role` on every booking endpoint.
 - **`unit_no` is required when `project_id` is set**, and unique among live rows
   on `(project_id, unit_no)`. Cancel frees the unit.
+- **`property_id` is optional**, and nulls if the listing is deleted. A booking
+  has a project or a listing, not both. `(firm_id, property_id)` is unique
+  among live rows with a listing, so two firms can each record a co-broke and
+  one firm cannot book the same listing twice while both are live. The booking
+  snapshots the listing's typology. The title is read from the listing. Nothing
+  is backfilled.
 - Booking a **catalog** project copies required fields to an `own` row and stores
   that id. A lead mapping does not. A global marketplace row is copied by project
   code, never linked to a same-named project the firm added itself. A firm-owned

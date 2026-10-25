@@ -20,7 +20,8 @@ module Api
         @pagy, records = pagy(
           listed.includes(
             :lead, :invoices, :collections, :typology,
-            project_typology: :typology, project: :project_typologies
+            project_typology: :typology, project: :project_typologies,
+            property: [ :firm, :typology, :locality ]
           ),
           limit: per_page
         )
@@ -48,7 +49,8 @@ module Api
           attributes: booking_params,
           use_existing: params[:use_existing],
           new_name: params[:new_name],
-          mark_lead_booked: params[:mark_lead_booked]
+          mark_lead_booked: params[:mark_lead_booked],
+          mark_property_booked: params[:mark_property_booked]
         ).call
 
         unless result.ok?
@@ -62,6 +64,7 @@ module Api
 
         payload = { booking: BookingSerializer.detail(result.booking) }
         payload[:lead_status_unchanged] = true if result.lead_status_unchanged
+        payload[:property_status_unchanged] = true if result.property_status_unchanged
         render json: payload, status: :created
       end
 
@@ -79,38 +82,57 @@ module Api
         saved = false
         copy = nil
         stranded = nil
-        Booking.transaction do
-          # Same copy as create. A marketplace id must not be stored: the
-          # live-unit index is per project, and two firms would then block
-          # each other.
-          copy = ::Bookings::Create.copy_catalog(
-            project_id: params[:project_id],
-            use_existing: params[:use_existing],
-            new_name: params[:new_name]
-          )
-          raise ActiveRecord::Rollback if copy && !copy.ok?
+        link_error = nil
+        property_status_unchanged = false
+        begin
+          Booking.transaction do
+            # Same copy as create. A marketplace id must not be stored: the
+            # live-unit index is per project, and two firms would then block
+            # each other.
+            copy = ::Bookings::Create.copy_catalog(
+              project_id: params[:project_id],
+              use_existing: params[:use_existing],
+              new_name: params[:new_name]
+            )
+            raise ActiveRecord::Rollback if copy && !copy.ok?
 
-          @booking.assign_attributes(booking_params)
-          # Null clears the snapshot. Omitting the key must not: the pointer
-          # may already be null because the project replaced its rows.
-          @booking.clear_booked_configuration = params.key?(:project_typology_id) &&
-            params[:project_typology_id].blank?
-          ::Bookings::Create.apply_copy(@booking, copy, params[:project_id].presence)
-          stranded = stranded_invoice_details
-          raise ActiveRecord::Rollback if stranded
+            @booking.assign_attributes(booking_params)
+            # Null clears the snapshot. Omitting the key must not: the pointer
+            # may already be null because the project replaced its rows.
+            @booking.clear_booked_configuration = params.key?(:project_typology_id) &&
+              params[:project_typology_id].blank?
+            ::Bookings::Create.apply_copy(@booking, copy, params[:project_id].presence)
+            link_error = @booking.link_problem
+            raise ActiveRecord::Rollback if link_error
 
-          saved = @booking.save
-          raise ActiveRecord::Rollback unless saved
+            stranded = stranded_invoice_details
+            raise ActiveRecord::Rollback if stranded
+
+            saved = @booking.save
+            raise ActiveRecord::Rollback unless saved
+
+            property_status_unchanged = property_left_as_it_was?
+          end
+        rescue ActiveRecord::RecordNotUnique => e
+          raise unless e.message.include?(Booking::LIVE_LISTING_INDEX)
+
+          return render_listing_clash
         end
 
         if copy && !copy.ok?
           return render_error(copy.error_code, copy.error_message,
                               status: :unprocessable_content, details: copy.details)
         end
+        if link_error
+          return render_error(link_error[:code], link_error[:message],
+                              status: :unprocessable_content, details: link_error[:details])
+        end
         return render_stranded_invoices(stranded) if stranded
         return render_booking_save_failure(@booking) unless saved
 
-        render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :ok
+        payload = { booking: BookingSerializer.detail(@booking.reload) }
+        payload[:property_status_unchanged] = true if property_status_unchanged
+        render json: payload, status: :ok
       end
 
       # Sets the booking's status and nothing else. The lead is deliberately
@@ -123,7 +145,7 @@ module Api
         return render_error("reason_required", "A cancellation needs a reason.",
                             status: :unprocessable_content) if reason.blank?
 
-        @booking.cancel!(reason:, actor: current_user)
+        @booking.cancel!(reason:, actor: current_user, release_property: params[:release_property])
 
         render json: { booking: BookingSerializer.detail(@booking.reload) }, status: :ok
       end
@@ -143,7 +165,8 @@ module Api
       def set_booking
         @booking = Booking.includes(
           :lead, :invoices, :collections, :created_by_user, :typology,
-          project_typology: :typology, project: :project_typologies
+          project_typology: :typology, project: :project_typologies,
+          property: [ :firm, :typology, :locality ]
         ).find_by(id: params[:id])
         return if @booking
 
@@ -227,6 +250,25 @@ module Api
                      status: :unprocessable_content, details: errors.to_hash)
       end
 
+      # The flag was sent, and this save did not move an own Available listing
+      # the booking had just been pointed at.
+      def property_left_as_it_was?
+        return false unless ActiveModel::Type::Boolean.new.cast(params[:mark_property_booked])
+        return true unless @booking.saved_change_to_property_id? && @booking.property_id.present?
+
+        !::Bookings::ListingStatus.mark_booked!(@booking, current_user)
+      end
+
+      def render_listing_clash
+        other = @booking.conflicting_live_listing
+        render_error(
+          "listing_already_booked",
+          "This listing already has a live booking.",
+          status: :unprocessable_content,
+          details: { booking_id: other&.id, code: other&.code }
+        )
+      end
+
       def render_booking_save_failure(booking)
         if booking.errors.of_kind?(:unit_no, :taken)
           return render_error(
@@ -248,7 +290,7 @@ module Api
       end
 
       def booking_params
-        params.permit(:project_id, :project_typology_id, :builder_ref_no, :unit_no, :carpet_area_sqft,
+        params.permit(:project_id, :property_id, :project_typology_id, :builder_ref_no, :unit_no, :carpet_area_sqft,
                       :customer_name, :customer_mobile, :booked_on, :agreement_value,
                       :commission_percent, :kicker, :passback, :other_details,
                       :registration_done_on, :client_paid_percent)

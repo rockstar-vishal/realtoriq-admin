@@ -1671,7 +1671,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "leads", "import" ]
             },
-            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. The Possession column (the old header Property type is still accepted) is required for a residential or commercial sale, and must be blank for rent and for Plot & Land. The date column is Possession up to. Area is optional (800-1200 sqft, 2-4 guntha, 3 acre) and is rejected on a residential row. Prefers pre-leased is yes or no. Configurations from more than one category fail the row. There is no Category column. Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. A second open lead of the same type and category names that category. Leads start as New. Assigned to is a teammate's mobile or email; blank keeps the lead with the importer. An agent cannot assign someone else. Next call is DD/MM/YYYY HH:MM in IST (a date alone means 11:00); a past time is kept. Next call note needs a Next call. Near place needs both a name and a pin (lat,lng or a full Google Maps link; short links are refused)."
+            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. The Possession column (the old header Property type is still accepted) is required for a residential or commercial sale, and must be blank for rent and for Plot & Land. The date column is Possession up to. Area is optional (800-1200 sqft, 2-4 guntha, 3 acre) and is rejected on a residential row. Prefers pre-leased is yes or no. Configurations from more than one category fail the row. There is no Category column. Location is added to the localities on the shortlisted listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. A second open lead of the same type and category names that category. Leads start as New. Assigned to is a teammate's mobile or email; blank keeps the lead with the importer. An agent cannot assign someone else. Next call is DD/MM/YYYY HH:MM in IST (a date alone means 11:00); a past time is kept. Next call note needs a Next call. Near place needs both a name and a pin (lat,lng or a full Google Maps link; short links are refused)."
           }
         },
         {
@@ -2164,7 +2164,7 @@
                 "visits"
               ]
             },
-            "description": "A completed outing. visited_on is YYYY-MM-DD (IST). Sites are optional and must already be mapped. Does not change status or NCD. Returns { visit } only.",
+            "description": "A completed outing. visited_on is YYYY-MM-DD (IST). Sites are optional and must already be on the lead's shortlist. Does not change status or NCD. Returns { visit } only.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"visited_on\": \"2026-09-20\",\n  \"notes\": \"Walked the site\",\n  \"project_ids\": [],\n  \"property_ids\": []\n}"
@@ -3819,7 +3819,7 @@
                 "{{property_id}}"
               ]
             },
-            "description": "The only response that carries `confidential_note`. `shareable` holds exactly what may go to a client — build share text from it and the note cannot leak by accident."
+            "description": "The only response that carries `confidential_note`. `shareable` holds exactly what may go to a client — build share text from it and the note cannot leak by accident. A manager or super admin of the owning firm also gets `live_booking` (`id`, `code`, `customer_name`, or null). An agent does not get that key."
           },
           "event": [
             {
@@ -3947,7 +3947,7 @@
                 "{{property_id}}"
               ]
             },
-            "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
+            "description": "`price` is monthly rent on a rental and the whole ask on a sale, so `rate_per_sqft` — derived, never stored — means rent per sqft per month on one and price per sqft on the other.\n\n`status` may be `available`, `booked` or `sold_out`.\n\n`confidential_note` can be written here and comes back only on the detail; it is absent from the list payload and from `shareable`, which is what makes composing a client message from `shareable` safe.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"building_name\": \"Aurum Heights\",\n  \"city_id\": \"{{city_id}}\",\n  \"locality_id\": \"{{locality_id}}\",\n  \"address\": \"12 Sea Face\",\n  \"lat\": 19.07,\n  \"lng\": 73.02,\n  \"has_pool\": false,\n  \"has_gym\": true,\n  \"typology_id\": \"{{typology_id}}\",\n  \"listing_for\": \"sale\",\n  \"floor_band\": \"middle\",\n  \"price\": 12400000,\n  \"carpet_area_sqft\": 690,\n  \"available_from\": \"2026-11-01\",\n  \"description\": \"North-east facing, two covered parkings. Recently painted.\",\n  \"confidential_note\": \"Owner will close at 1.21 Cr\",\n  \"status\": \"booked\",\n  \"on_website\": true\n}"
@@ -4134,7 +4134,7 @@
                 "bookings"
               ]
             },
-            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` — retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`project_typology_id` snapshots the typology and label. Omit it on PATCH to keep that snapshot; send null to clear it. A catalog booking whose copy has no matching configuration still saves, with the snapshot and no configuration id.\n\n`mark_lead_booked` sets the lead's booked date to `booked_on` (the start of that day, IST).\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
+            "description": "Every accepted field.\n\n`unit_no` is **required when `project_id` is set**, and unique among live bookings on that project. Cancel frees the unit (`422 unit_taken` if still live).\n\nIf `project_id` is a catalog row, the server copies it into My Projects. A name clash is `422 project_name_clash` — retry with `use_existing: true` or `new_name`.\n\n`customer_name` and `customer_mobile` are **snapshots** — sent here they are stored as given; omitted, they are copied from the lead. Correcting the lead a year later must not rewrite what was booked.\n\n`project_typology_id` snapshots the typology and label. Omit it on PATCH to keep that snapshot; send null to clear it. A catalog booking whose copy has no matching configuration still saves, with the snapshot and no configuration id.\n\n`mark_lead_booked` sets the lead's booked date to `booked_on` (the start of that day, IST).\n\n`property_id` links the firm's own listing, or a Marketplace listing this firm can see (it need not still be Available). Sending it with `project_id` is `422 project_and_listing`. A second live booking of the same listing in this firm is `422 listing_already_booked` (`details.booking_id`, `details.code`). Another firm can book that Marketplace listing. `mark_property_booked` sets an own Available listing to `booked`; otherwise the booking still saves and the response adds `property_status_unchanged: true`.\n\n`net_income` is computed and stored, never sent:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\n15600000 at 4.5% is 702000, +50000 kicker, -66000 passback = **686000**.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"project_typology_id\": \"{{project_typology_id}}\",\n  \"mark_lead_booked\": true,\n  \"builder_ref_no\": \"AV/BK/1184\",\n  \"unit_no\": \"B-1104\",\n  \"carpet_area_sqft\": 1340,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 4.5,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings\",\n  \"registration_done_on\": \"2026-08-20\",\n  \"client_paid_percent\": 10\n}"
@@ -4194,7 +4194,7 @@
                 "bookings"
               ]
             },
-            "description": "Cancelled bookings are excluded unless you ask for them with `status` or `stage` — the design says cancelling \"removes this booking from revenue\".\n\nFilters: `q` (customer, phone, unit, code, builder ref, project name), `stage` (`to_invoice` · `awaiting_payment` · `paid` · `cancelled`), `registration` (`done` · `pending`), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default when no stage is sent · `cancelled`).\n\n`totals` is the live agreement value, net income, invoiced, collected, outstanding and to_invoice for the filtered set. `stage_counts` uses the same filters except `stage`."
+            "description": "Cancelled bookings are excluded unless you ask for them with `status` or `stage` — the design says cancelling \"removes this booking from revenue\".\n\nEach row includes `property` (or null): `id`, `code`, `title`, `listing_for`, `status`, `own`, and `firm_name` only when the listing is another firm's.\n\nFilters: `q` (customer, phone, unit, code, builder ref, project name), `stage` (`to_invoice` · `awaiting_payment` · `paid` · `cancelled`), `registration` (`done` · `pending`), `client_phone`, `project_id`, `booked_from`, `booked_to`, `status` (`live` default when no stage is sent · `cancelled`).\n\n`totals` is the live agreement value, net income, invoiced, collected, outstanding and to_invoice for the filtered set. `stage_counts` uses the same filters except `stage`."
           },
           "event": [
             {
@@ -4312,7 +4312,7 @@
                 "{{booking_id}}"
               ]
             },
-            "description": "The detail the design's tabs are built from: the itemised `revenue` block, documents, invoices and collections, plus `stage`, `invoiced` / `collected` / `outstanding` / `to_invoice`, `configuration` (`id`, `label`, `category`, `typology_id`), and `created_by_name`. `label` and `category` are the snapshot. `id` follows the project's current row with that typology and label."
+            "description": "The detail the design's tabs are built from: the itemised `revenue` block, documents, invoices and collections, plus `stage`, `invoiced` / `collected` / `outstanding` / `to_invoice`, `configuration` (`id`, `label`, `category`, `typology_id`), `property` (`id`, `code`, `title`, `listing_for`, `status`, `own`, and `firm_name` only when it is not own), and `created_by_name`. `label` and `category` are the snapshot. `id` follows the project's current row with that typology and label. `property.title` is the listing's current title."
           },
           "event": [
             {
@@ -4346,7 +4346,7 @@
                 "{{booking_id}}"
               ]
             },
-            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.\n\nA catalog or marketplace `project_id` is copied into My Projects the same way as create. The booking stores the firm's row, never the shared listing.",
+            "description": "Net income is recomputed and **stored** on every save:\n\n    round(agreement_value x commission_percent / 100) + kicker - passback\n\nBigDecimal, half-up, rounded once where the percentage meets the value. Stored rather than derived so a booking's displayed revenue can never drift from what the reports sum.\n\nA cancelled booking refuses updates — `booking_cancelled`.\n\nA catalog or marketplace `project_id` is copied into My Projects the same way as create. The booking stores the firm's row, never the shared project id. `property_id` may point at a Marketplace listing. `mark_property_booked` applies only when `property_id` changes to a different listing, and leaves the previous listing's status alone. `property_status_unchanged: true` means the flag was sent and the status did not change.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"builder_ref_no\": \"AV/BK/1184-R1\",\n  \"unit_no\": \"B-1204\",\n  \"carpet_area_sqft\": 1360,\n  \"customer_name\": \"Rhea Kapoor\",\n  \"customer_mobile\": \"+919820166666\",\n  \"booked_on\": \"2026-08-01\",\n  \"agreement_value\": 15600000,\n  \"commission_percent\": 5.0,\n  \"kicker\": 50000,\n  \"passback\": 66000,\n  \"other_details\": \"10:80:10 plan · two covered parkings · corner unit\",\n  \"registration_done_on\": \"2026-08-25\",\n  \"client_paid_percent\": 20\n}"
@@ -4815,7 +4815,7 @@
                 "cancel"
               ]
             },
-            "description": "Refused deliberately. A cancelled booking with no reason is one nobody can learn from.",
+            "description": "Refused deliberately. A cancelled booking with no reason is one nobody can learn from. A real cancel sends `reason`, and `release_property: true` puts the firm's own booked listing back to Available when no other live booking of this firm points at it.",
             "body": {
               "mode": "raw",
               "raw": "{}"

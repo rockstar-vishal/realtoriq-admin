@@ -947,6 +947,213 @@ RSpec.describe "API v1 bookings" do
       expect(dead_lead.reload.lead_status_id).to eq(dead.id)
     end
   end
+
+  describe "a booking on a listing" do
+    let(:typology) { create(:typology, name: "2 BHK") }
+    let(:powai) { create(:locality, name: "Powai") }
+    let(:property) { create(:property, firm:, typology:, building: create(:building, firm:, city: powai.city, locality: powai)) }
+
+    def book_listing(headers, listing = property, extra = {})
+      create_booking(headers, { property_id: listing.id, unit_no: nil }.merge(extra))
+    end
+
+    it "marks an own available listing booked and reads its title" do
+      book_listing(auth, property, mark_property_booked: true)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body).not_to have_key("property_status_unchanged")
+      expect(property.reload).to be_booked
+      summary = response.parsed_body.dig("booking", "property")
+      expect(summary).to include(
+        "id" => property.id, "code" => property.code, "title" => "2 BHK in Powai",
+        "listing_for" => "sale", "status" => "booked", "own" => true
+      )
+      expect(summary).not_to have_key("firm_name")
+      expect(response.parsed_body.dig("booking", "configuration", "typology_id")).to eq(typology.id)
+      event = AuditEvent.find_by!(action: "property.status_changed", subject: property)
+      expect(event.metadata).to include(
+        "from" => "available", "to" => "booked",
+        "booking_id" => response.parsed_body.dig("booking", "id")
+      )
+    end
+
+    it "says so when the listing is not an own available one" do
+      property.update!(status: "sold_out")
+
+      book_listing(auth, property, mark_property_booked: true)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body["property_status_unchanged"]).to be(true)
+      expect(property.reload).to be_sold_out
+    end
+
+    it "does not mark the listing when the flag is omitted" do
+      book_listing(auth)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body).not_to have_key("property_status_unchanged")
+      expect(property.reload).to be_available
+    end
+
+    it "refuses a project and a listing together" do
+      project = create(:project, firm:)
+
+      book_listing(auth, property, project_id: project.id, unit_no: "A-1")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("project_and_listing")
+      expect(response.parsed_body.dig("error", "message")).to eq("A booking is on a project or a listing, not both.")
+      expect(Booking.across_firms.where(property_id: property.id)).to be_none
+    end
+
+    it "refuses a listing this firm cannot see" do
+      hidden = create(:property, firm: create(:firm), typology:, listed_on_marketplace: false)
+
+      book_listing(auth, hidden)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("listing_not_found")
+    end
+
+    it "refuses a second live booking of the same listing and lets another firm book it" do
+      headers = auth
+      book_listing(headers)
+      first = response.parsed_body["booking"]
+
+      book_listing(headers, property, lead_id: create(:lead, firm:).id)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("listing_already_booked")
+      expect(response.parsed_body.dig("error", "details")).to include(
+        "booking_id" => first["id"], "code" => first["code"]
+      )
+
+      other = create(:firm, status: :active)
+      create(:subscription, firm: other, plan:)
+      other_manager = create(:user, :manager, firm: other)
+      other_lead = create(:lead, firm: other, name: "Meera Shah")
+      book_listing(auth(as: other_manager), property, lead_id: other_lead.id)
+
+      expect(response).to have_http_status(:created)
+      summary = response.parsed_body.dig("booking", "property")
+      expect(summary).to include("own" => false, "firm_name" => firm.name, "title" => "2 BHK in Powai")
+      expect(property.reload).to be_available
+
+      property.update!(listed_on_marketplace: false)
+      get "/api/v1/bookings/#{response.parsed_body.dig("booking", "id")}", headers: auth(as: other_manager)
+
+      expect(response.parsed_body.dig("booking", "property", "title")).to eq("2 BHK in Powai")
+    end
+
+    it "reads the title from the listing" do
+      book_listing(auth)
+      id = response.parsed_body.dig("booking", "id")
+      typology.update!(name: "3 BHK")
+
+      get "/api/v1/bookings/#{id}", headers: auth
+
+      expect(response.parsed_body.dig("booking", "property", "title")).to eq("3 BHK in Powai")
+    end
+
+    it "marks a newly chosen own listing and leaves the previous one" do
+      headers = auth
+      book_listing(headers)
+      id = response.parsed_body.dig("booking", "id")
+      other_listing = create(:property, firm:, typology:, building: property.building)
+
+      patch "/api/v1/bookings/#{id}", params: {
+        property_id: other_listing.id, mark_property_booked: true
+      }, headers:, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).not_to have_key("property_status_unchanged")
+      expect(other_listing.reload).to be_booked
+      expect(property.reload).to be_available
+    end
+
+    it "does not mark the listing again when the edit leaves it in place" do
+      headers = auth
+      book_listing(headers)
+      id = response.parsed_body.dig("booking", "id")
+
+      patch "/api/v1/bookings/#{id}", params: {
+        other_details: "Same listing", mark_property_booked: true
+      }, headers:, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["property_status_unchanged"]).to be(true)
+      expect(property.reload).to be_available
+    end
+
+    it "puts the listing back on cancel when asked" do
+      headers = auth
+      book_listing(headers, property, mark_property_booked: true)
+      id = response.parsed_body.dig("booking", "id")
+
+      post "/api/v1/bookings/#{id}/cancel", params: {
+        reason: "Client withdrew", release_property: true
+      }, headers:, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(property.reload).to be_available
+      event = AuditEvent.where(action: "property.status_changed", subject: property).order(:created_at).last
+      expect(event.metadata).to include("from" => "booked", "to" => "available", "booking_id" => id)
+    end
+
+    it "leaves a marketplace listing alone when the booking is cancelled" do
+      owner = create(:firm, status: :active)
+      listing = create(:property, firm: owner, typology:, status: "booked")
+      book_listing(auth, listing)
+      id = response.parsed_body.dig("booking", "id")
+
+      post "/api/v1/bookings/#{id}/cancel", params: {
+        reason: "Client withdrew", release_property: true
+      }, headers: auth, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(listing.reload).to be_booked
+    end
+
+    it "shows the live booking only to a manager of the owning firm" do
+      headers = auth
+      book_listing(headers, property, mark_property_booked: true)
+      booking = response.parsed_body["booking"]
+
+      get "/api/v1/properties/#{property.id}", headers: headers
+
+      expect(response.parsed_body.dig("property", "live_booking")).to include(
+        "id" => booking["id"], "code" => booking["code"], "customer_name" => "Rhea Kapoor"
+      )
+
+      get "/api/v1/properties/#{property.id}", headers: auth(as: agent)
+
+      expect(response.parsed_body["property"]).not_to have_key("live_booking")
+    end
+
+    it "marks and releases an own listing that no longer passes validation" do
+      property.update_columns(building_name: "")
+      headers = auth
+
+      book_listing(headers, property, mark_property_booked: true)
+
+      expect(response).to have_http_status(:created)
+      expect(property.reload).to be_booked
+      id = response.parsed_body.dig("booking", "id")
+
+      post "/api/v1/bookings/#{id}/cancel", params: {
+        reason: "Client withdrew", release_property: true
+      }, headers:, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(property.reload).to be_available
+    end
+
+    it "gives a manager null when the listing has no live booking" do
+      get "/api/v1/properties/#{property.id}", headers: auth
+
+      expect(response.parsed_body.dig("property", "live_booking")).to be_nil
+    end
+  end
 end
 
 def select_count

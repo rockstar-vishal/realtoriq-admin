@@ -30,7 +30,8 @@ class LeadProperty < ApplicationRecord
 
     return if lead.transaction_type == property.listing_for
 
-    errors.add(:base, "A #{lead.transaction_type} lead cannot be mapped to a #{property.listing_for} listing")
+    errors.add(:base,
+      "This listing is for #{property.listing_for}, so it can't go on a #{lead.transaction_type} lead's shortlist.")
   end
 
   def shared_from_active_firm?

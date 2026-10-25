@@ -9,13 +9,13 @@ module Bookings
   # change. Cancelling a booking still leaves the lead alone.
   class Create
     Result = Struct.new(:ok?, :booking, :errors, :error_code, :error_message, :details,
-                        :lead_status_unchanged, keyword_init: true)
+                        :lead_status_unchanged, :property_status_unchanged, keyword_init: true)
 
     MAX_CODE_ATTEMPTS = 5
     UNIT_INDEX = "index_bookings_on_live_project_unit"
 
     def initialize(firm:, actor:, lead:, attributes:, use_existing: false, new_name: nil,
-      mark_lead_booked: false)
+      mark_lead_booked: false, mark_property_booked: false)
       @firm = firm
       @actor = actor
       @lead = lead
@@ -23,6 +23,7 @@ module Bookings
       @use_existing = ActiveModel::Type::Boolean.new.cast(use_existing)
       @new_name = new_name
       @mark_lead_booked = ActiveModel::Type::Boolean.new.cast(mark_lead_booked)
+      @mark_property_booked = ActiveModel::Type::Boolean.new.cast(mark_property_booked)
     end
 
     def call
@@ -30,7 +31,9 @@ module Bookings
       booking = nil
       attempts = 0
       lead_status_unchanged = false
+      property_status_unchanged = false
       status_error = nil
+      link_error = nil
 
       begin
         Booking.transaction do
@@ -43,14 +46,23 @@ module Bookings
           lead.lock_for_activity!
           booking = build
           self.class.apply_copy(booking, copy, attributes[:project_id])
+          link_error = booking.link_problem
+          raise ActiveRecord::Rollback if link_error
+
           booking.save!
           status_error, lead_status_unchanged = apply_booked_status(booking)
           raise ActiveRecord::Rollback if status_error
+
+          property_status_unchanged = property_left_as_it_was?(booking)
         end
       rescue ActiveRecord::RecordNotUnique => e
         if e.message.include?(UNIT_INDEX)
           booking ||= build
           return unit_taken(booking)
+        end
+        if e.message.include?(Booking::LIVE_LISTING_INDEX)
+          booking ||= build
+          return listing_taken(booking)
         end
 
         attempts += 1
@@ -64,18 +76,21 @@ module Bookings
 
       return status_failure(status_error) if status_error
       return copy_failure(copy_error) if copy_error
+      return link_failure(link_error) if link_error
 
-      Result.new(ok?: true, booking:, lead_status_unchanged:)
+      Result.new(ok?: true, booking:, lead_status_unchanged:, property_status_unchanged:)
     rescue ActiveRecord::RecordInvalid => e
       record = e.record
       return unit_taken(record) if record.errors.of_kind?(:unit_no, :taken)
+      return link_failure(record.link_problem) if record.is_a?(Booking) && record.link_problem
 
       Result.new(ok?: false, booking: record, errors: record.errors)
     end
 
     private
 
-    attr_reader :firm, :actor, :lead, :attributes, :use_existing, :new_name, :mark_lead_booked
+    attr_reader :firm, :actor, :lead, :attributes, :use_existing, :new_name,
+      :mark_lead_booked, :mark_property_booked
 
     def self.copy_catalog(project_id:, use_existing: false, new_name: nil)
       project_id = project_id.presence
@@ -142,6 +157,31 @@ module Bookings
       booking.booked_on ||= Date.current
 
       booking
+    end
+
+    # Asked to mark the listing, and it was not an own Available one.
+    def property_left_as_it_was?(booking)
+      return false unless mark_property_booked
+
+      !ListingStatus.mark_booked!(booking, actor)
+    end
+
+    def listing_taken(booking)
+      other = booking.conflicting_live_listing
+      link_failure(
+        {
+          code: "listing_already_booked",
+          message: "This listing already has a live booking.",
+          details: { booking_id: other&.id, code: other&.code }
+        }
+      )
+    end
+
+    def link_failure(problem)
+      Result.new(
+        ok?: false, error_code: problem[:code], error_message: problem[:message],
+        details: problem[:details]
+      )
     end
 
     def unit_taken(booking)

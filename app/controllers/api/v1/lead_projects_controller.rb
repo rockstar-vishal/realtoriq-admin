@@ -5,20 +5,21 @@ module Api
     # Join rows between a lead and a project it is considering. Flat controller
     # name so it does not shadow the Inventory:: / Leads:: service namespaces.
     class LeadProjectsController < AuthenticatedController
+      ALREADY_SHORTLISTED = "That project is already on this lead's shortlist."
+
       before_action :set_lead
 
       def create
         mapping = @lead.lead_projects.build(project_id: params[:project_id], firm: current_firm)
 
         unless mapping.save
-          return render_error("invalid", mapping.errors.full_messages.to_sentence,
+          return render_error("invalid", mapping_message(mapping),
                               status: :unprocessable_content, details: mapping.errors.to_hash)
         end
 
         render json: { lead: lead_detail }, status: :created
       rescue ActiveRecord::RecordNotUnique
-        render_error("invalid", "That project is already mapped to this lead.",
-                     status: :unprocessable_content)
+        render_error("invalid", ALREADY_SHORTLISTED, status: :unprocessable_content)
       end
 
       def destroy
@@ -32,6 +33,12 @@ module Api
       end
 
       private
+
+      def mapping_message(mapping)
+        return ALREADY_SHORTLISTED if mapping.errors.of_kind?(:project_id, :taken)
+
+        mapping.errors.full_messages.to_sentence
+      end
 
       def set_lead
         @lead = Lead.visible_to(current_user).find_by(id: params[:lead_id])

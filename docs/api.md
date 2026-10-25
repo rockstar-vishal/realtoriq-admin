@@ -619,11 +619,11 @@ Sheet rules:
 
 - **Mobile**, **Sale or rent** (`sale` or `rent`) and **Budget** (whole rupees, `12000000` or `1,20,00,000`) are required. A decimal other than `.00`, or text such as `1.2 Cr`, fails the row. A mobile Excel has turned into scientific notation or a decimal fails the row.
 - **Possession** (the old header **Property type** is still accepted) is required for a residential or commercial sale even when a project code is filled in. The names are `Under construction` and `Ready possession`. A rent row must leave it blank. A Plot & Land row must leave it blank (`Leave Possession blank for Plot & Land.`). The date column is **Possession up to**. On a sheet that still has both **Property type** and **Possession**, Possession remains the date.
-- **Configurations** are typology names (`2 BHK`, `Shop`, `Residential plot`). Spaces and case do not matter. There is no Category column: the category comes from the configurations, or from the linked listings when that cell is empty. Names from more than one category fail the row (`Configurations must be from one category.`). An unknown name fails the row.
+- **Configurations** are typology names (`2 BHK`, `Shop`, `Residential plot`). Spaces and case do not matter. There is no Category column: the category comes from the configurations, or from the shortlisted listings when that cell is empty. Names from more than one category fail the row (`Configurations must be from one category.`). An unknown name fails the row.
 - **Area** is optional. `800-1200 sqft`, `2-4 guntha` or `3 acre`. One number sets the minimum and the maximum. A residential row must leave it blank. A commercial row is sq ft. Plot & Land may use sq ft, sq yd, sq m, guntha, acre or hectare.
 - **Prefers pre-leased** is optional `yes` or `no`. It is kept only for a commercial sale.
 - **Project codes** and **Property codes** take several values separated by commas, at most 20 in one cell. A code is `P-` plus 6 characters for a project and `H-` plus 6 characters for a property, shown on that project or property's list and detail. A cell may also contain the record id. A project cell may contain a LaunchIQ reference (`PR…`): the firm's own active copy is linked, otherwise the active marketplace row. Linking does not copy a marketplace project into My Projects.
-- **Location** is added to the localities on the linked listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
+- **Location** is added to the localities on the shortlisted listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
 - A project code on a rent row fails. A property is linked only when its sale/rent matches the row. An unknown code, an archived project, or a sold property fails the row and does not create the lead. A private code from another firm, and a code belonging to a firm that is not active, are reported as unknown. A shared property links only while that firm is active, matching `GET /properties/marketplace`.
 - The same mobile may be imported once per category, and once as sale and once as rent. A second open row of the same kind and category fails. The message names the category (`A sale Commercial lead already exists for this number`). When the caller can see that lead, the error includes its code.
 - **Assigned to** is optional. A team member's mobile (the same shapes as Mobile) or email. Blank means the person importing. An unknown value is `No active team member has {value}.` A disabled member is `{name} is disabled. Assign someone else or leave it blank.` An agent may only name their own mobile or email; anything else is `Only a manager can assign leads to someone else.` A manager can assign someone on their team, the same people the New lead form offers.
@@ -778,9 +778,9 @@ price fields on `projects[]` and `properties[]`.
 | `GET /leads/:id/activities` | |
 | `GET /leads/:id/visits` | Newest `visited_at` first. `{ visits, meta }`. Default 25 |
 | `POST /leads/:id/visits` | `{ visited_on, notes, project_ids, property_ids }` — see below. `201` `{ visit }` only. Refetch the lead for `visited` and mapped flags |
-| `PATCH /leads/:id/visits/:id` | `{ visited_on, notes, project_ids, property_ids }`. Omit a key to leave it; `""` clears notes; `[]` clears that site list. New site ids must be mapped (`422 not_mapped`). Ids already on this visit may stay after the lead unmaps them. Does not change `user_id`. No delete |
+| `PATCH /leads/:id/visits/:id` | `{ visited_on, notes, project_ids, property_ids }`. Omit a key to leave it; `""` clears notes; `[]` clears that site list. New site ids must already be on the shortlist (`422 not_mapped`). Ids already on this visit may stay after the lead unmaps them. Does not change `user_id`. No delete |
 | `POST /leads/:id/activities` | `{ kind, body, occurred_at, outcome }` — `call` / `whatsapp` / `note`. `kind=visit` is rejected |
-| `POST /leads/:id/projects` | `{ project_id }` — map a My Projects row, a catalog row this firm already owns, or a global marketplace row. A global marketplace row is linked as itself. It is not copied. Anyone who can see the lead. `201` returns the refreshed lead |
+| `POST /leads/:id/projects` | `{ project_id }` — map a My Projects row, a catalog row this firm already owns, or a global marketplace row. A global marketplace row is linked as itself. It is not copied. Anyone who can see the lead. `201` returns the refreshed lead. A project already on the shortlist is `422 invalid`: "That project is already on this lead's shortlist." |
 | `DELETE /leads/:lead_id/projects/:id` | `:id` is the **join** id from `mapped_projects[]` |
 | `POST /leads/:id/properties` | `{ property_id }` — same rules as projects |
 | `DELETE /leads/:lead_id/properties/:id` | Join id from `mapped_properties[]` |
@@ -1075,13 +1075,14 @@ rows exist, but the client cannot write them.) `body` is required.
 not change `lead.status` or `next_action_at`. `visited_on` is `YYYY-MM-DD`,
 stored as IST start of day. A date after today IST is `422 future_visited_at`.
 Missing `visited_on` is `422 visited_on_required`. `project_ids` and
-`property_ids` are optional; every id must already be mapped or the response
-is `422 not_mapped`. A siteless visit still increments `visit_count`.
+`property_ids` are optional; every id must already be on this lead's shortlist
+or the response is `422 not_mapped` ("Sites added to a visit must already be on
+this lead's shortlist."). A siteless visit still increments `visit_count`.
 
 **`PATCH /leads/:id/visits/:id`** may change date, notes, and sites. Omit a
 site key to leave that set; send `[]` to clear it (the visit may become
 siteless). Ids **already on this visit** may stay even if the lead later
-unmapped them. **New** ids must be on the lead’s current mappings or the
+unmapped them. **New** ids must already be on this lead's shortlist or the
 response is `422 not_mapped`. Unmapping a lead does not rewrite visit joins;
 edit is how a broker drops a site from that outing. `user_id` does not change.
 
@@ -1485,7 +1486,11 @@ listing from other firms' matches and from `marketplace_firms`. A mapping
 already saved stays.
 (`available` · `booked` · `sold_out`). Any role may create. List and detail
 include `created_by: { id, name }` (or `null` on older rows) — show it when
-`permissions.manage_projects` is true.
+`permissions.manage_projects` is true. `PATCH` may set `status` to `available`,
+`booked` or `sold_out` for anyone who can edit the listing. Detail for a
+manager or super admin of the owning firm also includes `live_booking`:
+`{ id, code, customer_name }`, or null. An agent does not get that key. It is
+this firm's live booking on the listing, not another firm's.
 
 `carpet_area_sqft` is the area in square feet (carpet for a home or a
 commercial unit, plot area converted to sq ft for land). Send `area_value`
@@ -1686,8 +1691,9 @@ confidential note. A listing that is not shared, or whose firm is not active, re
 
 Mapping that property (`POST /leads/:id/properties`) is allowed for any lead
 this caller can see whose sale/rent matches the listing, including an
-under-construction client. A rent lead cannot be mapped to a sale listing or
-to a project. A sale lead cannot be mapped to a rental. A mapped shared
+under-construction client. A project can't go on a rental lead's shortlist.
+A listing for sale can't go on a rental lead's shortlist, and a listing for
+rent can't go on a sale lead's shortlist. A mapped shared
 property can be logged on a site visit; that visit stays on the mapping firm's
 lead and does not appear in the listing firm's visitors.
 
@@ -1877,9 +1883,11 @@ by rupees from what the reports sum.
 | `commission_percent` | number | **required** | |
 | `kicker` / `passback` | integer | optional | Default 0 |
 | `customer_name` / `customer_mobile` | string | optional | **Snapshotted** — see below |
-| `project_id` | string | optional | |
+| `project_id` | string | optional | A booking is on a project **or** a listing, not both. Sending both is `422 project_and_listing` |
+| `property_id` | string | optional | The firm's own listing, of any status, or a Marketplace listing this firm can see. The Marketplace rule is the same as a shared property, except the listing need not still be Available. Anything else is `422 listing_not_found`. One **live** booking per listing per firm (`422 listing_already_booked`, `details.booking_id` and `details.code`). Another firm can book the same Marketplace listing. The booking stores the listing's typology. Its title is read from the listing, including after that listing leaves the Marketplace. Existing bookings are not backfilled |
 | `project_typology_id` | string | optional | A configuration of that project. The booking stores that typology and label, so a later project save can replace the row without blanking the booking. On a catalog or marketplace booking the id is matched to the firm's copy by typology and label. When the copy has no such row, the booking still saves with the snapshot and `project_typology_id` null. A configuration of some other project is `422 invalid`. On PATCH, omit the key to keep the snapshot; send null to clear it. Removing the project clears it. Nothing is backfilled |
 | `mark_lead_booked` | boolean | optional | When true, the lead moves to the active Booked status in the same transaction, with the same timeline entry as `POST /leads/:id/status`. `booked_at` is `booked_on` at the start of that day in Asia/Kolkata, not the time the booking was entered. When the firm has no Booked status the booking still saves and the response adds top-level `lead_status_unchanged: true`. A failed move (for example `duplicate_lead`) rolls the booking back. Omit it, or send false, and the lead stays as it is |
+| `mark_property_booked` | boolean | optional | When true, and the listing is the firm's own and Available, the listing becomes `booked` in the same transaction. Otherwise it is ignored and the response adds top-level `property_status_unchanged: true`. On PATCH this applies only when `property_id` changes to a different listing. The listing it pointed at before is left as it is. Omit it, or send false, and the listing stays as it is |
 | `unit_no` | string | conditional | **Required when `project_id` is set.** Unique among **live** bookings on that project. Cancel frees the unit |
 | `builder_ref_no` | string | optional | |
 | `use_existing` | boolean | optional | Catalog booking name clash — reuse the existing My Projects row |
@@ -1908,9 +1916,12 @@ taken. `use_existing` and `new_name` do not apply to that row. This is the
 only time a firm copy is created.
 
 `PATCH /bookings/:id` copies a catalog or marketplace `project_id` the same
-way before it saves. The booking never stores the shared listing's id. Omit
+way before it saves. The booking never stores the shared project's id. Omit
 `project_id` to leave the booking's project alone. `use_existing` and
-`new_name` apply to a firm-owned catalog row on PATCH as well.
+`new_name` apply to a firm-owned catalog row on PATCH as well. `property_id`
+and `mark_property_booked` follow the create rules. Omit `property_id` to leave
+the listing alone. Send null to clear it. A `property_status_unchanged: true`
+on the response means the flag was sent and the listing's status was not changed.
 
 A catalog row this firm already owns still uses the name check. If My Projects
 already has that name: **`422 project_name_clash`** with
@@ -1954,6 +1965,7 @@ A row's `stage` is `cancelled`, else `paid` when `net_income <= 0` or the collec
   "invoiced": 686000, "collected": 400000, "outstanding": 286000, "to_invoice": 0,
   "registration_done_on": null, "oldest_due_invoice_on": "2026-08-04",
   "configuration": { "id": "…", "label": "2 BHK Ultima", "category": "residential", "typology_id": "…" },
+  "property": { "id": "…", "code": "H-0001", "title": "2 BHK in Powai", "listing_for": "sale", "status": "booked", "own": true },
   "category": "residential", "cancellation_reason": null,
   "revenue": {
     "agreement_value": 15600000, "commission_percent": 4.5,
@@ -1963,7 +1975,7 @@ A row's `stage` is `cancelled`, else `paid` when `net_income <= 0` or the collec
 }
 ```
 
-`configuration` is null until a booking is saved with one. `label` and `category` come from the snapshot taken then, not from the project's current row. `typology_id` is that typology. `id` is `project_typology_id` while that row still exists; after the project is saved in the configuration editor it is the new row with the same typology and label, or null if the project no longer has one. `category` is repeated at the top level (`residential`, `commercial`, `land`) and is null without a configuration. `oldest_due_invoice_on` is the issue date of the oldest raised invoice that still has a balance of its own; an unlinked collection does not settle an invoice, and a cancelled invoice is ignored.
+`configuration` is null until a booking is saved with one. `label` and `category` come from the snapshot taken then, not from the project's current row. `typology_id` is that typology. `id` is `project_typology_id` while that row still exists; after the project is saved in the configuration editor it is the new row with the same typology and label, or null if the project no longer has one. `category` is repeated at the top level (`residential`, `commercial`, `land`) and is null without a configuration. A booking linked to a listing snapshots that listing's typology the same way, and `property.title` is the listing's current title. `property` is null when the booking has no listing. `property.firm_name` is present only when `own` is false. `oldest_due_invoice_on` is the issue date of the oldest raised invoice that still has a balance of its own; an unlinked collection does not settle an invoice, and a cancelled invoice is ignored.
 
 The list-card figures are top level; the itemised breakdown is under `revenue`. The detail also carries `created_by_name` (who recorded the booking), `documents[]`, `invoices[]`, and `collections[]`.
 
@@ -2015,6 +2027,10 @@ The third is what catches a payment filed against the wrong invoice.
 - The booking leaves `Booking.live`, which is where every money query starts.
 - **Cancelling does not touch the lead.** It does not reopen it. Creating a
   booking moves the lead only when `mark_lead_booked` is true.
+- `release_property`, when true, sets the firm's own `booked` listing back to
+  `available` in the same transaction, if no other live booking of this firm
+  points at it. A Marketplace listing is left as it is. Omit it, or send false,
+  and the listing stays as it is.
 - Cancelling twice is `422 already_cancelled`. Updating a cancelled booking is
   refused.
 
@@ -2549,6 +2565,9 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `reason_required` | 422 | Cancelling a booking, or moving a lead to a dead status, needs a reason |
 | `already_cancelled` | 422 | |
 | `unit_taken` | 422 | A live booking already has this `project_id` + `unit_no`. `details.project_id`, `details.unit_no` |
+| `project_and_listing` | 422 | A booking has `project_id` or `property_id`, not both |
+| `listing_not_found` | 422 | `property_id` is not this firm's listing and not a Marketplace listing this firm can see |
+| `listing_already_booked` | 422 | This firm already has a live booking on that listing. `details.booking_id`, `details.code`. Another firm may still book it |
 | `project_name_clash` | 422 | Booking a catalog project whose name already exists in My Projects. `details.existing_project_id`, `details.name`. Retry with `use_existing` or `new_name` |
 | `form6_unavailable` | 403 | Form 6 write, preview and download, when the firm's city is not in Maharashtra |
 

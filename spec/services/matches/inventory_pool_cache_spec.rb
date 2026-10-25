@@ -47,4 +47,20 @@ RSpec.describe Matches::InventoryPool do
       "category" => "commercial", "area_sqft" => 400, "pre_leased" => true, "typology_id" => shop.id
     )
   end
+
+  it "drops a booked listing from the next shared-properties read" do
+    memory = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory)
+    listing = create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true,
+      building: create(:building, firm: other, city:, locality:))
+
+    ids = -> {
+      described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)[:properties].map(&:id)
+    }
+    expect(ids.call).to include(listing.id)
+
+    listing.update!(status: "booked")
+
+    expect(ids.call).not_to include(listing.id)
+  end
 end

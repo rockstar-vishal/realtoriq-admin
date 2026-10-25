@@ -724,7 +724,7 @@ module Leads
 
     def codes_match_transaction(type, projects, properties)
       if type == "rent" && projects.any?
-        return reject("Projects can only be linked to a sale lead. Leave Project codes blank, or mark the row as sale.")
+        return reject("Projects can only be shortlisted for a sale lead. Leave Project codes blank, or mark the row as sale.")
       end
 
       properties.each do |property|
@@ -771,7 +771,7 @@ module Leads
       return ids if ids.any?
 
       if raw.to_s.strip.empty? && (projects.any? || properties.any?)
-        return reject("Add a location, such as Kharghar, Mumbai. None of the linked listings have one.")
+        return reject("Add a location, such as Kharghar, Mumbai. None of the shortlisted listings have one.")
       end
 
       reject("Location is required. Write it as Kharghar, Mumbai.")

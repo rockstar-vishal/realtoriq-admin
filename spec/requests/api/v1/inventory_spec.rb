@@ -516,6 +516,20 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body.dig("property", "created_by", "id")).to eq(agent.id)
     end
 
+    it "sets available, booked and sold_out" do
+      property = create(:property, firm:, typology:, status: "sold_out", building:)
+      headers = auth
+
+      %w[available booked sold_out].each do |status|
+        patch "/api/v1/properties/#{property.id}", params: { status: }, headers:, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(property.reload.status).to eq(status)
+        expect(response.parsed_body.dig("property", "status")).to eq(status)
+      end
+      expect(AuditEvent.where(action: "property.status_changed", subject: property)).to be_none
+    end
+
     describe "the confidential note" do
       it "is returned on the detail, where the design puts it behind a reveal" do
         create_property

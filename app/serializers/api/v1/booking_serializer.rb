@@ -12,6 +12,7 @@ module Api
             customer_name: booking.customer_name,
             customer_mobile: booking.customer_mobile,
             project: booking.project && { id: booking.project_id, name: booking.project.name },
+            property: property_summary(booking),
             unit_no: booking.unit_no,
             booked_on: booking.booked_on,
             status: booking.status,
@@ -64,6 +65,25 @@ module Api
         # Label and category are the snapshot. id is the project's current row
         # with that typology and label, so the edit form can preselect it
         # after a configuration save replaces the old row.
+        # firm_name is only there for another firm's listing. The title is the
+        # listing's current title, not a copy stored on the booking.
+        def property_summary(booking)
+          listing = booking.property
+          return nil if listing.nil?
+
+          own = listing.firm_id == booking.firm_id
+          summary = {
+            id: listing.id,
+            code: listing.code,
+            title: listing.title,
+            listing_for: listing.listing_for,
+            status: listing.status,
+            own:
+          }
+          summary[:firm_name] = listing.firm&.name unless own
+          summary
+        end
+
         def configuration(booking)
           return nil if booking.typology_id.blank?
 

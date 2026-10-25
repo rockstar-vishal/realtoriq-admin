@@ -44,6 +44,18 @@ RSpec.describe "API v1 lead mappings" do
       expect(Project.across_firms.from_own.where(firm:, name: catalog.name)).not_to exist
     end
 
+    it "says a project already on the shortlist is a duplicate" do
+      create(:lead_project, firm:, lead:, project:)
+
+      post "/api/v1/leads/#{lead.id}/projects", params: { project_id: project.id },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid")
+      expect(response.parsed_body.dig("error", "message"))
+        .to eq("That project is already on this lead's shortlist.")
+    end
+
     it "refuses another firm's project" do
       stranger = create(:project, firm: create(:firm))
 
