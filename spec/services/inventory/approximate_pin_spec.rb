@@ -84,7 +84,7 @@ RSpec.describe "Approximate pins" do
 
     lead.update!(near_lat: nil, near_lng: nil, near_label: nil)
     lead.lead_projects.create!(project: stand_in, firm:)
-    property = create(:property, firm:, typology: two_bhk, building: create(:building, firm:, city:, locality: kharghar))
+    property = create(:property, firm:, typology: two_bhk, city:, locality: kharghar)
     property.update_columns(lat: kharghar.lat, lng: kharghar.lng, pin_approximate: true)
     visit = create(:lead_visit, lead:, firm:, visited_at: Time.current)
     LeadVisitProperty.create!(lead_visit: visit, property:, firm:)

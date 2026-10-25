@@ -37,7 +37,7 @@ RSpec.describe Matches::CurateFirm do
 
   def own_property(price: 10_000_000)
     create(:property, firm:, typology: two_bhk, price:,
-      building: create(:building, firm:, city:, locality:))
+      city:, locality:)
   end
 
   def match_ids_for(lead)
@@ -75,7 +75,7 @@ RSpec.describe Matches::CurateFirm do
       listing = own_property
       mapped = own_property
       shared = create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
-        building: create(:building, firm: other_firm, city:, locality:))
+        city:, locality:)
       lead = ready_lead(name: "Asha")
       dead = ready_lead(lead_status: dead_status, dead_reason: "Gone quiet", name: "Quiet")
       skipped = ready_lead(unqualified: true, name: "Skip")
@@ -427,7 +427,7 @@ RSpec.describe Matches::CurateFirm do
     bare.typologies << two_bhk
     bare.localities << locality
     shared = create(:property, firm: other_firm, typology: two_bhk, price: 50_000_000, listed_on_marketplace: true,
-      building: create(:building, firm: other_firm, city:, locality:))
+      city:, locality:)
 
     travel_to zone.local(2026, 10, 8, 11) do
       digest = described_class.call(firm:, announce: false)
@@ -474,7 +474,7 @@ RSpec.describe Matches::CurateFirm do
     place(panvel, east_m: 12_000)
     lat, lng = shifted
     listing = create(:property, firm:, typology: two_bhk, price: 10_000_000,
-      building: create(:building, firm:, city:, locality: kharghar, lat:, lng:))
+      city:, locality: kharghar, lat:, lng:)
     preferred = ready_lead(name: "Zara")
     pin_lead = create(:lead, firm:, lead_status: live_status, budget_max: 8_000_000,
       transaction_type: "sale", property_type: ready_type, name: "Aaron")
@@ -510,7 +510,7 @@ RSpec.describe Matches::CurateFirm do
   def shop_at(typology, locality, price:, area_value:, north_m: 0, east_m: 0)
     lat, lng = shifted(north_m:, east_m:)
     create(:property, firm:, typology:, price:, area_value:, area_unit: "sqft",
-      building: create(:building, firm:, city:, locality:, lat:, lng:))
+      city:, locality:, lat:, lng:)
   end
 
   def ready_lead_named(name)

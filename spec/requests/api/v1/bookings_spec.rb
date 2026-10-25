@@ -951,7 +951,7 @@ RSpec.describe "API v1 bookings" do
   describe "a booking on a listing" do
     let(:typology) { create(:typology, name: "2 BHK") }
     let(:powai) { create(:locality, name: "Powai") }
-    let(:property) { create(:property, firm:, typology:, building: create(:building, firm:, city: powai.city, locality: powai)) }
+    let(:property) { create(:property, firm:, typology:, city: powai.city, locality: powai) }
 
     def book_listing(headers, listing = property, extra = {})
       create_booking(headers, { property_id: listing.id, unit_no: nil }.merge(extra))
@@ -1059,7 +1059,7 @@ RSpec.describe "API v1 bookings" do
       headers = auth
       book_listing(headers)
       id = response.parsed_body.dig("booking", "id")
-      other_listing = create(:property, firm:, typology:, building: property.building)
+      other_listing = create(:property, firm:, typology:, city: property.city, locality: property.locality)
 
       patch "/api/v1/bookings/#{id}", params: {
         property_id: other_listing.id, mark_property_booked: true

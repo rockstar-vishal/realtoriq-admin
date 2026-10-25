@@ -65,7 +65,7 @@ RSpec.describe "residential match regression" do
     create(:project, firm:, city:, locality: other, name: "Elsewhere", starting_budget: 9_000_000).tap do |project|
       create(:project_typology, project:, typology: two_bhk, starting_price: 9_000_000)
     end
-    create(:property, firm:, typology: two_bhk, price: 10_000_000, building: create(:building, firm:, city:, locality:))
+    create(:property, firm:, typology: two_bhk, price: 10_000_000, city:, locality:)
 
     rows = Inventory::MatchInventory.new(lead:).call
 
@@ -82,7 +82,7 @@ RSpec.describe "residential match regression" do
     project = create(:project, firm:, city:, locality:, starting_budget: 10_100_000)
     create(:project_typology, project:, typology: ultima, starting_price: 10_100_000)
     create(:property, firm:, typology: two_bhk, listing_for: "rent", price: 50_000,
-      building: create(:building, firm:, city:, locality:))
+      city:, locality:)
 
     rows = Inventory::MatchInventory.new(lead:).call
     expect(rows.map { |row| [ row[:id], row[:score] ] }).to eq([ [ project.id, 100 ] ])
@@ -103,15 +103,15 @@ RSpec.describe "residential match regression" do
       past = project_named("Past", price: 10_000_000, possession_on: Date.new(2025, 9, 1))
       project_named("Later", price: 10_000_000, possession_on: Date.new(2027, 6, 1))
       listing = create(:property, firm:, typology: two_bhk, price: 10_000_000,
-        building: create(:building, firm:, city:, locality:))
+        city:, locality:)
 
       expect(Inventory::MatchInventory.new(lead: ready).call.map { |row| row[:id] }).to contain_exactly(past.id, soon.id, listing.id)
 
       buyer = sale_lead(ready_type)
       weak = create(:property, firm: other_firm, typology: two_bhk, price: 20_000_000, listed_on_marketplace: true,
-        building: create(:building, firm: other_firm, city:, locality:))
+        city:, locality:)
       strong = create(:property, firm: other_firm, typology: three_bhk, price: 11_000_000, listed_on_marketplace: true,
-        building: create(:building, firm: other_firm, city:, locality:))
+        city:, locality:)
       rows = Inventory::MatchInventory.new(lead: buyer).call
       strong_row = rows.find { |row| row[:id] == strong.id }
 

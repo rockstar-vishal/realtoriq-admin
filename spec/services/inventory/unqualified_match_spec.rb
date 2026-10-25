@@ -14,11 +14,11 @@ RSpec.describe "unqualified leads are left out of matching" do
   let(:manager) { create(:user, :manager, firm:) }
   let(:own_listing) do
     create(:property, firm:, typology: two_bhk, price: 10_000_000,
-      building: create(:building, firm:, city:, locality:))
+      city:, locality:)
   end
   let(:shared_listing) do
     create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
-      building: create(:building, firm: other_firm, city:, locality:))
+      city:, locality:)
   end
 
   before { Current.firm = firm }

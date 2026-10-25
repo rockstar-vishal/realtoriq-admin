@@ -63,8 +63,7 @@ RSpec.describe Leads::Import do
   end
 
   it "links a property and uses the building locality when Location is blank" do
-    building = create(:building, firm:, city:, locality: kharghar)
-    listing = create(:property, firm:, building:, typology:, listing_for: "sale")
+    listing = create(:property, firm:, city:, locality: kharghar, typology:, listing_for: "sale")
 
     result = import([ sale(property_codes: listing.code, location: nil, configurations: nil) ])
 
@@ -77,8 +76,7 @@ RSpec.describe Leads::Import do
   it "links a shared listing and takes the location from that firm's building" do
     other = create(:firm, status: :active)
     listing = Current.set(firm: other) do
-      building = create(:building, firm: other, city:, locality: kharghar)
-      create(:property, firm: other, building:, typology:, listing_for: "sale", listed_on_marketplace: true)
+      create(:property, firm: other, city:, locality: kharghar, typology:, listing_for: "sale", listed_on_marketplace: true)
     end
 
     result = import([ sale(property_codes: listing.code, location: nil, configurations: nil) ])
@@ -137,8 +135,8 @@ RSpec.describe Leads::Import do
   it "reports a suspended firm's property code as unknown and does not reveal it" do
     other = create(:firm, :suspended, name: "Quiet Estates")
     listing = Current.set(firm: other) do
-      building = create(:building, firm: other, city:, locality: kharghar, name: "Quiet Tower")
-      create(:property, firm: other, building:, typology:, listing_for: "sale", listed_on_marketplace: true)
+      create(:property, firm: other, city:, locality: kharghar, building_name: "Quiet Tower", typology:,
+        listing_for: "sale", listed_on_marketplace: true)
     end
 
     by_code = import([ sale(property_codes: listing.code) ])

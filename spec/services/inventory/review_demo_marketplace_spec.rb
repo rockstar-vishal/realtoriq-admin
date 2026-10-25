@@ -24,13 +24,13 @@ RSpec.describe "Review demo marketplace scope" do
 
   def shared_property(firm)
     create(:property, firm:, typology:, price: 11_000_000, listed_on_marketplace: true,
-      building: create(:building, firm:, city:, locality:, name: "Sea Face"))
+      city:, locality:, building_name: "Sea Face")
   end
 
   it "does not show another firm's listing to a review demo lead" do
     three_bhk = create(:typology, name: "3 BHK")
     listing = create(:property, firm: other, typology: three_bhk, price: 11_000_000, listed_on_marketplace: true,
-      building: create(:building, firm: other, city:, locality:, name: "Sea Face"))
+      city:, locality:, building_name: "Sea Face")
     buyer = create(:firm, status: :active)
     ordinary = lead_for(buyer)
     Current.firm = buyer

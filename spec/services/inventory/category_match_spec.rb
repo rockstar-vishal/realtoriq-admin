@@ -47,7 +47,7 @@ RSpec.describe "categorised matching examples" do
     carpet_area_sqft: nil, pre_leased: false)
     create(:property, firm: owner, typology:, listing_for:, price:, area_value:, area_unit:, carpet_area_sqft:,
       pre_leased:, details: pre_leased ? { "lease_monthly_rent" => 100_000 } : {},
-      building: create(:building, firm: owner, city:, locality:))
+      city:, locality:)
   end
 
   def add_project(name:, starting_budget:, possession_on:, rows:)

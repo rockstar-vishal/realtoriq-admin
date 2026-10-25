@@ -187,7 +187,7 @@ module Api
                           listing_for: property.listing_for,
                           status: property.status,
                           price: property.price,
-                          building: property.building_name.present? ? { id: property.building_id, name: property.building_name } : nil
+                          building_name: property.building_name.presence
                         }
                       end
           }

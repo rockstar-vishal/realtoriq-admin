@@ -12,7 +12,7 @@ observed against a live server; nothing is aspirational.
 - [Dashboard](#dashboard)
 - [Reports](#reports)
 - [Leads](#leads)
-- [Inventory — projects, buildings, properties](#inventory)
+- [Inventory — projects, properties](#inventory)
 - [Bookings and money](#bookings-and-money)
 - [File uploads](#file-uploads)
 - [Firm contact channels](#firm-contact-channels)
@@ -763,8 +763,9 @@ Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
 (`YYYY-MM-DD` in IST, or `null`). A siteless visit does not flip these.
 `mapped_projects[].project.starting_budget` is whole rupees.
 `mapped_properties[].property` includes `price`, `listing_for`, and
-`building.name` when the listing has a building. A visit row carries the same
-price fields on `projects[]` and `properties[]`.
+`building_name` when the listing belongs to this firm. A visit row carries the
+same price fields on `projects[]` and `properties[]`, and `building_name` on a
+property that belongs to this firm. Another firm's listing leaves that name out.
 
 ### Other lead endpoints
 
@@ -1273,12 +1274,12 @@ prospect writes `prospect_deleted` on that prospect (status, no phone).
 
 ## Inventory
 
-`builders`, `projects`, `buildings`, `properties`. **No delete anywhere** —
+`builders`, `projects`, `properties`. **No delete anywhere** —
 archiving is a status change.
 
 A **project** is a builder's development, sold from a brochure. A **property** is
-one resale or rental listing inside a **building**. Amenities live on the
-building, because every flat in it shares the same pool.
+one resale or rental listing. It carries its own place and its own amenities
+(`has_pool`, `has_gym`).
 
 Every project has a global `code` (`P-` and six characters) and every property
 has one (`H-` and six characters). They are random, not a sequence, and they
@@ -1464,22 +1465,15 @@ List and detail also carry `city_id` and `locality_id` (the names stay as
 `city` / `locality`). Use the ids when editing; rematching by name can attach
 the wrong locality.
 
-### `POST /buildings` and `POST /properties`
+### `POST /properties`
 
-Buildings: `name` (**required**), `city_id`, `locality_id`, `address`, `lat`,
-`lng`, `google_place_id`, `has_pool`, `has_gym`. Unique on
-**(firm, name, locality)** — one broker's typo must not reach another firm's
-dropdown.
-
-Properties: `building_name` (**required**), `city_id`, `locality_id`, `address`,
+`building_name` (**required**), `city_id`, `locality_id`, `address`,
 `lat`, `lng`, `google_place_id`, `has_pool`, `has_gym`, `typology_id`,
 `listing_for` (`sale` · `rent`),
 `price`, `carpet_area_sqft`, `area_value`, `area_unit`, `details`, `pre_leased`,
 `floor_band` (`lower` · `middle` · `higher`),
 `available_from`, `description`, `confidential_note`, `status`,
-`listed_on_marketplace` (boolean, default true). A create or update that sends
-`building_id` and none of those location fields still fills them from that
-building. That path is temporary. `lat` and `lng` are required on this form
+`listed_on_marketplace` (boolean, default true). `lat` and `lng` are required on this form
 ("Place the pin on the map"). A pin outside India (lat 6–37, lng 68–98) is
 rejected. Turning `listed_on_marketplace` off hides the
 listing from other firms' matches and from `marketplace_firms`. A mapping
@@ -1534,8 +1528,7 @@ locality centre placed for a demo listing, not a spot the broker chose.
 Matching, anchors, shown distance, and map links treat that pin as missing.
 Sending `lat` or `lng` that differs from the stored pin clears the flag.
 Sending the same pin, or omitting it, keeps the flag. Clients do not send
-`pin_approximate`. `building` is still present and **deprecated**: it is built from
-those fields, and its `id` is the old `building_id` (null on a new listing).
+`pin_approximate`.
 They also include `code`, `listed_on_marketplace` and `match_label`
 (`Rent`, or `Sale · Ready possession` — a property has no possession month).
 A Plot & Land sale reads `Sale`.
@@ -1622,7 +1615,7 @@ linked to this project id.
 
 Own-firm leads use the same lead payload as the project endpoint, including
 `mobile` and `status`, at the above-30 floor. A sale listing matches ready-possession leads. A rental matches
-rent leads. The lead must prefer the building's locality, or, once nearby
+rent leads. The lead must prefer the listing's locality, or, once nearby
 matching is on, a neighbor of it or a tagged pin within 6 km. Booked and sold-out
 listings return `[]`. An unqualified lead is left out. A booked lead is left out. A dead lead still matches.
 

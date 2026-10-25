@@ -25,7 +25,7 @@ RSpec.describe Matches::InventoryPool do
     end
     create(:property, firm: other, typology: shop, price: 8_000_000, listed_on_marketplace: true,
       carpet_area_sqft: 400, pre_leased: true, details: { "lease_monthly_rent" => 80_000 },
-      building: create(:building, firm: other, city:, locality:))
+      city:, locality:)
 
     described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)
 
@@ -52,7 +52,7 @@ RSpec.describe Matches::InventoryPool do
     memory = ActiveSupport::Cache::MemoryStore.new
     allow(Rails).to receive(:cache).and_return(memory)
     listing = create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true,
-      building: create(:building, firm: other, city:, locality:))
+      city:, locality:)
 
     ids = -> {
       described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)[:properties].map(&:id)

@@ -63,9 +63,9 @@ RSpec.describe "Anchor matching" do
 
   def flat(locality, name: nil, north_m: 0, east_m: 0, price: 10_000_000, firm: self.firm, shared: false)
     lat, lng = shifted(north_m:, east_m:)
-    building = create(:building, firm:, city: locality.city, locality:,
-      name: name || "Tower #{SecureRandom.hex(3)}", lat:, lng:)
-    create(:property, firm:, typology: two_bhk, price:, building:, listed_on_marketplace: shared, status: "available")
+    create(:property, firm:, typology: two_bhk, price:, city: locality.city, locality:,
+      building_name: name || "Tower #{SecureRandom.hex(3)}", lat:, lng:,
+      listed_on_marketplace: shared, status: "available")
   end
 
   def visit(lead, project: nil, property: nil, visited_at: Time.current)

@@ -295,7 +295,7 @@ RSpec.describe "Meta review demo account" do
 
     def listing_for(owner_firm, name:)
       create(:property, firm: owner_firm, typology:, price: 10_000_000, carpet_area_sqft: 700,
-        building: create(:building, firm: owner_firm, city:, locality:, name:))
+        city:, locality:, building_name: name)
     end
 
     def matching_lead(owner_firm, assignee)

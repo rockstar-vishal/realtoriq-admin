@@ -197,33 +197,13 @@ module Api
       ].freeze
 
       def property_params
-        permitted = params.permit(:building_id, *LOCATION_KEYS, :typology_id, :listing_for, :floor_band, :price,
+        permitted = params.permit(*LOCATION_KEYS, :typology_id, :listing_for, :floor_band, :price,
                       :carpet_area_sqft, :area_value, :area_unit, :pre_leased,
                       :available_from, :description,
                       :confidential_note, :status, :listed_on_marketplace, :on_website)
         # DetailSpecs keeps known keys and drops the rest, so the hash is not
         # a list of column names the client is allowed to set.
         permitted[:details] = params[:details].to_unsafe_h if params[:details].respond_to?(:to_unsafe_h)
-        fill_location_from_building(permitted)
-      end
-
-      # Remove in the location cleanup
-      def fill_location_from_building(permitted)
-        return permitted if LOCATION_KEYS.any? { |key| params.key?(key) }
-        return permitted if permitted[:building_id].blank?
-
-        building = Building.find_by(id: permitted[:building_id])
-        return permitted if building.nil?
-
-        permitted[:building_name] = building.name
-        permitted[:city_id] = building.city_id
-        permitted[:locality_id] = building.locality_id
-        permitted[:address] = building.address
-        permitted[:lat] = building.lat
-        permitted[:lng] = building.lng
-        permitted[:google_place_id] = building.google_place_id
-        permitted[:has_pool] = building.has_pool
-        permitted[:has_gym] = building.has_gym
         permitted
       end
 

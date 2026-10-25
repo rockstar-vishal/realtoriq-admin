@@ -130,7 +130,7 @@ RSpec.describe Inventory::MatchInventory do
     project = create(:project, firm:, city:, locality:, starting_budget: 10_100_000)
     create(:project_typology, project:, typology: ultima, starting_price: 10_100_000)
     rental = create(:property, firm:, typology: two_bhk, listing_for: "rent", price: 50_000,
-      building: create(:building, firm:, city:, locality:))
+      city:, locality:)
 
     rows = described_class.new(lead:).call
     expect(rows.map { |row| row[:id] }).to eq([ project.id ])
@@ -144,7 +144,7 @@ RSpec.describe Inventory::MatchInventory do
     lead.localities << locality
     create(:project, firm:, city:, locality:, starting_budget: 10_000_000)
     rental = create(:property, firm:, typology: two_bhk, listing_for: "rent", price: 48_000,
-      building: create(:building, firm:, city:, locality:))
+      city:, locality:)
 
     rows = described_class.new(lead:).call
     expect(rows.map { |row| row[:id] }).to eq([ rental.id ])

@@ -21,8 +21,7 @@ RSpec.describe "Shared property marketplace" do
   let!(:listing) do
     create(:property, firm: other_firm, typology:, price: 10_000_000, carpet_area_sqft: 700,
       description: "Sea-facing unit", confidential_note: "Owner is travelling",
-      building: create(:building, firm: other_firm, city:, locality:, name: "Sea Face Tower",
-        address: "12 Sea Face", lat: 19.0, lng: 72.8))
+      city:, locality:, building_name: "Sea Face Tower", address: "12 Sea Face", lat: 19.0, lng: 72.8)
   end
 
   def auth(user)
@@ -66,6 +65,7 @@ RSpec.describe "Shared property marketplace" do
     expect(mapped["marketplace"]).to be(true)
     expect(mapped["listed_by"]).to eq("Mehta Estates")
     expect(mapped).not_to have_key("building")
+    expect(mapped).not_to have_key("building_name")
   end
 
   it "refuses to map a listing once that firm is suspended" do
@@ -105,7 +105,9 @@ RSpec.describe "Shared property marketplace" do
       params: { visited_on: "2026-09-20", property_ids: [ listing.id ] },
       headers: auth(broker), as: :json
     expect(response).to have_http_status(:created)
-    expect(response.parsed_body.dig("visit", "properties", 0, "building")).to be_nil
+    visit_property = response.parsed_body.dig("visit", "properties", 0)
+    expect(visit_property).not_to have_key("building")
+    expect(visit_property).not_to have_key("building_name")
 
     post "/api/v1/properties/#{listing.id}/lead_matches", headers: auth(owner), as: :json
 
@@ -234,7 +236,8 @@ RSpec.describe "Shared property marketplace" do
       shared = create(:property, firm: other_firm, typology: shop, price: 8_500_000,
         carpet_area_sqft: 450, pre_leased: true,
         details: { "lease_monthly_rent" => 120_000, "tenant_type" => "fb" },
-        building: listing.building)
+        city: listing.city, locality: listing.locality, building_name: listing.building_name,
+        address: listing.address, lat: listing.lat, lng: listing.lng)
 
       get "/api/v1/properties/#{shared.id}/marketplace", headers: auth(broker), as: :json
 
@@ -272,13 +275,16 @@ RSpec.describe "Shared property marketplace" do
     end
 
     it "leaves out own stock, unshared or unavailable listings, and suspended firms" do
-      own = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality:))
+      own = create(:property, firm:, typology:, city:, locality:)
       hidden = create(:property, firm: other_firm, typology:, listed_on_marketplace: false,
-        building: listing.building)
-      booked = create(:property, firm: other_firm, typology:, status: "booked", building: listing.building)
+        city: listing.city, locality: listing.locality, building_name: listing.building_name,
+        address: listing.address, lat: listing.lat, lng: listing.lng)
+      booked = create(:property, firm: other_firm, typology:, status: "booked",
+        city: listing.city, locality: listing.locality, building_name: listing.building_name,
+        address: listing.address, lat: listing.lat, lng: listing.lng)
       quiet = create(:firm, :suspended, name: "Quiet Realty")
       quiet_listing = create(:property, firm: quiet, typology:,
-        building: create(:building, firm: quiet, city:, locality:, name: "Quiet House"))
+        city:, locality:, building_name: "Quiet House")
 
       ids = browse["properties"].map { |row| row["id"] }
 
@@ -288,9 +294,12 @@ RSpec.describe "Shared property marketplace" do
 
     it "searches the firm, locality, city, and configuration, not the building or description" do
       half = create(:typology, name: "2.5 BHK")
-      half_listing = create(:property, firm: other_firm, typology: half, building: listing.building)
+      half_listing = create(:property, firm: other_firm, typology: half,
+        city: listing.city, locality: listing.locality, building_name: listing.building_name,
+        address: listing.address, lat: listing.lat, lng: listing.lng)
       rental = create(:property, firm: other_firm, typology:, listing_for: "rent", price: 50_000,
-        building: listing.building)
+        city: listing.city, locality: listing.locality, building_name: listing.building_name,
+        address: listing.address, lat: listing.lat, lng: listing.lng)
 
       expect(browse(q: "2bhk")["properties"].map { |row| row["id"] }).to include(listing.id, rental.id)
       expect(browse(q: "2bhk")["properties"].map { |row| row["id"] }).not_to include(half_listing.id)

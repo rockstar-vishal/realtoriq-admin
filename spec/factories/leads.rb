@@ -131,13 +131,6 @@ FactoryBot.define do
     firm { nil }
   end
 
-  factory :building do
-    firm
-    city
-    locality { association :locality, city: }
-    sequence(:name) { |n| "Aurum Heights #{n}" }
-  end
-
   factory :project do
     firm
     sequence(:name) { |n| "Aurum Vista #{n}" }
@@ -154,28 +147,13 @@ FactoryBot.define do
 
   factory :property do
     firm
-    building { association :building, firm: }
     typology
     listing_for { "sale" }
     price { 11_800_000 }
     carpet_area_sqft { 690 }
-
-    # Specs still pass a building. Copy its place onto the property at build
-    # time so a pin set on the building is the pin matching reads.
-    after(:build) do |property|
-      source = property.building
-      next if source.nil?
-
-      property.building_name = source.name if property.building_name.blank?
-      property.city = source.city if property.city.blank?
-      property.locality = source.locality if property.locality.blank?
-      property.address = source.address if property.address.blank?
-      property.lat = source.lat if property.lat.blank?
-      property.lng = source.lng if property.lng.blank?
-      property.google_place_id = source.google_place_id if property.google_place_id.blank?
-      property.has_pool = source.has_pool if source.has_pool
-      property.has_gym = source.has_gym if source.has_gym
-    end
+    building_name { "Sunrise Heights" }
+    city
+    locality { association :locality, city: }
   end
 end
 

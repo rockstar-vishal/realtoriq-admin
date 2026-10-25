@@ -17,8 +17,6 @@ class Property < ApplicationRecord
   enum :listing_for, LISTING_FOR.index_by(&:itself), prefix: :for
   enum :status, STATUSES.index_by(&:itself), validate: true
 
-  # The old grouping. New listings leave it blank. Nothing in this model reads it.
-  belongs_to :building, optional: true
   belongs_to :city
   belongs_to :locality
   belongs_to :typology

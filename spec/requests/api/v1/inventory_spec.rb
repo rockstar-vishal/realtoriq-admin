@@ -433,46 +433,30 @@ RSpec.describe "API v1 inventory" do
     end
   end
 
-  describe "buildings" do
-    it "creates one from the design's modal" do
-      post "/api/v1/buildings", params: {
-        name: "Aurum Heights", city_id: city.id, locality_id: locality.id,
-        has_pool: true, has_gym: true
-      }, headers: auth, as: :json
+  it "has no buildings endpoint" do
+    get "/api/v1/buildings", headers: auth
 
-      expect(response).to have_http_status(:created)
-      expect(response.parsed_body.dig("building", "has_pool")).to be(true)
-    end
-
-    it "refuses a locality outside the chosen city" do
-      elsewhere = create(:locality, city: create(:city))
-
-      post "/api/v1/buildings", params: {
-        name: "Nowhere Towers", city_id: city.id, locality_id: elsewhere.id
-      }, headers: auth, as: :json
-
-      expect(response).to have_http_status(:unprocessable_content)
-    end
-
-    it "searches by name for the property form's picker" do
-      create(:building, firm:, name: "Aurum Heights", city:, locality:)
-      create(:building, firm:, name: "Trident Bay Towers", city:, locality:)
-
-      get "/api/v1/buildings", params: { q: "Aurum" }, headers: auth
-
-      expect(response.parsed_body["buildings"].map { |b| b["name"] }).to eq([ "Aurum Heights" ])
-    end
+    expect(response).to have_http_status(:not_found)
   end
 
   describe "properties" do
-    let(:building) { create(:building, firm:, city:, locality:, lat: 19.07, lng: 73.02) }
-
     def create_property(overrides = {})
       post "/api/v1/properties", params: {
-        building_id: building.id, typology_id: typology.id, listing_for: "sale",
+        building_name: "Sunrise Heights", city_id: city.id, locality_id: locality.id,
+        lat: 19.07, lng: 73.02,
+        typology_id: typology.id, listing_for: "sale",
         price: 11_800_000, carpet_area_sqft: 690, floor_band: "middle",
         description: "Corner flat", confidential_note: "Owner: Mr R. Bhatt"
       }.merge(overrides), headers: auth, as: :json
+    end
+
+    it "ignores building_id" do
+      create_property(building_id: SecureRandom.uuid)
+
+      body = response.parsed_body["property"]
+      expect(response).to have_http_status(:created)
+      expect(body).not_to have_key("building")
+      expect(body["building_name"]).to eq("Sunrise Heights")
     end
 
     it "labels a plot sale as Sale and a home sale as ready possession" do
@@ -481,13 +465,16 @@ RSpec.describe "API v1 inventory" do
       plot = create(:typology, name: "Residential plot", code: "residential_plot", category: "land")
 
       post "/api/v1/properties", params: {
-        building_id: building.id, typology_id: plot.id, listing_for: "sale",
+        building_name: "Sunrise Heights", city_id: city.id, locality_id: locality.id,
+        lat: 19.07, lng: 73.02,
+        typology_id: plot.id, listing_for: "sale",
         price: 4_500_000, area_value: "2", area_unit: "guntha"
       }, headers: auth, as: :json
       expect(response).to have_http_status(:created)
       plot_id = response.parsed_body.dig("property", "id")
 
-      rental = create(:property, firm:, typology:, listing_for: "rent", price: 50_000, building:)
+      rental = create(:property, firm:, typology:, listing_for: "rent", price: 50_000,
+        city:, locality:, lat: 19.07, lng: 73.02)
 
       get "/api/v1/properties", headers: auth
       rows = response.parsed_body["properties"]
@@ -508,7 +495,9 @@ RSpec.describe "API v1 inventory" do
 
     it "lets an agent source a listing" do
       post "/api/v1/properties", params: {
-        building_id: building.id, typology_id: typology.id, listing_for: "sale",
+        building_name: "Sunrise Heights", city_id: city.id, locality_id: locality.id,
+        lat: 19.07, lng: 73.02,
+        typology_id: typology.id, listing_for: "sale",
         price: 11_800_000
       }, headers: auth(as: agent), as: :json
 
@@ -517,7 +506,7 @@ RSpec.describe "API v1 inventory" do
     end
 
     it "sets available, booked and sold_out" do
-      property = create(:property, firm:, typology:, status: "sold_out", building:)
+      property = create(:property, firm:, typology:, status: "sold_out", city:, locality:, lat: 19.07, lng: 73.02)
       headers = auth
 
       %w[available booked sold_out].each do |status|
@@ -643,8 +632,7 @@ RSpec.describe "API v1 inventory" do
     it "matches the card title, the building name and the description, and not the city" do
       locality.update!(name: "Kharghar")
       city.update!(name: "Navi Mumbai")
-      building.update!(name: "Seawoods Grand")
-      create_property
+      create_property(building_name: "Seawoods Grand")
 
       headers = auth
       titles = ->(q) {
@@ -661,8 +649,7 @@ RSpec.describe "API v1 inventory" do
     end
 
     it "leaves booked and sold listings out of a search that does not ask for them" do
-      building.update!(name: "Seawoods Grand")
-      create_property(status: "sold_out", description: "Seawoods Grand penthouse")
+      create_property(building_name: "Seawoods Grand", status: "sold_out", description: "Seawoods Grand penthouse")
 
       get "/api/v1/properties", params: { q: "Seawoods" }, headers: auth
       expect(response.parsed_body["properties"]).to eq([])
@@ -671,7 +658,7 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body["properties"].size).to eq(1)
     end
 
-    it "filters by locality through the building" do
+    it "filters by locality" do
       create_property
 
       get "/api/v1/properties", params: { locality_id: locality.id }, headers: auth
@@ -684,7 +671,7 @@ RSpec.describe "API v1 inventory" do
     it "returns 404 for another firm's property" do
       other_firm = create(:firm)
       other = create(:property, firm: other_firm,
-        building: create(:building, firm: other_firm), typology:)
+        typology:)
 
       get "/api/v1/properties/#{other.id}", headers: auth
 
@@ -693,8 +680,7 @@ RSpec.describe "API v1 inventory" do
   end
 
   describe "photos" do
-    let(:building) { create(:building, firm:, city:, locality:, lat: 19.07, lng: 73.02) }
-    let(:property) { create(:property, firm:, building:, typology:) }
+    let(:property) { create(:property, firm:, city:, locality:, lat: 19.07, lng: 73.02, typology:) }
 
     # The real flow is: ticket → client PUTs the file to storage → attach.
     # Skipping the middle step leaves a blob record with no file behind it, so
@@ -849,7 +835,7 @@ RSpec.describe "API v1 inventory" do
     def names(path, **params)
       get path, params:, headers: auth
       key = path.split("/").last
-      response.parsed_body[key].map { |r| r.dig("building", "name") || r["name"] }
+      response.parsed_body[key].map { |r| r["building_name"] || r["name"] }
     end
 
     describe "projects" do
@@ -917,15 +903,15 @@ RSpec.describe "API v1 inventory" do
       before do
         travel_to(3.days.ago) do
           create(:property, firm:, typology:,
-                            building: create(:building, firm:, city:, locality:, name: "Cedar Court"))
+                            city:, locality:, building_name: "Cedar Court")
         end
         travel_to(2.days.ago) do
           create(:property, firm:, typology:,
-                            building: create(:building, firm:, city:, locality:, name: "Aurum Heights"))
+                            city:, locality:, building_name: "Aurum Heights")
         end
         travel_to(1.day.ago) do
           create(:property, firm:, typology:,
-                            building: create(:building, firm:, city:, locality:, name: "Bayview"))
+                            city:, locality:, building_name: "Bayview")
         end
       end
 

@@ -48,6 +48,19 @@ RSpec.describe "API v1 lead visits" do
       expect(detail["visit_count"]).to eq(1)
     end
 
+    it "names the building on the firm's own visit" do
+      create(:lead_property, lead:, property:)
+
+      post "/api/v1/leads/#{lead.id}/visits",
+        params: { visited_on: "2026-09-20", property_ids: [ property.id ] },
+        headers: auth(agent), as: :json
+
+      row = response.parsed_body.dig("visit", "properties", 0)
+      expect(response).to have_http_status(:created)
+      expect(row).not_to have_key("building")
+      expect(row["building_name"]).to eq(property.building_name)
+    end
+
     it "rejects a project that is not mapped to the lead" do
       post "/api/v1/leads/#{lead.id}/visits",
         params: { visited_on: "2026-09-20", project_ids: [ project.id ] },

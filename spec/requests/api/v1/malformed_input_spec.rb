@@ -82,7 +82,7 @@ RSpec.describe "API v1 malformed input" do
     it "applies to every index endpoint, not just leads" do
       headers = auth
 
-      %w[/api/v1/leads /api/v1/projects /api/v1/properties /api/v1/buildings /api/v1/bookings].each do |path|
+      %w[/api/v1/leads /api/v1/projects /api/v1/properties /api/v1/bookings].each do |path|
         get path, params: { page: "0" }, headers: headers
         expect(response).to have_http_status(:ok), "#{path} returned #{response.status} for page=0"
       end
@@ -144,7 +144,7 @@ RSpec.describe "API v1 malformed input" do
     # 500 HTML page for `q=a%00b`. BaseController now removes them for all.
     let(:nul) { 0.chr }
 
-    %w[/api/v1/leads /api/v1/projects /api/v1/properties /api/v1/buildings /api/v1/bookings].each do |path|
+    %w[/api/v1/leads /api/v1/projects /api/v1/properties /api/v1/bookings].each do |path|
       it "does not crash #{path}?q=" do
         get path, params: { q: "a#{nul}b" }, headers: auth
 

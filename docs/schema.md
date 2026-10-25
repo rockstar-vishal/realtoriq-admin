@@ -121,8 +121,6 @@ Remapping to a project that does not offer the stored category clears it.
 The importer uses that category only while the project still offers it, and
 otherwise uses the project's primary category.
 
-**Buildings are deliberately not here** — see Phase 2.
-
 `locality_neighbors` stores both directions of a pair whose centers are within
 6 km (`distance_m`). While anchor matching is off the pair stays inside one
 city. `matches:anchor_enable` rebuilds pairs across cities, still one hop and
@@ -257,7 +255,7 @@ destroys invoices and collections, so that check is what keeps money records.
 
 ### Inventory — **built**
 
-`builders` (extended), `projects`, `project_typologies`, `buildings`,
+`builders` (extended), `projects`, `project_typologies`,
 `properties`, `lead_projects`, `lead_properties`. Columns are in the migrations; the rules that aren't obvious:
 
 - **`builders` now carries a nullable `firm_id`.** NULL is the platform's
@@ -292,17 +290,13 @@ destroys invoices and collections, so that check is what keeps money records.
   id. A failed call leaves no row, so the same id can be retried.
 - **`properties.created_by_user_id`** is stamped on create (nullable on older
   rows) and nullified if that user is deleted.
-- **`buildings` are firm-owned**, unique on `(firm_id, name, locality_id)`. One
-  broker's typo must not reach every other firm's dropdown. The accepted cost is
-  duplication across firms.
 - **`properties` own their location.** `building_name` (required, 160),
   `city_id`, `locality_id`, `address`, `lat`, `lng` (`decimal(10,7)`),
-  `google_place_id`, `has_pool`, and `has_gym` were copied from `buildings`.
+  `google_place_id`, `has_pool`, and `has_gym`.
   `pin_approximate` (boolean, not null, default false) is on `properties` and
   `projects`. It marks a pin that `locations:approximate_pins` copied from the
   locality centre. A save that changes `lat` or `lng` clears it. Matching and
-  map links treat it as no pin.
-  `building_id` stays nullable for the old grouping. Indexes:
+  map links treat it as no pin. Indexes:
   `(firm_id, locality_id)`, `(locality_id)`, and
   `(city_id, lat, lng)` where both coordinates are present.
 - **`properties.status`** is `available` · `booked` · `sold_out`. Any status may
@@ -325,8 +319,7 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`firms.about`**, **`website_phone`**, **`lat` / `lng` / `google_place_id`**
   are the Brand Website profile. The phone is not a contact channel. The pin
   is both coordinates or neither.
-- Amenities (`has_pool`, `has_gym`) live on the **building**, not the listing —
-  every flat in it shares the same pool.
+- Amenities (`has_pool`, `has_gym`) live on the **property**.
 
 **Derived, never stored**: a project's price and area bands (min/max across its
 typologies), per-config rate per sqft, and **`avg_psf`** on the project (unweighted

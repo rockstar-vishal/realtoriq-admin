@@ -14,9 +14,14 @@ RSpec.describe "Firm website" do
       address: "12 Canal Road", rera_number: "P52100099999")
   end
   let!(:project_typology) { create(:project_typology, project:, typology:) }
-  let(:building) { create(:building, firm:, city:, locality:, name: "Lake View", has_pool: true) }
-  let!(:sale) { create(:property, firm:, building:, typology:, listing_for: "sale", confidential_note: "VAULT-NOTE-77") }
-  let!(:rental) { create(:property, firm:, building:, typology:, listing_for: "rent", price: 45_000) }
+  let!(:sale) do
+    create(:property, firm:, city:, locality:, building_name: "Lake View", has_pool: true, typology:,
+      listing_for: "sale", confidential_note: "VAULT-NOTE-77")
+  end
+  let!(:rental) do
+    create(:property, firm:, city:, locality:, building_name: "Lake View", has_pool: true, typology:,
+      listing_for: "rent", price: 45_000)
+  end
   let(:host) { "cp-#{firm.slug}.realtoriq.kgen.tech" }
 
   before do
@@ -360,14 +365,13 @@ RSpec.describe "Firm website" do
     create(:project_typology, project: mixed, typology: shop, starting_price: 4_000_000, starting_carpet_sqft: 450)
     create(:project_typology, project: mixed, typology: plot, starting_price: 4_500_000,
       area_value: 2, area_unit: "guntha")
-    building = create(:building, firm: site, city: place, locality: area, name: "Harbour Block")
-    shop_home = create(:property, firm: site, building:, typology: shop, listing_for: "sale",
+    shop_home = create(:property, firm: site, city: place, locality: area, building_name: "Harbour Block", typology: shop, listing_for: "sale",
       price: 8_500_000, area_value: 450, area_unit: "sqft", pre_leased: true,
       details: {
         "frontage_ft" => 20, "main_road" => true,
         "lease_monthly_rent" => 120_000, "tenant_type" => "bank", "lock_in_until" => "2027-03-01"
       })
-    plot_home = create(:property, firm: site, building:, typology: plot, listing_for: "sale",
+    plot_home = create(:property, firm: site, city: place, locality: area, building_name: "Harbour Block", typology: plot, listing_for: "sale",
       price: 4_500_000, area_value: 2, area_unit: "guntha",
       details: { "road_width_ft" => 30 })
     site_host = "cp-#{site.slug}.realtoriq.kgen.tech"

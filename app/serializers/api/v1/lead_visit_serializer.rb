@@ -20,9 +20,8 @@ module Api
               id: property.id,
               title: shared ? card[:title] : property.title,
               price: property.price,
-              listing_for: property.listing_for,
-              building: shared ? nil : (property.building_name.present? ? { name: property.building_name } : nil)
-            }
+              listing_for: property.listing_for
+            }.tap { |row| row[:building_name] = property.building_name.presence unless shared }
           },
           created_at: visit.created_at
         }

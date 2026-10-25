@@ -46,10 +46,7 @@ class Firm < ApplicationRecord
   has_many :leads, dependent: :destroy
   has_many :bookings, dependent: :destroy
   has_many :projects, dependent: :destroy
-  # Properties before buildings: a building refuses to go while it still holds
-  # listings, and dependent order is declaration order.
   has_many :properties, dependent: :destroy
-  has_many :buildings, dependent: :destroy
   # Builders a broker added inline. The platform's global list has no firm and
   # is untouched by this.
   has_many :builders, dependent: :destroy
