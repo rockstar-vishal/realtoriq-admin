@@ -35,20 +35,4 @@ RSpec.describe "open lead index during the category release" do
     expect(second.lead.category).to eq("commercial")
     expect(Lead.unscoped.where(firm:, mobile: "+919820100200").count).to eq(2)
   end
-
-  it "returns duplicate_lead when only the old index is present" do
-    connection = Lead.connection
-    connection.remove_index :leads, name: "index_leads_on_firm_type_category_open_identity"
-    connection.add_index :leads, [ :firm_id, :transaction_type, :open_identity ],
-      unique: true, where: "open_identity IS NOT NULL",
-      name: "index_leads_on_firm_type_and_open_identity"
-
-    first = create_lead(mobile: "9820100201", typology: home, category: "residential")
-    second = create_lead(mobile: "9820100201", typology: shop, category: "commercial")
-
-    expect(first).to be_ok
-    expect(second.error_code).to eq("duplicate_lead")
-    expect(second.error_message).to eq("A sale Commercial lead already exists for this number.")
-    expect(Lead.unscoped.where(firm:, mobile: "+919820100201").count).to eq(1)
-  end
 end

@@ -48,7 +48,7 @@ module Leads
       # repeat ids, and only this category's ids may be copied.
       rejected = assign_category(lead)
       return rejected if rejected
-      return duplicate_result(lead) if lead.duplicate_on_mobile_and_type
+      return duplicate_result(lead) if lead.duplicate_open_lead
 
       attempts = 0
 
@@ -85,8 +85,8 @@ module Leads
       Result.new(ok?: true, lead:)
     rescue ActiveRecord::RecordInvalid => e
       record = e.record
-      return duplicate_result(record) if record.respond_to?(:duplicate_on_mobile_and_type) &&
-        record.duplicate_on_mobile_and_type
+      return duplicate_result(record) if record.respond_to?(:duplicate_open_lead) &&
+        record.duplicate_open_lead
 
       Result.new(ok?: false, lead: record, errors: record.errors)
     end
@@ -280,7 +280,7 @@ module Leads
     end
 
     def duplicate_result(lead)
-      existing = lead.duplicate_on_mobile_and_type
+      existing = lead.duplicate_open_lead
       Result.new(
         ok?: false, lead:,
         error_code: "duplicate_lead",
