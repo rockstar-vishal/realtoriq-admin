@@ -588,7 +588,7 @@ result; it is not stored. Download the failures before leaving the page.
 
 | | |
 | --- | --- |
-| `GET /leads/import_template` | Sample CSV. The example row (`Example lead` / `9000000000`) is skipped if it is left unchanged |
+| `GET /leads/import_template` | Sample CSV. Three example rows (`Example lead` / `9000000000`: a home, a shop, a plot) are skipped if left unchanged. A file of only those rows is `422` and says to replace Example lead. A header with no rows still says the file has no leads |
 | `POST /leads/import` | Multipart field `file`. At most 1 MB and 200 data rows |
 
 A workbook (`.xlsx`), a semicolon-separated file, a missing Mobile / Sale or
@@ -611,8 +611,9 @@ nothing.
 `cells` is present on failures only, in the sample's column order, so the
 file can be fixed and uploaded again. An `Error` column on that file is ignored.
 
-Each created row goes through the normal lead create. It is assigned to the
-signed-in user and starts as New. There is no status or next-action column.
+Each created row goes through the normal lead create and starts as New.
+A blank **Assigned to** keeps the lead with the person importing. There is
+no status column.
 
 Sheet rules:
 
@@ -625,6 +626,10 @@ Sheet rules:
 - **Location** is added to the localities on the linked listings, not used instead of them. Leave it blank to use only those. Write `Kharghar, Mumbai`. Navi Mumbai, Thane and Palghar are localities of Mumbai, not cities. A locality name that exists once may be written on its own. Several places are separated by semicolons.
 - A project code on a rent row fails. A property is linked only when its sale/rent matches the row. An unknown code, an archived project, or a sold property fails the row and does not create the lead. A private code from another firm, and a code belonging to a firm that is not active, are reported as unknown. A shared property links only while that firm is active, matching `GET /properties/marketplace`.
 - The same mobile may be imported once per category, and once as sale and once as rent. A second open row of the same kind and category fails. The message names the category (`A sale Commercial lead already exists for this number`). When the caller can see that lead, the error includes its code.
+- **Assigned to** is optional. A team member's mobile (the same shapes as Mobile) or email. Blank means the person importing. An unknown value is `No active team member has {value}.` A disabled member is `{name} is disabled. Assign someone else or leave it blank.` An agent may only name their own mobile or email; anything else is `Only a manager can assign leads to someone else.` A manager can assign someone on their team, the same people the New lead form offers.
+- **Next call** is optional. `DD/MM/YYYY HH:MM` in 24-hour time, or `DD/MM/YYYY` alone, which means 11:00. Read in IST. A past time is kept and shows as overdue. A bad value is `Type the next call as DD/MM/YYYY HH:MM, for example 28/10/2026 11:00.`
+- **Next call note** is optional and has no length cap, the same as the new-lead form's note. It needs a Next call: `Add a Next call, or leave the note blank.` With both, the row is the opening follow-up (`followup: { comment, next_action_at }`). A time with no note is stored as the lead's next call and does not invent a comment.
+- **Near place** and **Near place pin** are both filled or both blank: `Near place needs both a name and a pin.` The pin is `lat,lng`, or a full Google Maps link containing `@lat,lng`, `q=lat,lng` or `query=lat,lng`. A short link (`maps.app.goo.gl`, `goo.gl/maps`) is `Paste the full Google Maps link, or lat,lng. Short links can't be read.` The name is at most 40 characters and the pin must be inside India; those failures use the lead's own messages (`Near label is too long (maximum is 40 characters)`, `The place must be inside India.`). The address is left blank. A file that omits these columns imports as before.
 
 `code` on a project and on a property is this import code. It is not
 `external_ref` and it is not the lead's `L-0001`.
@@ -1238,7 +1243,9 @@ does not refresh the existing prospect.
 Numbers: spaces, dashes, dots, `+91`, a leading `0`, `0091`, a `wa.me` link, a
 number buried in a sentence, and a trailing Excel `.0` are accepted. Landlines,
 numbers that do not start with 6–9, two different mobiles in one cell, and
-Excel scientific notation are rejected. This extractor is prospect-only.
+Excel scientific notation are rejected. A number that is not a 10-digit
+Indian mobile says `Client number must be a 10-digit mobile number.` This
+extractor is prospect-only.
 `Phone.normalise` for leads is unchanged.
 
 `200`: `{ created_count, failed_count, results }`. Each result is
@@ -2434,20 +2441,22 @@ Super admin only. Every other role is `403 forbidden_role`. Another firm's
 page, form or import id is `404 not_found`. Responses never include
 `access_token`, `page_access_token`, or an OAuth attempt's result.
 
-Meta calls two routes **outside** `/api/v1`, with no broker JWT:
+These routes sit **outside** `/api/v1` and have no broker JWT:
 
 | Method | Path | |
 | --- | --- | --- |
 | GET | `/facebook/webhook` | `hub.mode=subscribe` and the verify token → plain-text `hub.challenge`. Otherwise 403 |
 | POST | `/facebook/webhook` | `X-Hub-Signature-256` must be `sha256=` plus HMAC-SHA256 of the raw body. 401 if it does not match, 413 if the body is over 1 MB, 400 if it is not JSON. 200 when every lead was stored or dropped on purpose. 500 only when a database write failed, so Meta retries |
-| GET | `/facebook/callback` | Facebook's redirect. It only sends the browser to `web_origin/settings/facebook` |
+| GET | `/facebook/callback` | Facebook's redirect. A normal attempt sends the browser to `web_origin/settings/facebook`. A handoff attempt sends it to `web_origin/facebook/done?result=connected`, `denied`, `failed`, or `expired`. The connection is not stored here |
+| GET | `/facebook/start?ticket=` | No broker session. A started, unexpired handoff whose ticket is unused and unexpired is marked used and redirected to the same Facebook authorization URL `POST /facebook/connect` builds. Anything else redirects to `web_origin/facebook/done?result=expired`. A ticket works once |
 
 The broker app uses:
 
 | Method | Path | |
 | --- | --- | --- |
 | GET | `/facebook/integration` | `configured`, `system_user_login`, the newest connection that is `active` or `invalid`, its pages with form listings, import counters. A disconnected firm has `connection: null` |
-| POST | `/facebook/connect` | `{ nonce }` at least 32 characters. Returns `authorization_url` |
+| POST | `/facebook/connect` | `{ nonce }` at least 32 characters. Optional `handoff: true`. Returns `authorization_url` and `attempt_id`. A handoff also returns `handoff_url`, `{web_origin}/facebook/start?ticket=…`. The ticket is 32 random bytes, base64url. Only its SHA-256 is stored. It expires in 10 minutes and works once |
+| GET | `/facebook/connect/:attempt_id` | `{ status, error_code, expires_at }` for the user and firm that started it. Anyone else is `404 not_found`. The installed app polls this when the broker comes back. It does not store the connection |
 | POST | `/facebook/connections` | `{ attempt_id, nonce }`. Stores the connection. `warnings[]` has `kind`, `page_id` and `page_name`. `page_taken` means that Page is held by another firm and was skipped. `subscription_refresh` means the lead subscription could not be refreshed. `page_taken` is a 422 only when every granted Page is held |
 | DELETE | `/facebook/connection` | Stops delivery for the newest `active` or `invalid` connection. Pages, forms and past imports stay. Tokens are cleared, so the Pages are no longer held |
 | POST | `/facebook/connection/health_check` | `{ ok, connection }` for that same connection |

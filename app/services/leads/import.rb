@@ -11,6 +11,10 @@ module Leads
     MAX_CODES = 20
     EXAMPLE_NAME = "example lead"
     EXAMPLE_MOBILE_DIGITS = "9000000000"
+    EXAMPLE_ONLY = "The example rows were skipped. Replace Example lead with your own leads and import that file."
+    NEXT_CALL_FORMAT = "Type the next call as DD/MM/YYYY HH:MM, for example 28/10/2026 11:00."
+    SHORT_PIN = "Paste the full Google Maps link, or lat,lng. Short links can't be read."
+    PIN_FORMAT = "Paste the full Google Maps link, or lat,lng."
     LAUNCHIQ_CODE = /\APR[0-9A-F]+\z/i
     UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
     XLSX_MAGIC = "PK\x03\x04".b
@@ -32,7 +36,12 @@ module Leads
       [ :source_detail, "Source detail" ],
       [ :notes, "Notes" ],
       [ :project_codes, "Project codes" ],
-      [ :property_codes, "Property codes" ]
+      [ :property_codes, "Property codes" ],
+      [ :assigned_to, "Assigned to" ],
+      [ :next_call, "Next call" ],
+      [ :next_call_note, "Next call note" ],
+      [ :near_place, "Near place" ],
+      [ :near_place_pin, "Near place pin" ]
     ].freeze
 
     HEADER_ALIASES = {
@@ -63,15 +72,30 @@ module Leads
     Rejection = Struct.new(:message)
 
     def self.template
-      sample = {
-        name: "Example lead", mobile: "9000000000", transaction_type: "sale",
-        property_type: "Under construction", budget: "12000000",
-        configurations: "2 BHK", location: "Kharghar, Mumbai",
-        possession: "31/12/2027", source: "Referral", notes: "Higher floor"
-      }
+      # Karjat is not in the locality seed. Panvel is a Mumbai locality that is.
+      rows = [
+        {
+          name: "Example lead", mobile: "9000000000", transaction_type: "sale",
+          property_type: "Under construction", budget: "12000000",
+          configurations: "2 BHK", location: "Kharghar, Mumbai",
+          possession: "31/12/2027", source: "Referral", notes: "Higher floor",
+          next_call: "28/10/2026 11:00"
+        },
+        {
+          name: "Example lead", mobile: "9000000000", transaction_type: "sale",
+          property_type: "Ready possession", budget: "15000000",
+          configurations: "Shop", area: "300-500 sqft", prefers_pre_leased: "yes",
+          location: "Goregaon West, Mumbai", source: "Walk-in", notes: "Main road frontage"
+        },
+        {
+          name: "Example lead", mobile: "9000000000", transaction_type: "sale",
+          budget: "8000000", configurations: "Residential plot", area: "2-4 guntha",
+          location: "Panvel, Mumbai", source: "Website"
+        }
+      ]
       CSV.generate do |csv|
         csv << HEADERS.map(&:last)
-        csv << HEADERS.map { |key, _name| sample[key] }
+        rows.each { |sample| csv << HEADERS.map { |key, _name| sample[key] } }
       end
     end
 
@@ -123,12 +147,19 @@ module Leads
       return "The file is missing a #{missing} column." if missing
 
       rows = []
+      skipped_example = false
       table.each.with_index(2) do |csv_row, line|
         fields = extract(csv_row)
-        next if blank_fields?(fields) || example_row?(fields)
+        next if blank_fields?(fields)
+        if example_row?(fields)
+          skipped_example = true
+          next
+        end
 
         rows << { line:, fields:, cells: cells_for(fields) }
       end
+      return EXAMPLE_ONLY if rows.empty? && skipped_example
+
       rows
     rescue CSV::MalformedCSVError
       "This file could not be read. Save it as CSV UTF-8 (comma separated) and upload that."
@@ -207,6 +238,10 @@ module Leads
         raise RowFailed, failure_message(result, prepared) unless result.ok?
 
         link(result.lead, prepared)
+        # A time with no note cannot ride in followup: Create refuses that,
+        # because the new-lead form always sends a comment with the time.
+        # The note is optional here, so the time is written on the lead.
+        result.lead.update!(next_action_at: prepared[:schedule_at]) if prepared[:schedule_at]
         lead = result.lead
       end
       {
@@ -273,6 +308,18 @@ module Leads
       localities = resolve_localities(fields[:location], projects, properties)
       return localities.message if localities.is_a?(Rejection)
 
+      assignee = parse_assignee(fields[:assigned_to])
+      return assignee.message if assignee.is_a?(Rejection)
+
+      next_call = parse_next_call(fields[:next_call])
+      return next_call.message if next_call.is_a?(Rejection)
+
+      note = parse_call_note(fields[:next_call_note], next_call)
+      return note.message if note.is_a?(Rejection)
+
+      place = parse_near_place(fields[:near_place], fields[:near_place_pin])
+      return place.message if place.is_a?(Rejection)
+
       {
         name: fields[:name].to_s.strip.presence,
         mobile:, alt_mobile:, email:, transaction_type: type, property_type:, budget:,
@@ -280,7 +327,10 @@ module Leads
         notes: fields[:notes].to_s.strip.presence, projects:, properties:,
         typologies: typologies[:ids], category:, localities:,
         area_min: area&.dig(:min), area_max: area&.dig(:max), area_unit: area&.dig(:unit),
-        prefers_pre_leased: pre_leased
+        prefers_pre_leased: pre_leased, assignee:,
+        followup: next_call && note ? { comment: note, next_action_at: next_call.iso8601 } : nil,
+        schedule_at: next_call && note.nil? ? next_call : nil,
+        near_place: place, near_place_supplied: place.present?
       }
     end
 
@@ -394,6 +444,96 @@ module Leads
       reject("Type the possession date as DD/MM/YYYY.")
     rescue Date::Error, ArgumentError
       reject("Type the possession date as DD/MM/YYYY.")
+    end
+
+    def parse_assignee(raw)
+      text = raw.to_s.strip
+      return actor if text.empty?
+      return reject("Only a manager can assign leads to someone else.") if actor.agent? && !own_contact?(text)
+
+      member = firm_member(text)
+      return reject("No active team member has #{text}.") if member.nil?
+      if member.disabled?
+        return reject("#{member.name} is disabled. Assign someone else or leave it blank.")
+      end
+      return reject("No active team member has #{text}.") unless User.assignable_scope_for(actor).exists?(id: member.id)
+
+      member
+    end
+
+    def own_contact?(text)
+      normalised = Phone.normalise(text)
+      return true if normalised.present? && normalised == actor.mobile
+
+      actor.email.present? && text.casecmp(actor.email).zero?
+    end
+
+    def firm_member(text)
+      if text.include?("@")
+        firm.users.find_by("lower(email) = ?", text.downcase)
+      else
+        phone = Phone.normalise(text)
+        return nil unless phone.to_s.match?(/\A\+\d{10,15}\z/)
+
+        firm.users.find_by(mobile: phone)
+      end
+    end
+
+    def parse_next_call(raw)
+      text = raw.to_s.strip
+      return nil if text.empty?
+
+      match = text.match(/\A(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?\z/)
+      return reject(NEXT_CALL_FORMAT) unless match
+
+      hour = match[4] ? match[4].to_i : 11
+      minute = match[5] ? match[5].to_i : 0
+      return reject(NEXT_CALL_FORMAT) if hour > 23 || minute > 59
+
+      year = match[3].to_i
+      month = match[2].to_i
+      day = match[1].to_i
+      Date.new(year, month, day)
+      Time.find_zone!(Lead::NCD_ZONE).local(year, month, day, hour, minute)
+    rescue Date::Error, ArgumentError
+      reject(NEXT_CALL_FORMAT)
+    end
+
+    # The new-lead form's note field has no length cap, so this column doesn't either.
+    def parse_call_note(raw, next_call)
+      text = raw.to_s.strip
+      return nil if text.empty?
+      return reject("Add a Next call, or leave the note blank.") if next_call.nil?
+
+      text
+    end
+
+    def parse_near_place(name_raw, pin_raw)
+      name = name_raw.to_s.strip.presence
+      pin_text = pin_raw.to_s.strip
+      return nil if name.nil? && pin_text.empty?
+      return reject("Near place needs both a name and a pin.") if name.nil? || pin_text.empty?
+
+      coords = parse_pin(pin_text)
+      return coords if coords.is_a?(Rejection)
+
+      { label: name, address: nil, lat: coords[0], lng: coords[1] }
+    end
+
+    def parse_pin(text)
+      return reject(SHORT_PIN) if short_map_link?(text)
+
+      match = text.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/) ||
+        text.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?)(?:%2C|,)\s*(-?\d+(?:\.\d+)?)/i)
+      match ||= text.match(/\A(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\z/) unless text.match?(%r{https?://|maps\.|/}i)
+      return reject(PIN_FORMAT) unless match
+
+      [ BigDecimal(match[1]), BigDecimal(match[2]) ]
+    end
+
+    def short_map_link?(text)
+      compact = text.downcase
+      compact.include?("maps.app.goo.gl") || compact.match?(%r{goo\.gl/maps})
     end
 
     def parse_source(raw)
@@ -693,7 +833,10 @@ module Leads
         typology_ids: prepared[:typologies],
         copy_project_typologies: false,
         locality_ids: prepared[:localities],
-        copy_project_localities: false
+        copy_project_localities: false,
+        followup: prepared[:followup],
+        near_place: prepared[:near_place],
+        near_place_supplied: prepared[:near_place_supplied]
       ).call
     end
 
@@ -711,7 +854,7 @@ module Leads
         lead_source_id: prepared[:source]&.id,
         source_detail: prepared[:source_detail],
         notes: prepared[:notes],
-        assigned_user_id: actor.id,
+        assigned_user_id: prepared[:assignee].id,
         prefers_pre_leased: prepared[:prefers_pre_leased]
       }
       if prepared[:area_min]

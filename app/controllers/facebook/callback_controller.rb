@@ -10,7 +10,7 @@ module Facebook
 
       attempt = load_attempt
       if attempt.nil? || !attempt.started? || attempt.expired?
-        return redirect_expired
+        return redirect_expired(attempt)
       end
 
       Current.set(firm: attempt.firm) do
@@ -40,25 +40,44 @@ module Facebook
     end
 
     def deny(attempt)
-      return redirect_expired if attempt.nil? || !attempt.started?
+      return redirect_expired(attempt) if attempt.nil? || !attempt.started?
 
       Current.set(firm: attempt.firm) { attempt.void!(error_code: "denied") }
       redirect_attempt(attempt)
     end
 
     def fail_attempt(attempt, code)
-      return redirect_expired if attempt.nil? || !attempt.started?
+      return redirect_expired(attempt) if attempt.nil? || !attempt.started?
 
       Current.set(firm: attempt.firm) { attempt.update!(status: "failed", error_code: code, result: nil) }
       redirect_attempt(attempt)
     end
 
-    def redirect_expired
-      redirect_facebook("facebook_error=expired")
+    def redirect_expired(attempt = nil)
+      if attempt&.handoff?
+        redirect_done("expired")
+      else
+        redirect_facebook("facebook_error=expired")
+      end
     end
 
     def redirect_attempt(attempt)
-      redirect_facebook("facebook_attempt=#{attempt.id}")
+      if attempt.handoff?
+        redirect_done(done_result(attempt))
+      else
+        redirect_facebook("facebook_attempt=#{attempt.id}")
+      end
+    end
+
+    def done_result(attempt)
+      return "connected" if attempt.completed?
+      return "denied" if attempt.error_code == "denied"
+
+      "failed"
+    end
+
+    def redirect_done(result)
+      redirect_to "#{Credentials.web_origin}/facebook/done?result=#{result}", allow_other_host: true
     end
 
     def redirect_facebook(query)

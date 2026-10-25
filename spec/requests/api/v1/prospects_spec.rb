@@ -93,6 +93,20 @@ RSpec.describe "API v1 prospects" do
       expect(Prospect.unscoped.where(firm_id: firm.id, project_id: project.id).count).to eq(2)
     end
 
+    it "says a client number must be a 10-digit mobile" do
+      csv = CSV.generate do |sheet|
+        sheet << [ "Client number" ]
+        sheet << [ "02226123456" ]
+      end
+
+      post "/api/v1/prospects/import", params: { file: upload(csv) }, headers: auth(agent)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body.dig("results", 0, "error")).to eq(
+        "Client number must be a 10-digit mobile number."
+      )
+    end
+
     it "explains that the sample row is skipped when that is the whole file" do
       post "/api/v1/prospects/import",
         params: { file: upload(Prospects::Import.template) },

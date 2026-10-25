@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_24_190000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_24_230000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -373,7 +373,12 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_24_190000) do
     t.datetime "expires_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "handoff", default: false, null: false
+    t.string "handoff_ticket_digest"
+    t.datetime "handoff_expires_at"
+    t.datetime "handoff_used_at"
     t.index ["firm_id"], name: "index_facebook_oauth_attempts_on_firm_id"
+    t.index ["handoff_ticket_digest"], name: "index_facebook_oauth_attempts_on_handoff_ticket_digest"
     t.index ["user_id"], name: "index_facebook_oauth_attempts_on_user_id"
     t.check_constraint "status::text = ANY (ARRAY['started'::character varying::text, 'completed'::character varying::text, 'failed'::character varying::text, 'consumed'::character varying::text])", name: "facebook_oauth_attempts_status_check"
   end

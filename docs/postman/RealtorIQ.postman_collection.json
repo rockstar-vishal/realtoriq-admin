@@ -1266,7 +1266,7 @@
                 "import"
               ]
             },
-            "description": "Any user. A bad row does not undo earlier rows. Duplicate numbers fail the row and do not refresh the existing prospect. New rows start as new."
+            "description": "Any user. A bad row does not undo earlier rows. Duplicate numbers fail the row and do not refresh the existing prospect. New rows start as new. A number that is not a 10-digit Indian mobile says \"Client number must be a 10-digit mobile number.\""
           }
         },
         {
@@ -1647,7 +1647,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "leads", "import_template" ]
             },
-            "description": "CSV the broker fills in. The example row (Example lead / 9000000000) is skipped if left unchanged. Save the upload as CSV UTF-8, not an Excel workbook."
+            "description": "CSV the broker fills in. Three example rows (Example lead / 9000000000: a home, a shop, a plot) are skipped if left unchanged. A file of only those rows says to replace Example lead. Save the upload as CSV UTF-8, not an Excel workbook. Columns added at the end: Assigned to, Next call, Next call note, Near place, Near place pin. A file without them still imports."
           }
         },
         {
@@ -1671,7 +1671,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "leads", "import" ]
             },
-            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. The Possession column (the old header Property type is still accepted) is required for a residential or commercial sale, and must be blank for rent and for Plot & Land. The date column is Possession up to. Area is optional (800-1200 sqft, 2-4 guntha, 3 acre) and is rejected on a residential row. Prefers pre-leased is yes or no. Configurations from more than one category fail the row. There is no Category column. Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. A second open lead of the same type and category names that category. Leads are assigned to the signed-in user and start as New."
+            "description": "Creates one lead per good row and reports the rest. A bad row does not undo the rows already added. 200 returns created_count, failed_count and results. Failures include cells so the sheet can be fixed and uploaded again. A workbook, a semicolon file, a missing Mobile / Sale or rent / Budget header, or more than 200 rows is 422 and creates nothing.\n\nBudget is whole rupees. The Possession column (the old header Property type is still accepted) is required for a residential or commercial sale, and must be blank for rent and for Plot & Land. The date column is Possession up to. Area is optional (800-1200 sqft, 2-4 guntha, 3 acre) and is rejected on a residential row. Prefers pre-leased is yes or no. Configurations from more than one category fail the row. There is no Category column. Location is added to the localities on the linked listings. A project code on a rent row fails. Each code cell can list at most 20 codes. A shared property links only while that firm is active. A second open lead of the same type and category names that category. Leads start as New. Assigned to is a teammate's mobile or email; blank keeps the lead with the importer. An agent cannot assign someone else. Next call is DD/MM/YYYY HH:MM in IST (a date alone means 11:00); a past time is kept. Next call note needs a Next call. Near place needs both a name and a pin (lat,lng or a full Google Maps link; short links are refused)."
           }
         },
         {
@@ -5608,7 +5608,7 @@
     },
     {
       "name": "Facebook Lead Ads",
-      "description": "Super admin only. Tokens are never in the responses. Connect starts in the browser: POST /connect, open authorization_url, then POST /connections with the same nonce.",
+      "description": "Super admin only. Tokens are never in the responses. In a browser: POST /connect, open authorization_url, then POST /connections with the same nonce. In the installed app: POST /connect with handoff true, open handoff_url, then GET /connect/:attempt_id and POST /connections with the same nonce. The handoff ticket is not a session.",
       "item": [
         {
           "name": "Integration",
@@ -5623,7 +5623,25 @@
             "method": "POST",
             "header": [ { "key": "Content-Type", "value": "application/json" } ],
             "url": "{{api_base}}/facebook/connect",
-            "body": { "mode": "raw", "raw": "{\n  \"nonce\": \"0123456789abcdef0123456789abcdef\"\n}" }
+            "description": "nonce is at least 32 characters. Omit handoff in a normal browser. handoff true also returns handoff_url. Open that URL once. The ticket in it expires in 10 minutes.",
+            "body": { "mode": "raw", "raw": "{\n  \"nonce\": \"0123456789abcdef0123456789abcdef\",\n  \"handoff\": true\n}" }
+          }
+        },
+        {
+          "name": "Connect status",
+          "request": {
+            "method": "GET",
+            "url": "{{api_base}}/facebook/connect/{{facebook_attempt_id}}",
+            "description": "The user who started the attempt. Anyone else is 404. status is started, completed, failed or consumed."
+          }
+        },
+        {
+          "name": "Open handoff",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{base_url}}/facebook/start?ticket={{facebook_handoff_ticket}}",
+            "description": "No broker session. The first visit redirects to Facebook and spends the ticket. The second redirects to /facebook/done?result=expired on the web origin."
           }
         },
         {

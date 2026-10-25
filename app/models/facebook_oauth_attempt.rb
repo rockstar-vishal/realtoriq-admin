@@ -66,6 +66,42 @@ class FacebookOauthAttempt < ApplicationRecord
     expires_at <= Time.current
   end
 
+  # The raw ticket never lands in the database. Lookup is by its digest, then
+  # a length-checked compare, the same way a confirm checks the nonce.
+  def self.usable_handoff(ticket)
+    digest = Digest::SHA256.hexdigest(ticket.to_s)
+    attempt = across_firms.find_by(handoff_ticket_digest: digest)
+    return unless ticket_digest_matches?(attempt, digest)
+    return unless handoff_open?(attempt)
+
+    attempt
+  end
+
+  def self.claim_handoff!(attempt)
+    claimed = across_firms.where(id: attempt.id, handoff: true, status: "started", handoff_used_at: nil)
+      .where("expires_at > ?", Time.current)
+      .where("handoff_expires_at > ?", Time.current)
+      .update_all(handoff_used_at: Time.current, updated_at: Time.current)
+    claimed == 1
+  end
+
+  def self.ticket_digest_matches?(attempt, digest)
+    return false if attempt.nil?
+
+    stored = attempt.handoff_ticket_digest.to_s
+    return false if stored.blank? || digest.bytesize != stored.bytesize
+
+    ActiveSupport::SecurityUtils.secure_compare(digest, stored)
+  end
+  private_class_method :ticket_digest_matches?
+
+  def self.handoff_open?(attempt)
+    attempt.handoff? && attempt.started? && !attempt.expired? &&
+      attempt.handoff_used_at.nil? && attempt.handoff_expires_at.present? &&
+      attempt.handoff_expires_at > Time.current
+  end
+  private_class_method :handoff_open?
+
   def void!(error_code:)
     update!(status: :failed, error_code:, result: nil)
   end

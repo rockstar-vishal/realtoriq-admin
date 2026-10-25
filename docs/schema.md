@@ -155,7 +155,7 @@ is no longer a hold. At most one connection per firm has `status = 'active'`.
 | `facebook_pages` | A Page granted to this firm. `page_id` is unique across firms. Held only with a page token or `subscribed`. `page_access_token` is encrypted. `status`: active / unsubscribed / error. New pages start unsubscribed. |
 | `facebook_lead_forms` | One Meta form, owned by one firm. A project or a property, not both. The project may be a marketplace catalog row. `field_mappings` and `questions` are jsonb. `category` is null, or one of the mapped project's categories. The mixed-project requirement is enforced on the API save, not on sync or import. |
 | `facebook_lead_imports` | One `leadgen_id` in the whole database. `status`: pending / processing / created / failed / dead / duplicate. `raw_payload` and `fetched_payload` are jsonb. |
-| `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. |
+| `facebook_oauth_attempts` | The login one browser started. `nonce_digest` is SHA-256. `result` is encrypted and cleared once the attempt is consumed or voided. A handoff also stores `handoff_ticket_digest` (SHA-256 of a one-time ticket), `handoff_expires_at` and `handoff_used_at`. The raw ticket is not stored. |
 | `facebook_import_alert_states` | One row per firm. Clocks for the failure digest and the duplicate notice. |
 
 Deleting a firm deletes these rows before its users. Deleting the user who
