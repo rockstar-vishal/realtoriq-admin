@@ -9,8 +9,8 @@ RSpec.describe DemoAssets::AttachAarav do
     typology = create(:typology, name: "2 BHK")
     firm = create(:firm, name: "Aarav Realty")
     project = create(:project, firm:, city:, name: "Palm Court Residences")
-    building = create(:building, firm:, city:, locality:, name: "Palm Court")
-    property = create(:property, firm:, building:, typology:, listing_for: "sale", price: 18_000_000)
+    property = create(:property, firm:, city:, locality:, building_name: "Palm Court", typology:,
+      listing_for: "sale", price: 18_000_000)
 
     dir = Rails.root.join("tmp/aarav-attach-spec")
     FileUtils.rm_rf(dir)

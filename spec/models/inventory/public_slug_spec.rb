@@ -12,10 +12,10 @@ RSpec.describe Inventory::PublicSlug do
 
   it "saves a home whose title contains an underscore" do
     locality = create(:locality, name: "Powai")
-    building = create(:building, locality:, city: locality.city, name: "Lake_View")
+    firm = create(:firm)
     typology = create(:typology, name: "2_BHK")
-    Current.firm = building.firm
-    property = create(:property, firm: building.firm, building:, typology:)
+    Current.firm = firm
+    property = create(:property, firm:, city: locality.city, locality:, typology:)
 
     expect(property.slug).to eq("2-bhk-in-powai")
     expect(property.slug).not_to include("_")

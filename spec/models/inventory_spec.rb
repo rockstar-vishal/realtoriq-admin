@@ -121,55 +121,13 @@ RSpec.describe "Inventory models" do
     end
   end
 
-  describe Building do
-    it "refuses two buildings of the same name in one locality" do
-      existing = create(:building, firm:)
-
-      duplicate = build(:building, firm:, name: existing.name,
-        city: existing.city, locality: existing.locality)
-
-      expect(duplicate).not_to be_valid
-    end
-
-    it "allows the same name in a different locality" do
-      existing = create(:building, firm:)
-      elsewhere = create(:locality, city: existing.city)
-
-      expect(build(:building, firm:, name: existing.name, city: existing.city, locality: elsewhere))
-        .to be_valid
-    end
-
-    it "allows another firm the same name — buildings are firm-owned" do
-      existing = create(:building, firm:)
-      other = create(:firm)
-      Current.firm = other
-
-      expect(build(:building, firm: other, name: existing.name,
-        city: existing.city, locality: existing.locality)).to be_valid
-    end
-
-    it "refuses a locality that isn't in the chosen city" do
-      elsewhere = create(:locality, city: create(:city))
-
-      expect(build(:building, firm:, locality: elsewhere)).not_to be_valid
-    end
-
-    it "will not be destroyed while it still holds listings" do
-      building = create(:building, firm:)
-      create(:property, firm:, building:)
-
-      expect(building.destroy).to be(false)
-      expect(building.errors[:base]).to be_present
-    end
-  end
-
   describe Property do
     it "titles itself the way the design's card reads" do
-      building = create(:building, firm:)
-      property = create(:property, firm:, building:,
+      locality = create(:locality, name: "Thane")
+      property = create(:property, firm:, city: locality.city, locality:,
         typology: create(:typology, name: "2 BHK"))
 
-      expect(property.title).to eq("2 BHK in #{building.locality.name}")
+      expect(property.title).to eq("2 BHK in Thane")
     end
 
     it "derives the rate per sqft" do

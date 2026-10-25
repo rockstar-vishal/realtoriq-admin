@@ -18,7 +18,7 @@ RSpec.describe Matches::Rebaseline do
   after { Current.reset }
 
   it "locks each eligible firm and rewrites the digest without notifying" do
-    create(:property, firm:, typology:, price: 10_000_000, building: create(:building, firm:, city:, locality:))
+    create(:property, firm:, typology:, price: 10_000_000, city:, locality:)
     create(:lead, firm:, lead_status: status, budget_max: 10_000_000, transaction_type: "sale", property_type: ready).tap do |lead|
       lead.typologies << typology
       lead.localities << locality

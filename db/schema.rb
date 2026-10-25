@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_25_143000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -191,27 +191,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
     t.index ["firm_id"], name: "index_builders_on_firm_id"
     t.index ["name"], name: "index_builders_on_name_global", unique: true, where: "(firm_id IS NULL)"
     t.index ["slug"], name: "index_builders_on_slug_global", unique: true, where: "(firm_id IS NULL)"
-  end
-
-  create_table "buildings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
-    t.uuid "firm_id", null: false
-    t.string "name", null: false
-    t.uuid "city_id", null: false
-    t.uuid "locality_id", null: false
-    t.string "address"
-    t.decimal "lat", precision: 10, scale: 7
-    t.decimal "lng", precision: 10, scale: 7
-    t.string "google_place_id"
-    t.boolean "has_pool", default: false, null: false
-    t.boolean "has_gym", default: false, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["city_id", "lat", "lng"], name: "index_buildings_on_city_and_pin", where: "((lat IS NOT NULL) AND (lng IS NOT NULL))"
-    t.index ["city_id"], name: "index_buildings_on_city_id"
-    t.index ["firm_id", "city_id"], name: "index_buildings_on_firm_id_and_city_id"
-    t.index ["firm_id", "name", "locality_id"], name: "index_buildings_on_firm_id_and_name_and_locality_id", unique: true
-    t.index ["firm_id"], name: "index_buildings_on_firm_id"
-    t.index ["locality_id"], name: "index_buildings_on_locality_id"
   end
 
   create_table "cities", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1064,7 +1043,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
 
   create_table "properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
-    t.uuid "building_id"
     t.uuid "typology_id", null: false
     t.string "listing_for", null: false
     t.string "floor_band"
@@ -1101,11 +1079,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
     t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_properties_firm_portal_99acres_code", unique: true, where: "(portal_99acres_code IS NOT NULL)"
     t.index "firm_id, lower((portal_housing_code)::text)", name: "index_properties_firm_portal_housing_code", unique: true, where: "(portal_housing_code IS NOT NULL)"
     t.index "firm_id, lower((portal_magicbricks_code)::text)", name: "index_properties_firm_portal_magicbricks_code", unique: true, where: "(portal_magicbricks_code IS NOT NULL)"
-    t.index ["building_id"], name: "index_properties_on_building_id"
     t.index ["city_id", "lat", "lng"], name: "index_properties_on_city_and_pin", where: "((lat IS NOT NULL) AND (lng IS NOT NULL))"
     t.index ["code"], name: "index_properties_on_code", unique: true
     t.index ["created_by_user_id"], name: "index_properties_on_created_by_user_id"
-    t.index ["firm_id", "building_id"], name: "index_properties_on_firm_id_and_building_id"
     t.index ["firm_id", "listing_for"], name: "index_properties_on_firm_id_and_listing_for"
     t.index ["firm_id", "locality_id"], name: "index_properties_on_firm_id_and_locality_id"
     t.index ["firm_id", "slug"], name: "index_properties_on_firm_id_and_slug", unique: true
@@ -1324,9 +1300,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
   add_foreign_key "bookings", "typologies"
   add_foreign_key "bookings", "users", column: "created_by_user_id", on_delete: :nullify
   add_foreign_key "builders", "firms"
-  add_foreign_key "buildings", "cities"
-  add_foreign_key "buildings", "firms"
-  add_foreign_key "buildings", "localities"
   add_foreign_key "collections", "bookings"
   add_foreign_key "collections", "firms"
   add_foreign_key "collections", "invoices"
@@ -1426,7 +1399,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
   add_foreign_key "projects", "cities"
   add_foreign_key "projects", "firms"
   add_foreign_key "projects", "localities"
-  add_foreign_key "properties", "buildings"
   add_foreign_key "properties", "cities"
   add_foreign_key "properties", "firms"
   add_foreign_key "properties", "localities"

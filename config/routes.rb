@@ -221,10 +221,8 @@ Rails.application.routes.draw do
 
       resources :uploads, only: %i[create]
 
-      # Inventory. No destroy anywhere: the design has none, a building with
-      # listings can't go, and archiving is a status change.
+      # Inventory. No destroy anywhere: archiving is a status change.
       resources :builders, only: %i[index create]
-      resources :buildings, only: %i[index create update]
 
       resources :projects, only: %i[index create show update] do
         # Typeahead. A collection route, so Rails matches it before :id and

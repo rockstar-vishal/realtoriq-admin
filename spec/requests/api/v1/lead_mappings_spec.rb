@@ -91,7 +91,9 @@ RSpec.describe "API v1 lead mappings" do
         headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:created)
-      expect(response.parsed_body.dig("lead", "mapped_properties").size).to eq(1)
+      mapped = response.parsed_body.dig("lead", "mapped_properties", 0, "property")
+      expect(mapped).not_to have_key("building")
+      expect(mapped["building_name"]).to eq(property.building_name)
     end
   end
 

@@ -66,26 +66,6 @@ namespace :locations do
       puts "#{dry_run ? "would clear" : "cleared"}\t#{rows.size}"
     end
   end
-
-  desc "Copy a placed pin to other properties of the same old building. DRY_RUN=1 prints only."
-  task copy_to_siblings: :environment do
-    dry_run = ENV["DRY_RUN"] == "1"
-    Property.across_firms.where.not(building_id: nil).where.not(lat: nil, lng: nil).find_each do |source|
-      Property.across_firms.where(building_id: source.building_id, lat: nil, lng: nil).where.not(id: source.id).find_each do |target|
-        puts "#{source.code}\t#{target.code}\t#{source.lat}\t#{source.lng}"
-        next if dry_run
-
-        target.update_columns(
-          address: source.address,
-          lat: source.lat,
-          lng: source.lng,
-          google_place_id: source.google_place_id,
-          pin_approximate: source.pin_approximate,
-          updated_at: Time.current
-        )
-      end
-    end
-  end
 end
 
 module LocationsRake

@@ -179,8 +179,7 @@ RSpec.describe "Nearby interest matching" do
     locate(panvel, east_m: 12_000)
     lead = buyer(kharghar)
     lat, lng = shifted
-    building = create(:building, firm:, city:, locality: kharghar, lat:, lng:)
-    mapped = create(:property, firm:, typology: two_bhk, price: 10_000_000, building:)
+    mapped = create(:property, firm:, typology: two_bhk, price: 10_000_000, city:, locality: kharghar, lat:, lng:)
     lead.lead_properties.create!(property: mapped, firm:)
     stock(panvel, name: "Near the flat", north_m: 2_000)
     stock(kharghar, name: "Far in Kharghar", north_m: 8_000)
@@ -287,8 +286,8 @@ RSpec.describe "Nearby interest matching" do
     lead.lead_projects.create!(project: hook, firm:)
     near = stock(kharghar, name: "Near the pin", north_m: 1_200)
     lat, lng = shifted(north_m: 1_200)
-    building = create(:building, firm:, city:, locality: kharghar, lat:, lng:)
-    create(:property, firm:, typology: two_bhk, price: 10_000_000, status: "available", building:)
+    create(:property, firm:, typology: two_bhk, price: 10_000_000, status: "available",
+      city:, locality: kharghar, lat:, lng:)
 
     travel_to Time.find_zone("Asia/Kolkata").local(2026, 10, 8, 11) do
       Matches::EnableNearby.call
@@ -304,9 +303,8 @@ RSpec.describe "Nearby interest matching" do
     locate(kharghar)
     locate(panvel, east_m: 12_000)
     ready = create(:property_type, name: "Ready possession")
-    building = create(:building, firm:, city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
     listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
-      status: "available", building:)
+      status: "available", city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
     buyer = nil
     Current.set(firm: other_firm) do
       buyer = create(:lead, firm: other_firm, lead_status: status, budget_max: 10_000_000,
@@ -355,8 +353,8 @@ RSpec.describe "Nearby interest matching" do
     locate(kamothe, east_m: 2_000)
     Inventory::RebuildLocalityNeighbors.call(city_id: city.id)
     ready = create(:property_type, name: "Ready possession")
-    building = create(:building, firm:, city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
-    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true, building:)
+    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
+      city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
     Current.set(firm: other_firm) do
       buyer = create(:lead, firm: other_firm, lead_status: status, budget_max: 10_000_000,
         transaction_type: "sale", property_type: ready, name: "Neighbour")
@@ -377,8 +375,8 @@ RSpec.describe "Nearby interest matching" do
     locate(kamothe, east_m: 2_000)
     Inventory::RebuildLocalityNeighbors.call(city_id: city.id)
     ready = create(:property_type, name: "Ready possession")
-    building = create(:building, firm:, city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
-    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true, building:)
+    listing = create(:property, firm:, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
+      city:, locality: kharghar, lat: shifted[0], lng: shifted[1])
     bulk = create(:firm, name: "Aardvark Homes")
     Current.set(firm: bulk) do
       Inventory::MatchLeads::LIMIT.times do |index|

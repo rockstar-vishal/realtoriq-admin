@@ -31,7 +31,6 @@ module Api
             available_from: property.available_from,
             typology: property.typology && { id: property.typology_id, name: property.typology.name },
             **location_fields(property),
-            building: building_summary(property),
             cover_photo_url: photo_urls(property).first,
             cover_thumb_url: cover_thumb_url(property),
             photo_count: property.photos.attachments.size,
@@ -82,7 +81,6 @@ module Api
             confidential_note: property.confidential_note,
             photos: photos(property),
             photo_urls: photo_urls(property),
-            building: building_detail(property),
             shareable: shareable(property),
             portal_codes: property.portal_codes_payload,
             updated_at: property.updated_at
@@ -166,28 +164,10 @@ module Api
           }
         end
 
-        # Deprecated. Built from the property's own columns. `id` is the old
-        # building row, and is null on a listing created after the move.
-        def building_summary(property)
-          {
-            id: property.building_id, name: property.building_name,
-            locality: property.locality&.name, city: property.city&.name
-          }
-        end
-
         def named_user(user)
           return nil if user.nil?
 
           { id: user.id, name: user.name }
-        end
-
-        def building_detail(property)
-          building_summary(property).merge(
-            address: property.address,
-            lat: property.lat&.to_f, lng: property.lng&.to_f,
-            google_place_id: property.google_place_id,
-            has_pool: property.has_pool, has_gym: property.has_gym
-          )
         end
 
         # Attachment ids are random UUIDs, so sorting by id shuffles the gallery.

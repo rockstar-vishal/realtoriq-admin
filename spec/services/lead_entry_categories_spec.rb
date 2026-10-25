@@ -80,8 +80,7 @@ RSpec.describe "lead entry categories" do
     end
 
     it "takes a property's category and skips possession on a plot" do
-      building = create(:building, firm:, city:, locality:)
-      property = create(:property, firm:, building:, typology: plot, listing_for: "sale", price: 5_000_000)
+      property = create(:property, firm:, city:, locality:, typology: plot, listing_for: "sale", price: 5_000_000)
       property_form = create(:facebook_lead_form, firm:, facebook_page: page, property:)
 
       result = Facebook::LeadImporter.call(
@@ -269,8 +268,7 @@ RSpec.describe "lead entry categories" do
       project = create(:project, firm:, city:, locality:, starting_budget: 12_000_000)
       create(:project_typology, project:, typology: home)
       create(:project_typology, project:, typology: shop, starting_price: 4_000_000)
-      building = create(:building, firm:, city:, locality:)
-      property = create(:property, firm:, building:, typology: shop, listing_for: "sale", price: 6_000_000)
+      property = create(:property, firm:, city:, locality:, typology: shop, listing_for: "sale", price: 6_000_000)
       caller = create(:prospect, firm:, mobile: "+919876500501")
       buyer = create(:prospect, firm:, mobile: "+919876500502")
 

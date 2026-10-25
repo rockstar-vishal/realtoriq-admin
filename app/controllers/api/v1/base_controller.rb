@@ -49,7 +49,7 @@ module Api
       # Postgres text cannot hold a NUL byte, and the pg adapter raises
       # ArgumentError the moment one is bound into a query — so `q=a%00b` was a
       # 500 HTML page on every endpoint that searches: leads, projects,
-      # properties, buildings, bookings and project search alike. Handled once
+      # properties, bookings and project search alike. Handled once
       # here rather than in each of them. No legitimate value contains a NUL,
       # so removing them loses nothing; it covers query strings and JSON bodies,
       # which both arrive in `params`.

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "rails_helper"
-require Rails.root.join("db/migrate/20261023120000_move_location_onto_properties")
 
 RSpec.describe "Property location", type: :request do
   let(:plan) { create(:plan) }
@@ -21,33 +20,6 @@ RSpec.describe "Property location", type: :request do
     { "Authorization" => "Bearer #{response.parsed_body['access_token']}" }
   end
 
-  def backfill
-    ActiveRecord::Base.connection.execute(MoveLocationOntoProperties::BACKFILL)
-  end
-
-  it "copies the building onto the property" do
-    building = create(:building, firm:, city:, locality:, name: "Sea Face", address: "12 Marine Drive",
-      lat: 19.1, lng: 72.8, google_place_id: "ChIJsea", has_pool: true, has_gym: false)
-    property = create(:property, firm:, building:, typology:)
-    property.update_columns(
-      building_name: "temp", address: nil, lat: nil, lng: nil, google_place_id: nil,
-      has_pool: false, has_gym: true
-    )
-
-    backfill
-    property.reload
-
-    expect(property.building_name).to eq("Sea Face")
-    expect(property.city_id).to eq(building.city_id)
-    expect(property.locality_id).to eq(building.locality_id)
-    expect(property.address).to eq("12 Marine Drive")
-    expect(property.lat).to eq(building.lat)
-    expect(property.lng).to eq(building.lng)
-    expect(property.google_place_id).to eq("ChIJsea")
-    expect(property.has_pool).to be(true)
-    expect(property.has_gym).to be(false)
-  end
-
   it "requires a pin on the listing form and not on status, marketplace, or booking" do
     headers = auth
     post "/api/v1/properties", params: {
@@ -58,7 +30,7 @@ RSpec.describe "Property location", type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(response.parsed_body.dig("error", "message")).to include("Place the pin on the map")
 
-    property = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality:))
+    property = create(:property, firm:, typology:, city:, locality:)
     expect(property.has_pin?).to be(false)
 
     patch "/api/v1/properties/#{property.id}", params: { status: "booked" }, headers:, as: :json
@@ -88,32 +60,8 @@ RSpec.describe "Property location", type: :request do
     expect(catalog.save(context: :listing_form)).to be(true)
   end
 
-  it "fills location from building_id when the new fields are absent" do
-    building = create(:building, firm:, city:, locality:, name: "Legacy Tower", address: "1 Old Road",
-      lat: 19.2, lng: 72.9, google_place_id: "ChIJold", has_pool: true, has_gym: true)
-
-    post "/api/v1/properties", params: {
-      building_id: building.id, typology_id: typology.id, listing_for: "sale", price: 9_000_000
-    }, headers: auth, as: :json
-
-    expect(response).to have_http_status(:created)
-    body = response.parsed_body["property"]
-    expect(body["building_name"]).to eq("Legacy Tower")
-    expect(body.dig("city", "id")).to eq(city.id)
-    expect(body.dig("locality", "id")).to eq(locality.id)
-    expect(body["address"]).to eq("1 Old Road")
-    expect(body["lat"]).to eq(19.2)
-    expect(body["lng"]).to eq(72.9)
-    expect(body["google_place_id"]).to eq("ChIJold")
-    expect(body["has_pool"]).to be(true)
-    expect(body["has_gym"]).to be(true)
-    expect(body["has_pin"]).to be(true)
-    expect(body.dig("building", "id")).to eq(building.id)
-    expect(body.dig("building", "name")).to eq("Legacy Tower")
-  end
-
   it "refuses a pin outside India" do
-    property = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality:, lat: 19.1, lng: 72.8))
+    property = create(:property, firm:, typology:, city:, locality:, lat: 19.1, lng: 72.8)
     property.lat = 5
     property.lng = 67
     expect(property).not_to be_valid
@@ -131,54 +79,12 @@ RSpec.describe "Property location", type: :request do
     expect(project.errors.full_messages.join).to include("The pin must be inside India.")
   end
 
-  it "matches the same listings after the building fields are copied onto the property" do
-    building = create(:building, firm:, city:, locality:, lat: 19.05, lng: 73.07)
-    property = create(:property, firm:, typology:, price: 10_000_000, building:)
-    lead = create(:lead, firm:, lead_status: live_status, property_type: ready_type, budget_max: 10_000_000)
-    lead.typologies << typology
-    lead.localities << locality
-    Current.firm = firm
-
-    before_inventory = Inventory::MatchInventory.new(lead:).call.map { |row| [ row[:kind], row[:id], row[:score] ] }
-    before_leads = Inventory::MatchLeads.new(property:, user:).call.map { |row| [ row[:id], row[:score] ] }
-    Matches::CurateFirm.call(firm:, announce: false)
-    before_curated = MatchDigest.find_by!(firm_id: firm.id).lead_items.map { |item|
-      [ item["lead_id"], item["match_ids"].sort ]
-    }
-
-    expect(before_inventory.map { |row| row[1] }).to include(property.id)
-    expect(before_leads.map(&:first)).to include(lead.id)
-
-    elsewhere = create(:locality, city:, name: "Somewhere else")
-    property.update_columns(locality_id: elsewhere.id, lat: nil, lng: nil)
-
-    moved_inventory = Inventory::MatchInventory.new(lead: lead.reload).call.map { |row| [ row[:kind], row[:id], row[:score] ] }
-    expect(moved_inventory).not_to eq(before_inventory)
-
-    backfill
-    property.reload
-
-    after_inventory = Inventory::MatchInventory.new(lead: lead.reload).call.map { |row| [ row[:kind], row[:id], row[:score] ] }
-    after_leads = Inventory::MatchLeads.new(property:, user:).call.map { |row| [ row[:id], row[:score] ] }
-    Matches::CurateFirm.call(firm:, announce: false)
-    after_curated = MatchDigest.find_by!(firm_id: firm.id).lead_items.map { |item|
-      [ item["lead_id"], item["match_ids"].sort ]
-    }
-
-    expect(after_inventory).to eq(before_inventory)
-    expect(after_leads).to eq(before_leads)
-    expect(after_curated).to eq(before_curated)
-  ensure
-    Current.reset
-  end
-
   it "hides the building name, address, and pin from another firm" do
     other = create(:firm, status: :active, name: "Other Estates")
     create(:subscription, firm: other, plan:)
     other_user = create(:user, :super_admin, firm: other)
-    building = create(:building, firm:, city:, locality:, name: "SECRET TOWER", address: "SECRET ADDRESS",
-      lat: 19.1234567, lng: 72.1234567)
-    property = create(:property, firm:, typology:, building:, listed_on_marketplace: true)
+    property = create(:property, firm:, typology:, city:, locality:, building_name: "SECRET TOWER",
+      address: "SECRET ADDRESS", lat: 19.1234567, lng: 72.1234567, listed_on_marketplace: true)
 
     get "/api/v1/properties/#{property.id}/marketplace", headers: auth(as: other_user)
 
@@ -230,12 +136,10 @@ RSpec.describe "Property location", type: :request do
     expect(ignored.project.lng).to be_nil
   end
 
-  it "lists missing pins and copies a pin to siblings without overwriting one" do
-    building = create(:building, firm:, city:, locality:)
-    source = create(:property, firm:, typology:, building:, lat: 19.3, lng: 72.7, address: "Pinned", google_place_id: "ChIJpin")
-    sibling = create(:property, firm:, typology:, building:)
-    sibling.update_columns(lat: nil, lng: nil, address: nil, google_place_id: nil)
-    kept = create(:property, firm:, typology:, building:, lat: 18.5, lng: 73.9, address: "Already", google_place_id: "ChIJkeep")
+  it "lists missing pins" do
+    source = create(:property, firm:, typology:, city:, locality:, lat: 19.3, lng: 72.7,
+      address: "Pinned", google_place_id: "ChIJpin")
+    sibling = create(:property, firm:, typology:, city:, locality:)
     project = create(:project, firm:, city:, locality:, name: "Unpinned Vista", starting_budget: 8_000_000,
       possession_on: Date.new(2027, 6, 1))
     catalog = create(:project, :catalog, name: "Catalog Unpinned", city:, locality:,
@@ -247,21 +151,6 @@ RSpec.describe "Property location", type: :request do
     expect(missing).not_to include(source.code)
     expect(missing).not_to include(catalog.code)
     expect(sibling.reload.lat).to be_nil
-
-    ENV["DRY_RUN"] = "1"
-    dry = rake("locations:copy_to_siblings")
-    expect(dry).to include(source.code, sibling.code)
-    expect(sibling.reload.lat).to be_nil
-    expect(kept.reload.lat.to_f).to eq(18.5)
-
-    ENV.delete("DRY_RUN")
-    rake("locations:copy_to_siblings")
-    sibling.reload
-    expect([ source.lat, kept.lat ]).to include(sibling.lat)
-    expect(sibling.lng).not_to be_nil
-    expect(kept.reload.address).to eq("Already")
-    expect(kept.lat.to_f).to eq(18.5)
-    expect(kept.google_place_id).to eq("ChIJkeep")
   end
 
   it "returns locality centres on the reference list" do
@@ -284,12 +173,11 @@ RSpec.describe "Property location", type: :request do
     headers = auth
     locality.update!(lat: 19.04, lng: 73.06)
     blank = create(:locality, city:, name: "No centre yet")
-    building = create(:building, firm:, city:, locality:)
-    property = create(:property, firm:, typology:, building:)
+    property = create(:property, firm:, typology:, city:, locality:)
     project = create(:project, firm:, city:, locality:, name: "Unpinned Vista", starting_budget: 8_000_000,
       possession_on: Date.new(2027, 6, 1))
-    skipped = create(:property, firm:, typology:, building: create(:building, firm:, city:, locality: blank))
-    kept = create(:property, firm:, typology:, building:, lat: 19.2, lng: 72.9)
+    skipped = create(:property, firm:, typology:, city:, locality: blank)
+    kept = create(:property, firm:, typology:, city:, locality:, lat: 19.2, lng: 72.9)
     stamp = property.updated_at
 
     with_dry_run(nil) do

@@ -11,9 +11,8 @@ RSpec.describe "Configuration categories" do
     it "merges 2BHK Ultima, keeps 5 BHK beside 5+ BHK, and a second run changes nothing" do
       city = create(:city)
       locality = create(:locality, city:)
-      building = create(:building, firm:, city:, locality:)
       variant = create(:typology, name: "2BHK Ultima", code: "2bhk_ultima")
-      property = create(:property, firm:, building:, typology: variant)
+      property = create(:property, firm:, city:, locality:, typology: variant)
       lead = create(:lead, firm:)
       lead.typologies << variant
       project = create(:project, firm:)

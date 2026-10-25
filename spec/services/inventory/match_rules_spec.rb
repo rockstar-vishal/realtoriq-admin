@@ -67,7 +67,7 @@ RSpec.describe Inventory::MatchInventory do
       soon = own_project(possession_on: Date.new(2026, 10, 1), name: "Soon")
       later = own_project(possession_on: Date.new(2027, 6, 1), name: "Later")
       create(:property, firm:, typology: two_bhk, price: 10_000_000,
-        building: create(:building, firm:, city:, locality:))
+        city:, locality:)
 
       ids = described_class.new(lead:).call.map { |row| row[:id] }
 
@@ -82,7 +82,7 @@ RSpec.describe Inventory::MatchInventory do
       past = own_project(possession_on: Date.new(2025, 9, 1), name: "Past")
       own_project(possession_on: Date.new(2027, 6, 1), name: "Later")
       listing = create(:property, firm:, typology: two_bhk, price: 10_000_000,
-        building: create(:building, firm:, city:, locality:))
+        city:, locality:)
 
       ids = described_class.new(lead:).call.map { |row| row[:id] }
 
@@ -95,9 +95,9 @@ RSpec.describe Inventory::MatchInventory do
       lead = sale_lead(ready_type, budget: 10_000_000)
       three_bhk = create(:typology, name: "3 BHK")
       weak = create(:property, firm: other_firm, typology: two_bhk, price: 20_000_000, listed_on_marketplace: true,
-        building: create(:building, firm: other_firm, city:, locality:))
+        city:, locality:)
       strong = create(:property, firm: other_firm, typology: three_bhk, price: 11_000_000, listed_on_marketplace: true,
-        building: create(:building, firm: other_firm, city:, locality:))
+        city:, locality:)
 
       rows = described_class.new(lead:).call
 
@@ -112,7 +112,7 @@ RSpec.describe Inventory::MatchInventory do
   it "leaves a shared listing out when the owner has turned the switch off" do
     lead = sale_lead(ready_type)
     create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: false,
-      building: create(:building, firm: other_firm, city:, locality:))
+      city:, locality:)
 
     expect(described_class.new(lead:).call).to eq([])
   end
