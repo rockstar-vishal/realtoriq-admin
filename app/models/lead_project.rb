@@ -19,6 +19,6 @@ class LeadProject < ApplicationRecord
   def sale_lead_only
     return if lead.blank? || lead.sale?
 
-    errors.add(:base, "A rental lead cannot be mapped to a project")
+    errors.add(:base, "A project can't go on a rental lead's shortlist.")
   end
 end

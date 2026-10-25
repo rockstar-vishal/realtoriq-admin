@@ -14,10 +14,16 @@ class Booking < ApplicationRecord
 
   enum :status, STATUSES.index_by(&:itself), validate: true
 
+  LIVE_LISTING_INDEX = "index_bookings_on_live_firm_property"
+
   # Unscoped for the reason documented on Lead: reached through a booking that
   # has already passed the tenant check.
   belongs_to :lead, -> { unscope(where: :firm_id) }
   belongs_to :project, -> { unscope(where: :firm_id) }, optional: true
+  # Another firm's marketplace listing stays readable after it leaves the
+  # marketplace. Not belongs_to_same_firm: the visible set is wider than the
+  # tenant, and link_problem is what refuses the rest.
+  belongs_to :property, -> { unscope(where: :firm_id) }, optional: true
   # project_id arrives straight from the client, so it needs checking — see
   # FirmScoped.belongs_to_same_firm. lead_id is resolved through the scoped
   # Lead in the controller, which is what makes it safe.
@@ -66,6 +72,7 @@ class Booking < ApplicationRecord
     message: "is already booked on this project"
   }, if: -> { live? && project_id.present? && unit_no.present? }
   validate :configuration_belongs_to_the_project
+  validate :copy_link_problem_onto_errors
 
   before_validation :normalise_unit_no
   before_validation :remember_configuration
@@ -238,15 +245,72 @@ class Booking < ApplicationRecord
     ProjectTypology.new(label: configuration_label, typology:).display_name
   end
 
-  def cancel!(reason:, actor: nil)
-    assign_attributes(status: :cancelled, cancelled_at: Time.current, cancellation_reason: reason)
-    # Cancel is a status change. Staging still has live rows that would fail
-    # today's validations (project set, unit_no blank). Those must still cancel.
-    save!(validate: false)
+  def cancel!(reason:, actor: nil, release_property: false)
+    transaction do
+      assign_attributes(status: :cancelled, cancelled_at: Time.current, cancellation_reason: reason)
+      # Cancel is a status change. Staging still has live rows that would fail
+      # today's validations (project set, unit_no blank). Those must still cancel.
+      save!(validate: false)
 
-    AuditEvent.record!(subject: self, firm:, actor:, action: "booking.cancelled",
-                       metadata: { reason: })
+      AuditEvent.record!(subject: self, firm:, actor:, action: "booking.cancelled",
+                         metadata: { reason: })
+      Bookings::ListingStatus.release!(self, actor) if ActiveModel::Type::Boolean.new.cast(release_property)
+    end
     self
+  end
+
+  # What the API returns before it saves. Nil when the link is fine. A listing
+  # that was bookable and later left the marketplace stays linked: the check
+  # runs only when property_id is being set.
+  def link_problem
+    if project_id.present? && property_id.present?
+      return { code: "project_and_listing", message: "A booking is on a project or a listing, not both." }
+    end
+
+    if property_id.present? && (new_record? || will_save_change_to_property_id?)
+      listing = Property.unscoped.find_by(id: property_id)
+      unless self.class.listing_bookable?(firm, listing)
+        return { code: "listing_not_found", message: "That listing could not be found." }
+      end
+    end
+
+    other = conflicting_live_listing
+    if other
+      return {
+        code: "listing_already_booked",
+        message: "This listing already has a live booking.",
+        details: { booking_id: other.id, code: other.code }
+      }
+    end
+
+    nil
+  end
+
+  # Own listings of any status. A marketplace listing uses the same firm rule
+  # as a shared property, without requiring it to still be Available.
+  def self.listing_bookable?(firm, listing)
+    return false if firm.nil? || listing.nil?
+    return true if listing.firm_id == firm.id
+    return false unless listing.listed_on_marketplace?
+    return false if firm.review_demo?
+
+    Firm.marketplace_eligible.exists?(id: listing.firm_id)
+  end
+
+  # Another live booking of this firm on the same listing. This row is
+  # excluded, including after it has just been cancelled.
+  def other_live_listing_booking
+    return if property_id.blank?
+
+    scope = self.class.unscoped.where(firm_id:, property_id:, status: "live")
+    scope = scope.where.not(id:) if id.present?
+    scope.first
+  end
+
+  def conflicting_live_listing
+    return unless live?
+
+    other_live_listing_booking
   end
 
   # Re-select by id so a search join cannot make SUM or COUNT see one booking
@@ -284,6 +348,16 @@ class Booking < ApplicationRecord
   end
 
   def remember_configuration
+    if property_id.present?
+      self.project_typology_id = nil
+      return unless new_record? || will_save_change_to_property_id?
+
+      listing = Property.unscoped.find_by(id: property_id)
+      self.typology_id = listing&.typology_id
+      self.configuration_label = nil
+      return
+    end
+
     if project_id.blank? || clear_booked_configuration
       self.project_typology_id = nil
       self.typology_id = nil
@@ -298,6 +372,20 @@ class Booking < ApplicationRecord
 
     self.typology_id = row.typology_id
     self.configuration_label = row.label
+  end
+
+  def copy_link_problem_onto_errors
+    problem = link_problem
+    return if problem.nil?
+
+    case problem[:code]
+    when "project_and_listing"
+      errors.add(:base, :project_and_listing, message: problem[:message])
+    when "listing_not_found"
+      errors.add(:property_id, :listing_not_found, message: problem[:message])
+    when "listing_already_booked"
+      errors.add(:property_id, :listing_already_booked, message: problem[:message])
+    end
   end
 
   def configuration_belongs_to_the_project

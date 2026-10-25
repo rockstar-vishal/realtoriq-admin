@@ -33,6 +33,18 @@ module Matches
       new(locality_ids:, price_cap:, boxes:, centers:, hide_listed_copies:).call
     end
 
+    # The shared-properties fetch uses this same key. A listing that leaves
+    # the set has to delete it, or other firms keep matching it for the hour.
+    def self.forget_shared_properties(locality_id)
+      return if locality_id.blank?
+
+      Rails.cache.delete(shared_properties_cache_key(locality_id))
+    end
+
+    def self.shared_properties_cache_key(locality_id)
+      "matches/shared-properties/v5/#{locality_id}"
+    end
+
     def initialize(locality_ids:, price_cap:, boxes: [], centers: true, hide_listed_copies: false)
       @locality_ids = Array(locality_ids).uniq
       @price_cap = price_cap
@@ -97,7 +109,7 @@ module Matches
     end
 
     def cached_shared_properties(locality_id)
-      Rails.cache.fetch("matches/shared-properties/v5/#{locality_id}", expires_in: CACHE_TTL) do
+      Rails.cache.fetch(self.class.shared_properties_cache_key(locality_id), expires_in: CACHE_TTL) do
         Property.unscoped
           .where(listed_on_marketplace: true, status: "available", locality_id:)
           .includes(:typology, :firm, :locality)

@@ -46,6 +46,12 @@ class Property < ApplicationRecord
 
   PIN_FREE_CHANGES = %w[status listed_on_marketplace on_website].freeze
 
+  # Shared-property matches are cached per locality for an hour. Drop that
+  # key when the listing leaves or joins the set, including both localities
+  # when it moves. save!(validate: false) still commits, so a booking's
+  # status change clears it too.
+  after_commit :forget_shared_properties_cache
+
   validates :building_name, presence: true, length: { maximum: 160 }
   validates :listing_for, inclusion: { in: LISTING_FOR }
   validates :floor_band, inclusion: { in: FLOOR_BANDS }, allow_blank: true
@@ -247,6 +253,14 @@ class Property < ApplicationRecord
     else
       self.details = result.values
     end
+  end
+
+  def forget_shared_properties_cache
+    return unless saved_change_to_status? || saved_change_to_listed_on_marketplace? || saved_change_to_locality_id?
+
+    ids = [ locality_id ]
+    ids << locality_id_before_last_save if saved_change_to_locality_id?
+    ids.compact.uniq.each { |id| Matches::InventoryPool.forget_shared_properties(id) }
   end
 
   def area_phrase

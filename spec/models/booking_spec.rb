@@ -264,6 +264,87 @@ RSpec.describe Booking do
     end
   end
 
+  describe "a listing" do
+    let(:typology) { create(:typology, name: "2 BHK") }
+    let(:property) { create(:property, firm:, typology:) }
+
+    it "snapshots the listing's typology and keeps it when the listing changes" do
+      booking = create(:booking, firm:, property:, project: nil, unit_no: nil)
+
+      expect(booking.typology_id).to eq(typology.id)
+      expect(booking.configuration_label).to be_nil
+      expect(booking).to be_valid
+
+      property.update!(typology: create(:typology, name: "3 BHK"))
+      booking.update!(other_details: "kept")
+
+      expect(booking.reload.typology_id).to eq(typology.id)
+    end
+
+    it "refuses a project and a listing together" do
+      booking = build(:booking, firm:, property:, project: create(:project, firm:), unit_no: "A-1")
+
+      expect(booking).not_to be_valid
+      expect(booking.link_problem[:code]).to eq("project_and_listing")
+    end
+
+    it "refuses a listing the firm cannot see" do
+      hidden = create(:property, firm: create(:firm), typology:, listed_on_marketplace: false)
+      booking = build(:booking, firm:, property: hidden)
+
+      expect(booking).not_to be_valid
+      expect(booking.errors.of_kind?(:property_id, :listing_not_found)).to be(true)
+    end
+
+    it "allows the firm's own listing after it is sold out" do
+      property.update!(status: "sold_out")
+
+      expect(build(:booking, firm:, property:)).to be_valid
+    end
+
+    it "refuses a second live booking of the same listing in the firm" do
+      first = create(:booking, firm:, property:)
+      again = build(:booking, firm:, property:)
+
+      expect(again).not_to be_valid
+      expect(again.link_problem).to include(
+        code: "listing_already_booked",
+        details: { booking_id: first.id, code: first.code }
+      )
+    end
+
+    it "lets a second firm book the same marketplace listing" do
+      other = create(:firm, status: :active)
+      Current.firm = other
+
+      expect(build(:booking, firm: other, property:)).to be_valid
+    end
+
+    it "frees the listing when the live booking is cancelled" do
+      create(:booking, firm:, property:).cancel!(reason: "Client withdrew")
+
+      expect(build(:booking, firm:, property:)).to be_valid
+    end
+
+    it "puts the firm's own booked listing back only when cancel asks" do
+      property.update!(status: "booked")
+      booking = create(:booking, firm:, property:)
+      booking.cancel!(reason: "Client withdrew", release_property: true)
+
+      expect(property.reload).to be_available
+      event = AuditEvent.find_by!(action: "property.status_changed", subject: property)
+      expect(event.metadata).to include("from" => "booked", "to" => "available", "booking_id" => booking.id)
+    end
+
+    it "leaves the listing booked when cancel does not release it" do
+      property.update!(status: "booked")
+      create(:booking, firm:, property:).cancel!(reason: "Client withdrew")
+
+      expect(property.reload).to be_booked
+      expect(AuditEvent.where(action: "property.status_changed", subject: property)).to be_none
+    end
+  end
+
   describe Invoice do
     it "refuses a duplicate number within a firm" do
       create(:invoice, firm:, number: "INV-1")

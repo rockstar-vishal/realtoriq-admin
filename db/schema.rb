@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_25_093000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_25_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -157,15 +157,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_093000) do
     t.uuid "project_typology_id"
     t.uuid "typology_id"
     t.string "configuration_label"
+    t.uuid "property_id"
     t.index ["created_by_user_id"], name: "index_bookings_on_created_by_user_id"
     t.index ["firm_id", "booked_on"], name: "index_bookings_on_firm_id_and_booked_on"
     t.index ["firm_id", "code"], name: "index_bookings_on_firm_id_and_code", unique: true
+    t.index ["firm_id", "property_id"], name: "index_bookings_on_live_firm_property", unique: true, where: "(((status)::text = 'live'::text) AND (property_id IS NOT NULL))"
     t.index ["firm_id", "status"], name: "index_bookings_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_bookings_on_firm_id"
     t.index ["lead_id"], name: "index_bookings_on_lead_id"
     t.index ["project_id", "unit_no"], name: "index_bookings_on_live_project_unit", unique: true, where: "(((status)::text = 'live'::text) AND (project_id IS NOT NULL) AND (unit_no IS NOT NULL))"
     t.index ["project_id"], name: "index_bookings_on_project_id"
     t.index ["project_typology_id"], name: "index_bookings_on_project_typology_id"
+    t.index ["property_id"], name: "index_bookings_on_property_id"
     t.index ["typology_id"], name: "index_bookings_on_typology_id"
     t.check_constraint "agreement_value >= 0", name: "bookings_agreement_value_check"
     t.check_constraint "client_paid_percent IS NULL OR client_paid_percent >= 0 AND client_paid_percent <= 100", name: "bookings_client_paid_percent_check"
@@ -1317,6 +1320,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_093000) do
   add_foreign_key "bookings", "leads"
   add_foreign_key "bookings", "project_typologies", on_delete: :nullify
   add_foreign_key "bookings", "projects"
+  add_foreign_key "bookings", "properties", on_delete: :nullify
   add_foreign_key "bookings", "typologies"
   add_foreign_key "bookings", "users", column: "created_by_user_id", on_delete: :nullify
   add_foreign_key "builders", "firms"

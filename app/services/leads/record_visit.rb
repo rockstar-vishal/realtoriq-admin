@@ -147,7 +147,7 @@ module Leads
     end
 
     def not_mapped(missing)
-      failure("not_mapped", "Sites added to a visit must already be mapped to this lead.", missing)
+      failure("not_mapped", "Sites added to a visit must already be on this lead's shortlist.", missing)
     end
 
     def failure(code, message, details = nil)
