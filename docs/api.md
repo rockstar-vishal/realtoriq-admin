@@ -1184,7 +1184,7 @@ not interested is `422 prospect_closed`. The prospect row is locked.
 | --- | --- |
 | `connected` | Required boolean. Missing stays nil and is `422 connected_required`. Do not treat a missing key as false |
 | `notes` | Required. `422 notes_required` |
-| `next_action_at` | Required when the call did not connect and the prospect stays on the list. Asia/Kolkata, same meaning as a lead NCD. A datetime without an offset is read in that zone |
+| `next_action_at` | Required when the call did not connect and the prospect stays on the list. Asia/Kolkata, same meaning as a lead NCD. A datetime without an offset is read in that zone. A time more than 2 minutes ago is `422 next_call_in_past` ("The next call must be in the future."). Import does not set a dial time |
 | `mark_not_interested` | Missed call only. Notes required, next dial time cleared, status `not_interested` |
 | `disposition` | Connected call: `interested`, `not_interested`, or `not_sure` |
 | `lead` | Required when `disposition` is `interested`. See below |
@@ -2551,6 +2551,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `notes_required` | 422 | A prospect follow-up needs a note |
 | `connected_required` | 422 | A prospect follow-up must say whether the call connected. A missing `connected` is not false |
 | `ncd_required` | 422 | A missed prospect call that stays on the list needs a next dial time |
+| `next_call_in_past` | 422 | A next call more than 2 minutes ago, on a lead follow-up or a prospect call-back. "The next call must be in the future." |
 | `prospect_closed` | 422 | Interested and not interested prospects take no further follow-up |
 | `prospect_locked` | 422 | An interested prospect can change its comment only |
 | `not_movable` | 422 | Only interested or not interested can move back to Following |

@@ -71,6 +71,44 @@ RSpec.describe Notifications::DispatchDueFollowups do
     end
   end
 
+  it "names the due call a reminder when the visit has a time" do
+    described_class.call
+    visit_at = Time.find_zone!("Asia/Kolkata").local(2026, 10, 27, 11, 0, 0)
+    create(:lead, firm:, assigned_user: assignee, name: "Rhea Kapoor",
+      lead_status: create(:lead_status, :visit_planned),
+      next_action_at: 30.seconds.from_now, visit_planned_at: visit_at)
+
+    travel 1.minute do
+      expect(described_class.call.dispatched).to eq(1)
+      note = assignee.notifications.sole
+      expect(note.kind).to eq("followup_due")
+      expect(note.title).to eq("Reminder Call — Rhea Kapoor")
+      expect(note.body).to eq("Site Visit Tue 27 Oct, 11:00 AM")
+    end
+  end
+
+  it "keeps the plain follow-up text when the visit has no time, and for any other status" do
+    zone = Time.find_zone!("Asia/Kolkata")
+    due_at = zone.local(2026, 10, 26, 18, 18, 0)
+    travel_to(zone.local(2026, 10, 26, 18, 17, 0))
+    described_class.call
+    followup = create(:lead, firm:, assigned_user: assignee, name: "Asha Shah",
+      lead_status: create(:lead_status, name: "Followup"), next_action_at: due_at)
+    planned = create(:lead, firm:, assigned_user: assignee, name: "Rhea Kapoor",
+      lead_status: create(:lead_status, :visit_planned),
+      next_action_at: due_at, visit_planned_at: nil)
+
+    travel_to(zone.local(2026, 10, 26, 18, 19, 0))
+    expect(described_class.call.dispatched).to eq(2)
+    notes = assignee.notifications.index_by { |note| note.data["item"] }
+    expect(notes[followup.id].title).to eq("Followup — Asha Shah")
+    expect(notes[followup.id].body).to eq("Due 26 Oct, 6:18 PM")
+    expect(notes[planned.id].title).to eq("Followup — Rhea Kapoor")
+    expect(notes[planned.id].body).to eq("Due 26 Oct, 6:18 PM")
+  ensure
+    travel_back
+  end
+
   it "reaches a lead in another firm when no tenant is set" do
     described_class.call
     other_firm = create(:firm)

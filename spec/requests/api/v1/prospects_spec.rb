@@ -129,6 +129,30 @@ RSpec.describe "API v1 prospects" do
   describe "calling" do
     let!(:prospect) { create(:prospect, firm:, mobile: "+919876543210", status: "new", name: "Asha") }
 
+    it "refuses a call-back in the past and saves nothing" do
+      post "/api/v1/prospects/#{prospect.id}/followups",
+        params: { connected: false, notes: "Switched off", next_action_at: 5.minutes.ago.iso8601 },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("next_call_in_past")
+      expect(response.parsed_body.dig("error", "message")).to eq("The next call must be in the future.")
+      expect(prospect.reload.status).to eq("new")
+      expect(prospect.next_action_at).to be_nil
+      expect(ProspectFollowup.across_firms.where(prospect_id: prospect.id)).to be_empty
+    end
+
+    it "accepts a call-back inside the two-minute grace" do
+      when_at = 1.minute.ago.change(usec: 0)
+
+      post "/api/v1/prospects/#{prospect.id}/followups",
+        params: { connected: false, notes: "Switched off", next_action_at: when_at.iso8601 },
+        headers: auth(agent), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(prospect.reload.next_action_at).to eq(when_at)
+    end
+
     it "moves a missed call to Following and stores the next dial time" do
       when_at = 2.days.from_now.change(usec: 0)
 

@@ -3,6 +3,12 @@
 require "rails_helper"
 
 RSpec.describe "Registration code caps" do
+  # The SMS cap key is the clock hour. Freeze a mid-hour IST time so a
+  # two-minute travel cannot roll into the next hour and reset the count.
+  around do |example|
+    travel_to(Time.find_zone!("Asia/Kolkata").local(2026, 10, 26, 11, 10, 0)) { example.run }
+  end
+
   it "stops mobile and WhatsApp at the hourly cap, emails ops once, and still sends email" do
     memory = ActiveSupport::Cache::MemoryStore.new
     allow(Rails).to receive(:cache).and_return(memory)

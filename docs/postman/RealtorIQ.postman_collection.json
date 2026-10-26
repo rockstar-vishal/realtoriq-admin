@@ -1289,7 +1289,7 @@
                 "followups"
               ]
             },
-            "description": "connected is required and must be a real boolean. Missing is 422 connected_required, not false. A missed call needs notes and a next dial time unless mark_not_interested is true. Status becomes following."
+            "description": "connected is required and must be a real boolean. Missing is 422 connected_required, not false. A missed call needs notes and a next dial time unless mark_not_interested is true. Status becomes following. A next dial time more than 2 minutes ago is 422 next_call_in_past, \"The next call must be in the future.\""
           }
         },
         {
