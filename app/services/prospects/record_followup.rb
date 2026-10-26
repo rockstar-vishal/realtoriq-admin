@@ -98,6 +98,9 @@ module Prospects
 
       parsed = Time.zone.parse(raw)
       return failure("invalid", "Enter a date and time for the next call.") if parsed.nil?
+      if parsed < Time.current - Leads::RecordFollowup::NEXT_CALL_GRACE
+        return failure("next_call_in_past", "The next call must be in the future.")
+      end
 
       parsed
     end

@@ -59,7 +59,7 @@ module Notifications
         .where("leads.next_action_at > ? AND leads.next_action_at <= ?", watermark, now)
         .joins(:lead_status)
         .where(lead_statuses: { is_terminal: false })
-        .includes(:assigned_user, :firm)
+        .includes(:assigned_user, :firm, :lead_status)
         .to_a
     end
 
@@ -71,8 +71,8 @@ module Notifications
         Record.call(
           user:,
           kind: "followup_due",
-          title: "Followup — #{lead.display_name}",
-          body: due_body(lead),
+          title: title_for(lead),
+          body: body_for(lead),
           dedupe_key: dedupe_key(lead),
           data: { "page" => "leads", "item" => lead.id }
         )
@@ -80,9 +80,29 @@ module Notifications
       result.created
     end
 
+    # A visit planned with a time makes this call the reminder before the
+    # visit. A visit planned before that time was stored keeps the plain text.
+    def reminder_call?(lead)
+      lead.lead_status&.code == "visit_planned" && lead.visit_planned_at.present?
+    end
+
+    def title_for(lead)
+      name = lead.display_name
+      reminder_call?(lead) ? "Reminder Call — #{name}" : "Followup — #{name}"
+    end
+
+    def body_for(lead)
+      reminder_call?(lead) ? visit_body(lead) : due_body(lead)
+    end
+
     def due_body(lead)
       stamp = lead.next_action_at.in_time_zone("Asia/Kolkata")
       "Due #{stamp.strftime('%-d %b, %-I:%M %p')}"
+    end
+
+    def visit_body(lead)
+      stamp = lead.visit_planned_at.in_time_zone("Asia/Kolkata")
+      "Site Visit #{stamp.strftime('%a %-d %b, %-I:%M %p')}"
     end
 
     def dedupe_key(lead)
