@@ -30,7 +30,7 @@ module Facebook
         Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "Facebook access expires soon",
+          title: "Facebook Access Expires Soon",
           body: "Reconnect Facebook in the next #{days_left} #{"day".pluralize(days_left)} so new leads keep coming in.",
           dedupe_key: "fb_token_expiring:#{connection.id}:#{days_left}",
           data: { "page" => "settings", "item" => "facebook" },

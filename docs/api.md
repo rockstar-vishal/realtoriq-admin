@@ -399,7 +399,7 @@ counters cover only leads assigned to them.
 | `hot_negotiation` | Status `hot` **or** `negotiation`. `hot` is still hot-only |
 | `visited` | Leads with at least one `lead_visits` row — ever, not this month |
 | `todays_followups` | `next_action_at` falls today. Home tile label: **Today's Calls** |
-| `missed_followups` | `next_action_at <= now` on a non-terminal lead |
+| `missed_followups` | `next_action_at <= now` on a non-terminal lead, **or** a Visit Planned lead whose `visit_planned_at` has passed. Today's Calls stays `next_action_at` only |
 | `cancelled` | Counted **separately** and excluded from every figure above |
 
 The home **Your pipeline** snapshot uses six of these: `total`, `new`,
@@ -411,6 +411,7 @@ There is no `status=todays_followup`; the Today's Calls tile lists via
 
 **`leads.recent` is the missed-followup strip under the grid** — at most three,
 most overdue first (`next_action_at ASC`), same item shape as `GET /leads`.
+A Visit Planned visit whose time has passed is overdue here too.
 It is **not** the worklist and not the leads-index NCD default. Empty if
 nothing is overdue. "View all" is `GET /leads?missed_followup=true`.
 
@@ -559,7 +560,7 @@ disabled. An agent receives only themselves.
 | `lead_source_id` | string | optional | |
 | `source_detail` | string | optional | e.g. `"99acres enquiry #48213"` |
 | `assigned_user_id` | string | optional | Super admin: any active user in the firm. Anyone else: an id from their active manageables. Defaults to the creator when an agent creates it |
-| `followup` | object | optional | Opening followup. `{ comment, next_action_at }`. `comment` is required if you send a datetime (otherwise `422 comment_required` and the lead is not created). Top-level `next_action_at` / `next_action_note` are **ignored** — NCD only moves via this nested object or `POST /leads/:id/followups` |
+| `followup` | object | optional | Opening followup. `{ comment, next_action_at }`. `comment` is required if you send a datetime (otherwise `422 comment_required` and the lead is not created). A `next_action_at` in the past is `422 next_call_in_past` ("The next call must be in the future.") and the lead is not created. Two minutes of grace covers clock drift. An import keeps the dates in its sheet. Top-level `next_action_at` / `next_action_note` are **ignored** — NCD only moves via this nested object or `POST /leads/:id/followups` |
 | `notes` | text | optional | **Detailed Client Requirements** (the column is still `notes`). Not a follow-up comment. Preferred localities are `locality_ids`, not text in this field |
 | `unqualified` | boolean | optional | Default false. `true` leaves the lead out of matching and records `lead.unqualified`. Only a manager or the super admin may set it; an agent gets `403 forbidden_role` and the lead is not created. Omitting it does not record that event. An incomplete requirement is `422 invalid` and the lead is not created |
 | `typology_ids` | **array** of string | **required** | At least one. Sending the key replaces the whole set. Omit the key on a create-from-project (`project_id` set) to copy the project's configurations. An empty array does not copy |
@@ -573,7 +574,7 @@ disabled. An agent receives only themselves.
 > sale lead` with nothing pointing at the real cause. See
 > [Traps](#traps-worth-knowing).
 
-One **open** lead per `(firm, mobile, transaction_type, category)`. A dead lead does not hold that slot, so the same number can be created again. The same number may be open once as a residential sale and once as a commercial sale, and once as `sale` and once as `rent`. A second create of the same type and category is **`422 duplicate_lead`**. `details.lead_id`, `details.transaction_type` and `details.category` identify the existing card. The message is "A sale Residential lead already exists for this number." (`sale` or `rent`, and Residential, Commercial, or Plot & Land). A PATCH that moves the lead onto a type and category that is already open is the same `422`. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another open lead holds that mobile, type and category is the same `422`. Two revives at once return that error rather than a 500.
+One **open** lead per `(firm, mobile, transaction_type, category)`. A dead lead does not hold that slot, so the same number can be created again. The same number may be open once as a residential sale and once as a commercial sale, and once as `sale` and once as `rent`. A second create of the same type and category is **`422 duplicate_lead`**. `details.lead_id`, `details.transaction_type` and `details.category` identify the existing card. The message is "A sale Residential lead already exists for this number." (`sale` or `rent`, and Residential, Commercial, or Plot & Land). A PATCH that moves the lead onto a type and category that is already open is the same `422`. Reviving a dead lead (`POST /leads/:id/status`, or a follow-up that changes status) while another open lead holds that mobile, type and category is the same `422`. The revived status cannot be New (`422 new_not_allowed`). Two revives at once return that error rather than a 500.
 
 Returns `201` with the lead plus `possible_duplicates` — the **other** transaction type on the same number, if any, and only leads the caller can see. Same type is never in this array; it was refused.
 
@@ -643,7 +644,7 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`, `missed_followup`) and `side` do **not** drop `q` |
 | `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
 | `visited` | `true` / `false` — at least one `lead_visits` row, or none |
-| `missed_followup` | `true` / `false` — `next_action_at <= now` on a non-terminal lead. ANDs with `status` |
+| `missed_followup` | `true` / `false` — `next_action_at <= now` on a non-terminal lead, or a Visit Planned lead whose `visit_planned_at` has passed. ANDs with `status` |
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
@@ -665,10 +666,11 @@ A backwards or non-date `created_*` or `died_*` pair is `422 invalid` with "Date
 
 **`missed_followup` is not a real status.** Send it as `missed_followup=true`
 (same shape as `visited`). It means `next_action_at <= now` on a non-terminal
-lead. It appears in the design's tab strip beside the real statuses, but it
-will never come back in `lead_statuses`. `status=missed_followup` looks up a
-code that does not exist and returns an empty list. `hot_negotiation` is
-the Hot + Negotiation codes together.
+lead, or a Visit Planned lead whose `visit_planned_at` has passed. It appears
+in the design's tab strip beside the real statuses, but it will never come
+back in `lead_statuses`. `status=missed_followup` looks up a code that does
+not exist and returns an empty list. `hot_negotiation` is the Hot + Negotiation
+codes together.
 
 **Budget on GET is a point-in-window filter**, not overlap. A ₹1–1.3 Cr window
 matches a lead whose stored amount is ₹1.2 Cr, and does **not** match a leftover
@@ -710,6 +712,7 @@ to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on
   "assigned_user": { "id": "…", "name": "Rohit Shah" },
   "source": { "id": "…", "name": "99acres" },
   "next_action_at": "2026-08-17T00:35:56.587+05:30",
+  "visit_planned_at": null, "visit_due": false,
   "last_followup_comment": "Asked for the floor plan",
   "overdue": true, "visited": true, "visit_count": 1, "unqualified": false,
   "created_at": "2026-08-10T11:04:02.114+05:30",
@@ -737,6 +740,7 @@ List-card fields (also on detail, which extends this shape):
 | Source | `source.name` — `null` when unset. `source_detail` is detail-only |
 | Last Followup Comments | **`last_followup_comment`** — `comment` of the latest `lead_followups` row. `null` if none. Truncate + "show more" on the client. **Not** an activity body, and there is no `next_action_note` |
 | Next Action Date | `next_action_at` — copy of the last followup that sent a datetime. Cleared when the lead becomes dead or booked |
+| Planned visit | `visit_planned_at` — set when a followup leaves the lead Visit Planned and sends `visit_at`. Cleared on leaving Visit Planned. `visit_due` is true when that status is Visit Planned and the time has passed |
 | Created At | `created_at` |
 | Unqualified | `unqualified` — boolean, on the list card and on detail. `true` leaves the lead out of matching. Dead status does not. Reviving the lead does not clear it. Only a manager or the super admin can change it |
 
@@ -774,9 +778,9 @@ property that belongs to this firm. Another firm's listing leaves that name out.
 | --- | --- |
 | `GET /leads/:id` | Detail, with timeline, mappings and status history |
 | `PATCH /leads/:id` | Same fields as create except `project_id` and nested `followup` (create-only). **Sending `typology_ids` or `locality_ids` replaces that whole set**; omitting a key leaves it alone. When the request sends `budget`, `typology_ids` or `locality_ids`, the saved lead must still have a budget, at least one configuration and at least one locality, or the PATCH is `422 invalid` and changes nothing. A PATCH that sends none of them (reassign, unqualified, EMI) is not checked. Follow-ups and status changes use their own endpoints and are not blocked by this. Sending `assigned_user_id` reassigns — see below. PATCH `transaction_type` is `422 duplicate_lead` if that type already exists on the mobile. **`next_action_at` / `next_action_note` are ignored** — NCD only moves by posting a followup. Optional `emi` — see below. Omitting `emi` leaves a saved calculation alone. Optional `unqualified` (boolean) leaves the lead out of matching. Omit the key to leave it. Send `false` to clear it. Status changes do not clear it. An agent who sends a different value gets `403 forbidden_role` and nothing is saved |
-| `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
+| `POST /leads/:id/status` | `{ status, reason, note }` — `status` is a status **code**. `reason` is **required** moving to a dead status. Moving to dead or booked **clears `next_action_at`**. `status: "new"` on a lead that is not New is `422 new_not_allowed` ("A lead can't go back to New."). `status: "visit_planned"` is `422 visit_needs_date` ("Plan a visit with a date.") — send Visit Planned on the followup, with `visit_at`. Leaving Visit Planned clears `visit_planned_at`. The Add Followup wizard should **not** also call this — send `status` on the followup instead |
 | `GET /leads/:id/followups` | Newest first. `{ followups: [{ id, comment, next_action_at, user, created_at }], meta }`. Default 25 |
-| `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
+| `POST /leads/:id/followups` | `{ comment, next_action_at, status, reason, booked_on, visit_at }` — see below. `201` `{ followup, lead }` (`lead` is the **list** card shape) |
 | `GET /leads/:id/activities` | |
 | `GET /leads/:id/visits` | Newest `visited_at` first. `{ visits, meta }`. Default 25 |
 | `POST /leads/:id/visits` | `{ visited_on, notes, project_ids, property_ids }` — see below. `201` `{ visit }` only. Refetch the lead for `visited` and mapped flags |
@@ -1048,18 +1052,24 @@ booked properties are left out.
 
 **`POST /leads/:id/followups`** is the only write path for a follow-up comment
 and for moving NCD. One transaction: insert the row, copy `next_action_at` onto
-the lead if a datetime was parsed, then optionally `Leads::TransitionStatus`.
+the lead if a datetime was parsed, set `visit_planned_at` when the lead is
+Visit Planned afterwards and `visit_at` was sent, then optionally
+`Leads::TransitionStatus`. A followup with no `status` leaves the status
+alone (Schedule a call). Checks run in this order; each failure is `422`
+and changes nothing:
 
 | Field | |
 | --- | --- |
 | `comment` | **required.** Blank is `422 comment_required` |
-| `next_action_at` | optional timestamp. Omit or blank to **leave** the lead's current NCD. There is no way to clear NCD except by moving to a terminal status |
-| `status` | optional status **code**. Same as `POST /leads/:id/status`. Do **not** call that endpoint as well |
+| `status` | optional status **code**. Omit it to leave the status. `new` is `422 new_not_allowed` ("A lead can't go back to New."). Do **not** also call `POST /leads/:id/status` |
+| `next_action_at` | required unless the lead ends up Booked or Dead (`422 next_call_required`, "Next call is required."). A time more than 2 minutes ago is `422 next_call_in_past` ("The next call must be in the future."). There is no way to clear NCD except by moving to a terminal status |
+| `visit_at` | required when `status` is `visit_planned`, and when the lead is already Visit Planned and this key is sent blank (`422 visit_at_required`, "Visit date is required."). A time that is not in the future is `422 visit_in_past` ("The visit must be in the future."). The next call has to be before it (`422 reminder_after_visit`, "The reminder call must be before the visit.") |
 | `reason` | required when `status` is a dead status (`422 reason_required`); the followup is rolled back |
 | `booked_on` | required when `status` is a booked status (`422 application_date_required`). IST start of day, stored on `leads.booked_at`. **Does not create a booking row** |
 
 A failed status change rolls back the followup. Dead and booked clear
-`leads.next_action_at`. Unknown `status` is `422 unknown_status`.
+`leads.next_action_at`. Leaving Visit Planned clears `visit_planned_at`.
+Logging a visit does not. Unknown `status` is `422 unknown_status`.
 
 Many mappings are allowed. They stay after a booking. A booking does **not** require a mapping.
 
@@ -2239,7 +2249,7 @@ A notification looks like:
 {
   "id": "…",
   "kind": "followup_due",
-  "title": "Follow up — Rhea Kapoor",
+  "title": "Followup — Rhea Kapoor",
   "body": "Due 26 Sep, 4:30 PM",
   "read_at": null,
   "data": { "page": "leads", "item": "…" },
@@ -2250,11 +2260,11 @@ A notification looks like:
 `kind` is `followup_due`, `test`, `training_published`, `marketplace_enquiry`,
 `inbound_enquiry`, `facebook`, `match_digest`, or `website_enquiry`. A match digest opens
 `/matches` (`data.page` is `matches`) and is sent only to the firm's super admin.
-Its title is `New matches are ready`. The body counts leads and listings and
+Its title is `New Matches Are Ready`. The body counts leads and listings and
 does not name a client.
 A marketplace enquiry points at the lead (`data.page` `leads`, `data.item` the
-lead id). The title is `New marketplace enquiry` for a new lead and
-`Marketplace enquiry on <lead code>` when the mobile already had a live lead.
+lead id). The title is `New Marketplace Enquiry` for a new lead and
+`Marketplace Enquiry on <lead code>` when the mobile already had a live lead.
 
 `data.page` is the screen (`leads`, `projects`, `properties`, `bookings`,
 `matches`, `settings`, `team`, `reports`, `subscription`, `skills-training`, or `home`). With `data.item` the

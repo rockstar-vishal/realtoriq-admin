@@ -10,12 +10,12 @@ module Sites
       lead = Lead.find_by(id: lead_id)
       return if user.nil? || lead.nil? || dedupe_key.blank?
 
-      title = outcome == "created" ? "New website enquiry" : "Website enquiry on #{lead.code}"
+      title = outcome == "created" ? "New Website Enquiry" : "Website Enquiry on #{lead.code}"
       result = Notifications::Record.call(
         user:,
         kind: "website_enquiry",
         title:,
-        body: [ enquirer_name.presence || "A client", listing_name.presence ].compact.join(" · "),
+        body: [ enquirer_name.presence || "A Client", listing_name.presence ].compact.join(" · "),
         dedupe_key:,
         data: { "page" => "leads", "item" => lead.id }
       )

@@ -150,7 +150,7 @@ RSpec.describe "Turbo marketplace events" do
       expect(mail[:from].formatted).to eq([ "RealtorIQ by KGen <realtoriq-noreply@mail.kgen.tech>" ])
       Current.firm = firm
       notice = broker.notifications.find_by(kind: "marketplace_enquiry")
-      expect(notice.title).to eq("Marketplace enquiry on #{Lead.find_by(mobile: '+919876543210').code}")
+      expect(notice.title).to eq("Marketplace Enquiry on #{Lead.find_by(mobile: '+919876543210').code}")
     end
 
     it "does not copy the project when a second enquiry arrives" do

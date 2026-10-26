@@ -42,7 +42,7 @@ module Notifications
       recorded = Record.call(
         user:,
         kind: "test",
-        title: "Test notification",
+        title: "Test Notification",
         body: "If you can read this, browser notifications are working.",
         dedupe_key: "test:#{UuidV7.generate}",
         data: { "page" => "settings" },

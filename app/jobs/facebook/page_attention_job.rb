@@ -12,7 +12,7 @@ module Facebook
         result = Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "A Facebook Page needs attention",
+          title: "A Facebook Page Needs Attention",
           body: "#{page.page_name} needs to be connected again. Your other Pages are unchanged.",
           dedupe_key: "fb_page_attention:#{page.id}:#{hour}",
           data: { "page" => "settings", "item" => "facebook" },

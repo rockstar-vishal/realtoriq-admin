@@ -26,7 +26,11 @@ module Api
           next_action_at: params[:next_action_at],
           status: params[:status],
           reason: params[:reason],
-          booked_on: params[:booked_on]
+          booked_on: params[:booked_on],
+          visit_at: params[:visit_at],
+          visit_at_supplied: params.key?(:visit_at),
+          require_next_call: true,
+          reject_past_next_call: true
         ).call
 
         unless result.ok?

@@ -104,6 +104,19 @@ RSpec.describe Lead do
       expect(described_class.missed_followup.pluck(:id)).to eq([ due_now.id ])
     end
 
+    it "includes a Visit Planned visit whose time has passed, even with a later reminder" do
+      planned = create(:lead_status, :visit_planned)
+      due = create(:lead, firm:, lead_status: planned, visit_planned_at: 1.hour.ago,
+        next_action_at: 1.day.from_now)
+      create(:lead, firm:, lead_status: planned, visit_planned_at: 1.day.from_now,
+        next_action_at: 1.hour.from_now)
+
+      expect(described_class.missed_followup.pluck(:id)).to eq([ due.id ])
+      expect(due.overdue?).to be(true)
+      expect(due.visit_due?).to be(true)
+      expect(described_class.as_worklist.pluck(:id).first).to eq(due.id)
+    end
+
     it "excludes leads in a terminal status, which need no chasing" do
       create(:lead, :overdue, firm:, lead_status: create(:lead_status, :dead), dead_reason: "Gone")
 

@@ -128,6 +128,11 @@ module Api
       end
 
       def status
+        if params[:status].to_s == "visit_planned"
+          return render_error("visit_needs_date", "Plan a visit with a date.",
+                              status: :unprocessable_content)
+        end
+
         result = ::Leads::TransitionStatus.new(
           lead: @lead,
           to_status: LeadStatus.find_by(code: params.require(:status)),
@@ -303,7 +308,7 @@ module Api
         now = Time.current
         sql = <<~SQL.squish
           COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
-          COUNT(*) FILTER (WHERE leads.next_action_at <= :now AND lead_statuses.is_terminal = FALSE),
+          COUNT(*) FILTER (WHERE (leads.next_action_at <= :now AND lead_statuses.is_terminal = FALSE) OR (lead_statuses.code = 'visit_planned' AND leads.visit_planned_at <= :now)),
           COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM lead_visits WHERE lead_visits.lead_id = leads.id)),
           COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation')),

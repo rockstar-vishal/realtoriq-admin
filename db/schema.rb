@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_25_143000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -724,6 +724,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_25_143000) do
     t.decimal "near_lat", precision: 10, scale: 7
     t.decimal "near_lng", precision: 10, scale: 7
     t.string "near_place_id"
+    t.datetime "visit_planned_at"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true

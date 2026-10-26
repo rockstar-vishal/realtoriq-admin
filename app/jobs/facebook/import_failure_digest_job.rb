@@ -101,7 +101,7 @@ module Facebook
         Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "Facebook leads need attention",
+          title: "Facebook Leads Need Attention",
           body:,
           dedupe_key: "fb_import_fail:#{firm_id}:#{claimed_at.to_i}",
           data: { "page" => "settings", "item" => "facebook" },

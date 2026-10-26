@@ -71,7 +71,7 @@ module Notifications
         Record.call(
           user:,
           kind: "followup_due",
-          title: "Follow up — #{lead.display_name}",
+          title: "Followup — #{lead.display_name}",
           body: due_body(lead),
           dedupe_key: dedupe_key(lead),
           data: { "page" => "leads", "item" => lead.id }

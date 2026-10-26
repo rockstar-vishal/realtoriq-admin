@@ -120,13 +120,17 @@ class Lead < ApplicationRecord
     where(unqualified: false).where.not(lead_status_id: LeadStatus.booked.select(:id))
   }
 
-  # Overdue NCD on a lead that is still in play. Not a status — the tab
-  # strip shows it next to real pipeline stages, but the filter is
-  # next_action_at <= now on a non-terminal lead. Subquery rather than a
-  # join so it composes with `with_status` (which already joins lead_statuses).
+  # Overdue NCD on a lead that is still in play, or a Visit Planned visit
+  # whose time has passed. Not a status — the tab strip shows it next to
+  # real pipeline stages. Subquery rather than a join so it composes with
+  # `with_status` (which already joins lead_statuses).
   scope :missed_followup, -> {
-    where(next_action_at: ..Time.current)
+    now = Time.current
+    ncd_due = where(next_action_at: ..now)
       .where(lead_status_id: LeadStatus.where(is_terminal: false).select(:id))
+    visit_due = where(visit_planned_at: ..now)
+      .where(lead_status_id: LeadStatus.where(code: "visit_planned").select(:id))
+    ncd_due.or(visit_due)
   }
 
   # Card / drawer boolean, same shape as `visited`. `true` is the missed
@@ -271,18 +275,34 @@ class Lead < ApplicationRecord
     order(Arel.sql("leads.next_action_at ASC NULLS FIRST, leads.created_at DESC"))
   }
 
-  # GET /leads?sort=worklist: overdue followups first, then by when the next
-  # action is due, then newest. The home strip no longer uses this — it is
-  # missed followups only.
+  # GET /leads?sort=worklist: overdue followups first (a missed call or a
+  # visit that came due), then by when the next action is due, then newest.
+  # The home strip no longer uses this — it is missed followups only.
   scope :as_worklist, -> {
     order(Arel.sql(<<~SQL.squish))
-      CASE WHEN leads.next_action_at IS NOT NULL AND leads.next_action_at <= NOW() THEN 0 ELSE 1 END,
+      CASE WHEN
+        (leads.next_action_at IS NOT NULL AND leads.next_action_at <= NOW())
+        OR (
+          leads.visit_planned_at IS NOT NULL AND leads.visit_planned_at <= NOW()
+          AND leads.lead_status_id IN (SELECT id FROM lead_statuses WHERE code = 'visit_planned')
+        )
+      THEN 0 ELSE 1 END,
       leads.next_action_at ASC NULLS LAST,
       leads.created_at DESC
     SQL
   }
 
-  def overdue? = next_action_at.present? && next_action_at <= Time.current && !lead_status.is_terminal?
+  def overdue?
+    return false if lead_status&.is_terminal?
+
+    (next_action_at.present? && next_action_at <= Time.current) || visit_due?
+  end
+
+  # Visit Planned, with a time that has passed. Logging the outing does not
+  # clear it — only leaving Visit Planned, or planning a new visit, does.
+  def visit_due?
+    lead_status&.code == "visit_planned" && visit_planned_at.present? && visit_planned_at <= Time.current
+  end
 
   def visited? = visit_count.positive?
 

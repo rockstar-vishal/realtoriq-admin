@@ -21,6 +21,9 @@ module Leads
     def call
       return failure("unknown_status", "That status doesn't exist.") if to_status.nil?
       return unchanged if to_status.id == lead.lead_status_id
+      if to_status.code == "new"
+        return failure("new_not_allowed", "A lead can't go back to New.")
+      end
 
       # A lead marked dead without a reason is a lead nobody can learn from —
       # the dead-leads report exists precisely to answer "why".
@@ -54,8 +57,10 @@ module Leads
 
     attr_reader :lead, :to_status, :actor, :reason, :note, :booked_at
 
-    def apply_status_columns(_from_status)
+    def apply_status_columns(from_status)
+      leaving_visit = from_status&.code == "visit_planned" && to_status.code != "visit_planned"
       lead.lead_status = to_status
+      lead.visit_planned_at = nil if leaving_visit
 
       if to_status.is_dead?
         lead.dead_reason = reason
