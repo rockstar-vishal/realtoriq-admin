@@ -22,7 +22,8 @@ module Leads
     def initialize(firm:, actor:, attributes:, typology_ids: [],
                    copy_project_typologies: false, locality_ids: [],
                    copy_project_localities: false, require_locality: true,
-                   project_id: nil, followup: nil, near_place: nil, near_place_supplied: false)
+                   project_id: nil, followup: nil, near_place: nil, near_place_supplied: false,
+                   allow_past_next_call: false)
       @firm = firm
       @actor = actor
       @attributes = attributes
@@ -35,6 +36,7 @@ module Leads
       @followup_attrs = followup
       @near_place = near_place
       @near_place_supplied = near_place_supplied
+      @allow_past_next_call = allow_past_next_call
     end
 
     def call
@@ -95,7 +97,7 @@ module Leads
 
     attr_reader :firm, :actor, :attributes, :typology_ids, :copy_project_typologies,
       :locality_ids, :copy_project_localities, :require_locality, :project_id, :followup_attrs,
-      :near_place, :near_place_supplied
+      :near_place, :near_place_supplied, :allow_past_next_call
 
     # `budget` is not a column — it is written to budget_max with min cleared.
     # budget_min on the payload is ignored so a leftover range cannot be stored.
@@ -298,7 +300,8 @@ module Leads
       return if comment.blank? && ncd.blank?
 
       result = RecordFollowup.new(
-        lead:, actor:, comment:, next_action_at: ncd
+        lead:, actor:, comment:, next_action_at: ncd,
+        reject_past_next_call: !allow_past_next_call
       ).call
       return if result.ok?
 

@@ -37,7 +37,7 @@ RSpec.describe Facebook::ImportFailureDigestJob do
       expect(mail.body.encoded).to include("3 Facebook leads")
       expect(mail.body.encoded).to include("Pick a project or property")
       expect(mail.body.encoded).to include("/settings/facebook")
-      expect(Notification.across_firms.where(title: "Facebook leads need attention").count).to eq(1)
+      expect(Notification.across_firms.where(title: "Facebook Leads Need Attention").count).to eq(1)
       expect(FacebookLeadImport.across_firms.where(firm_id: firm.id).where.not(failure_alert_pending_at: nil).count).to eq(0)
 
       waiting = dead_import(message: "Pick a project or property for this form", pending_at: 2.minutes.ago,
@@ -53,12 +53,12 @@ RSpec.describe Facebook::ImportFailureDigestJob do
       dead_import(message: "Pick a project or property for this form", pending_at: 2.minutes.ago)
 
       expect { run_digest }.not_to change { ActionMailer::Base.deliveries.size }
-      expect(Notification.across_firms.where(title: "Facebook leads need attention").count).to eq(1)
+      expect(Notification.across_firms.where(title: "Facebook Leads Need Attention").count).to eq(1)
       expect(FacebookLeadImport.across_firms.where(firm_id: firm.id).where.not(failure_alert_pending_at: nil).count).to eq(0)
 
       dead_import(message: "Pick a project or property for this form", pending_at: 2.minutes.ago, leadgen_id: "again")
       run_digest
-      expect(Notification.across_firms.where(title: "Facebook leads need attention").count).to eq(1)
+      expect(Notification.across_firms.where(title: "Facebook Leads Need Attention").count).to eq(1)
     end
   end
 

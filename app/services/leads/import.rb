@@ -835,6 +835,7 @@ module Leads
         locality_ids: prepared[:localities],
         copy_project_localities: false,
         followup: prepared[:followup],
+        allow_past_next_call: true,
         near_place: prepared[:near_place],
         near_place_supplied: prepared[:near_place_supplied]
       ).call

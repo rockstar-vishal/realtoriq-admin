@@ -51,7 +51,7 @@ module Dashboard
       COUNT(*),
       COUNT(*) FILTER (WHERE lead_statuses.code = 'hot'),
       COUNT(*) FILTER (WHERE leads.next_action_at BETWEEN :day_start AND :day_end),
-      COUNT(*) FILTER (WHERE leads.next_action_at <= :now AND lead_statuses.is_terminal = FALSE),
+      COUNT(*) FILTER (WHERE (leads.next_action_at <= :now AND lead_statuses.is_terminal = FALSE) OR (lead_statuses.code = 'visit_planned' AND leads.visit_planned_at <= :now)),
       COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM lead_visits WHERE lead_visits.lead_id = leads.id)),
       COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
       COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),

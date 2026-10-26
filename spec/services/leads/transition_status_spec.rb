@@ -5,6 +5,7 @@ require "rails_helper"
 RSpec.describe Leads::TransitionStatus do
   let(:firm) { create(:firm, status: :active) }
   let!(:new_status) { create(:lead_status, :new_lead) }
+  let!(:hot_status) { create(:lead_status, :hot) }
   let!(:dead_status) { create(:lead_status, :dead) }
   let(:actor) { create(:user, :manager, firm:) }
 
@@ -22,7 +23,7 @@ RSpec.describe Leads::TransitionStatus do
       )
     )
 
-    result = described_class.new(lead: dead, to_status: new_status, actor:).call
+    result = described_class.new(lead: dead, to_status: hot_status, actor:).call
 
     expect(result.error_code).to eq("duplicate_lead")
     expect(result.error_details).to include(lead_id: live.id, transaction_type: "sale")

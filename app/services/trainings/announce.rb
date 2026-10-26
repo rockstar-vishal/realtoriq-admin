@@ -44,7 +44,7 @@ module Trainings
         Notifications::Record.call(
           user:,
           kind: "training_published",
-          title: "New training: #{training.title}",
+          title: "New Training: #{training.title}",
           body: training.description.to_s.truncate(120),
           # One row per broker per training, whatever happens afterwards:
           # archiving and activating again must not announce it twice.

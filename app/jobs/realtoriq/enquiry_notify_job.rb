@@ -11,15 +11,15 @@ module Realtoriq
       return if user.nil? || lead.nil?
 
       title = if outcome == "created"
-        "New marketplace enquiry"
+        "New Marketplace Enquiry"
       else
-        "Marketplace enquiry on #{lead.code}"
+        "Marketplace Enquiry on #{lead.code}"
       end
       Notifications::Record.call(
         user:,
         kind: "marketplace_enquiry",
         title:,
-        body: [ enquirer_name.presence || "A client", project_name.presence ].compact.join(" · "),
+        body: [ enquirer_name.presence || "A Client", project_name.presence ].compact.join(" · "),
         dedupe_key: "marketplace_enquiry:#{enquiry_id}",
         data: { "page" => "leads", "item" => lead.id }
       )

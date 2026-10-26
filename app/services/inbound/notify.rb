@@ -16,8 +16,8 @@ module Inbound
       result = Notifications::Record.call(
         user:,
         kind: "inbound_enquiry",
-        title: "Website enquiry was not saved",
-        body: [ Channels.label(channel), clip(mobile.presence || "No mobile", 32), clip(listing, 80).presence,
+        title: "Website Enquiry Was Not Saved",
+        body: [ Channels.label(channel), clip(mobile.presence || "No Mobile", 32), clip(listing, 80).presence,
           clip(message, 160) ].compact.join(" · "),
         dedupe_key: "inbound_reject:#{fingerprint}:#{day}",
         force: true,
@@ -30,7 +30,7 @@ module Inbound
       return if user.nil? || lead.nil?
 
       label = Channels.label(channel)
-      title = created ? "New #{label} enquiry" : "#{label} enquiry on #{lead.code}"
+      title = created ? "New #{label} Enquiry" : "#{label} Enquiry on #{lead.code}"
       dedupe_key = if enquiry_id.present?
         "inbound:#{channel}:#{Digest::SHA256.hexdigest(enquiry_id)}"
       else
@@ -40,7 +40,7 @@ module Inbound
         user:,
         kind: "inbound_enquiry",
         title:,
-        body: clip(listing_name.presence || "A client", 160),
+        body: clip(listing_name.presence || "A Client", 160),
         dedupe_key:,
         data: { "page" => "leads", "item" => lead.id }
       )

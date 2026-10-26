@@ -32,6 +32,8 @@ module Api
             assigned_user: named(lead.assigned_user),
             source: named(lead.lead_source),
             next_action_at: lead.next_action_at,
+            visit_planned_at: lead.visit_planned_at,
+            visit_due: lead.visit_due?,
             last_followup_comment: lead.last_followup_comment,
             overdue: lead.overdue?,
             visited: lead.visited?,

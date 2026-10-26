@@ -14,7 +14,7 @@ module Facebook
         result = Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "Facebook needs to be connected again",
+          title: "Facebook Needs to Be Connected Again",
           body: "New leads from #{connection.fb_user_name.presence || 'Facebook'} have stopped. Connect Facebook again.",
           dedupe_key: "fb_token_invalid:#{connection.id}:#{hour}",
           data: { "page" => "settings", "item" => "facebook" },

@@ -63,7 +63,7 @@ RSpec.describe Facebook::ProcessLeadJob do
     expect(lead.notes).to include("Client's requirements")
     expect(lead.lead_projects.map(&:project_id)).to eq([ project.id ])
     notice = Notification.across_firms.find_by!(dedupe_key: "fb_lead:lg-us")
-    expect(notice.title).to eq("New Facebook lead")
+    expect(notice.title).to eq("New Facebook Lead")
     expect(notice.data).to include("page" => "leads", "item" => lead.id)
     expect(notice.user_id).to eq(connection.connected_by_user_id)
   end

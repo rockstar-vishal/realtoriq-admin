@@ -107,8 +107,8 @@ RSpec.describe Matches::CurateFirm do
 
       note = Notification.across_firms.find_by!(kind: "match_digest", user: super_admin)
       expect(note.data).to eq("page" => "matches")
-      expect(note.title).to eq("New matches are ready")
-      expect(note.body).to include("leads have new options")
+      expect(note.title).to eq("New Matches Are Ready")
+      expect(note.body).to include("Leads Have New Options")
       expect(note.body).not_to include("Asha")
     end
   end
@@ -417,7 +417,7 @@ RSpec.describe Matches::CurateFirm do
 
     Matches::Notify.call(digest:)
 
-    expect(Notification.across_firms.find_by!(kind: "match_digest").body).to eq("1 lead has new options")
+    expect(Notification.across_firms.find_by!(kind: "match_digest").body).to eq("1 Lead Has New Options")
   end
 
   it "drops the price cap when a lead has no budget" do

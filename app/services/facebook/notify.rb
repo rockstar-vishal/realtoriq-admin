@@ -16,7 +16,7 @@ module Facebook
         Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "New Facebook lead",
+          title: "New Facebook Lead",
           body: lead_body(lead, form),
           dedupe_key: "fb_lead:#{leadgen_id}",
           data: { "page" => "leads", "item" => lead.id }
@@ -42,8 +42,8 @@ module Facebook
         Notifications::Record.call(
           user:,
           kind: "facebook",
-          title: "This Facebook lead is already in your pipeline",
-          body: "Existing lead #{lead.code}",
+          title: "This Facebook Lead Is Already in Your Pipeline",
+          body: "Existing Lead #{lead.code}",
           dedupe_key: "fb_duplicate:#{leadgen_id}:#{stamp.to_i}",
           data: { "page" => "settings", "item" => "facebook" }
         )

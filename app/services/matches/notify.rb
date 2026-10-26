@@ -34,18 +34,18 @@ module Matches
     # No client name, budget, or locality. Those stay on the Matches page.
     # A lock screen should not show who the client is.
     def title
-      "New matches are ready"
+      "New Matches Are Ready"
     end
 
     def body
       parts = []
       if lead_new.positive?
-        parts << "#{lead_new} #{lead_new == 1 ? "lead has" : "leads have"} new options"
+        parts << "#{lead_new} #{lead_new == 1 ? "Lead Has" : "Leads Have"} New Options"
       end
       if listing_new.positive?
-        parts << "#{listing_new} #{listing_new == 1 ? "listing has" : "listings have"} new buyers"
+        parts << "#{listing_new} #{listing_new == 1 ? "Listing Has" : "Listings Have"} New Buyers"
       end
-      parts.join(" · ").presence || "Open Matches to see the latest list."
+      parts.join(" · ").presence || "Open Matches to See the Latest List"
     end
 
     def lead_new

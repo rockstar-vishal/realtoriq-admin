@@ -82,6 +82,19 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["lead"]).not_to have_key("next_action_note")
     end
 
+    it "refuses a nested followup whose next call is in the past" do
+      post "/api/v1/leads",
+        params: valid_attributes(followup: {
+          comment: "Opening call", next_action_at: 5.minutes.ago.iso8601
+        }),
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("next_call_in_past")
+      expect(response.parsed_body.dig("error", "message")).to eq("The next call must be in the future.")
+      expect(Lead.across_firms.count).to eq(0)
+    end
+
     it "refuses a nested followup with a date and no comment" do
       post "/api/v1/leads",
         params: valid_attributes(followup: { next_action_at: 2.days.from_now.iso8601 }),
@@ -788,7 +801,41 @@ RSpec.describe "API v1 leads" do
   end
 
   describe "POST /leads/:id/status" do
+    let!(:hot_status) { create(:lead_status, :hot) }
     let!(:lead) { create(:lead, :matchable, firm:, lead_status: new_status) }
+
+    it "refuses to move a lead back to New" do
+      lead.update!(lead_status: hot_status)
+
+      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("new_not_allowed")
+      expect(lead.reload.lead_status).to eq(hot_status)
+    end
+
+    it "refuses Visit Planned and tells the app to plan it on a followup" do
+      post "/api/v1/leads/#{lead.id}/status", params: { status: "visit_planned" },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("visit_needs_date")
+      expect(response.parsed_body.dig("error", "message")).to eq("Plan a visit with a date.")
+      expect(lead.reload.lead_status).to eq(new_status)
+    end
+
+    it "clears the planned visit when the status chip leaves Visit Planned" do
+      planned = create(:lead_status, :visit_planned)
+      lead.update!(lead_status: planned, visit_planned_at: 1.day.from_now)
+
+      post "/api/v1/leads/#{lead.id}/status", params: { status: hot_status.code },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.lead_status).to eq(hot_status)
+      expect(lead.visit_planned_at).to be_nil
+    end
 
     it "refuses to mark a lead dead without a reason" do
       post "/api/v1/leads/#{lead.id}/status", params: { status: dead_status.code },
@@ -821,7 +868,7 @@ RSpec.describe "API v1 leads" do
         headers: auth(manager), as: :json
       live = create(:lead, firm:, mobile: lead.reload.mobile, lead_status: new_status, transaction_type: "sale")
 
-      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+      post "/api/v1/leads/#{lead.id}/status", params: { status: hot_status.code },
         headers: auth(manager), as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -839,10 +886,11 @@ RSpec.describe "API v1 leads" do
         params: { status: dead_status.code, reason: "Gone quiet" },
         headers: auth(manager), as: :json
 
-      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+      post "/api/v1/leads/#{lead.id}/status", params: { status: hot_status.code },
         headers: auth(manager), as: :json
 
       lead.reload
+      expect(lead.lead_status).to eq(hot_status)
       expect(lead.dead_reason).to be_nil
       expect(lead.dead_at).to be_nil
     end
@@ -853,7 +901,7 @@ RSpec.describe "API v1 leads" do
         params: { status: dead_status.code, reason: "Gone quiet" },
         headers: auth(manager), as: :json
 
-      post "/api/v1/leads/#{lead.id}/status", params: { status: new_status.code },
+      post "/api/v1/leads/#{lead.id}/status", params: { status: hot_status.code },
         headers: auth(manager), as: :json
 
       expect(lead.reload).to be_unqualified

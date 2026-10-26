@@ -29,14 +29,14 @@ RSpec.describe Facebook::TokenHealthCheckJob do
     expect(ActionMailer::Base.deliveries.size).to eq(1)
     expect(ActionMailer::Base.deliveries.last.subject).to eq("Reconnect Facebook to keep receiving leads")
     expect(ActionMailer::Base.deliveries.last.body.encoded).to include("/settings/facebook")
-    expect(Notification.across_firms.where(title: "Facebook needs to be connected again").count).to eq(1)
+    expect(Notification.across_firms.where(title: "Facebook Needs to Be Connected Again").count).to eq(1)
 
     expect {
       perform_enqueued_jobs(only: [ Facebook::TokenHealthCheckFirmJob, Facebook::TokenInvalidAlertJob ]) do
         described_class.perform_now
       end
     }.not_to change { ActionMailer::Base.deliveries.size }
-    expect(Notification.across_firms.where(title: "Facebook needs to be connected again").count).to eq(1)
+    expect(Notification.across_firms.where(title: "Facebook Needs to Be Connected Again").count).to eq(1)
   end
 
   it "stops one Page when only that Page token is invalid" do
@@ -54,7 +54,7 @@ RSpec.describe Facebook::TokenHealthCheckJob do
     expect(connection.reload).to be_connection_active
     expect(bad.reload).to be_page_error
     expect(good.reload).to be_page_active
-    expect(Notification.across_firms.where(title: "A Facebook Page needs attention").count).to eq(1)
+    expect(Notification.across_firms.where(title: "A Facebook Page Needs Attention").count).to eq(1)
     expect(ActionMailer::Base.deliveries.last.subject).to eq("A Facebook Page needs attention")
   end
 

@@ -1425,7 +1425,7 @@
     },
     {
       "name": "Leads",
-      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Write `budget` (single amount → `budget_max`).** GET `budget_min`/`budget_max` are a filter *window* on that stored amount, not range overlap.\n\n`missed_followup=true` is an overdue-NCD filter (not a status). `status=hot_negotiation` is hot+negotiation. Drawer params drop `q`; cards (`status`, `visited`, `missed_followup`) do not.\n\nList returns `counts` (pipeline totals, unfiltered). Default sort is NCD NULLS FIRST. Money is raw integer rupees; the client formats lakh/crore. Screen guide: frontend/YASH.md.",
+      "description": "The core CRM object.\n\n**Visibility is enforced server-side.** An agent sees only leads assigned to them; managers and the super admin see the firm's whole pipeline. A lead an agent may not see returns **404, not 403** — a 403 would confirm it exists.\n\n**Write `budget` (single amount → `budget_max`).** GET `budget_min`/`budget_max` are a filter *window* on that stored amount, not range overlap.\n\n`missed_followup=true` is an overdue filter (a next call that is due, or a Visit Planned visit whose time has passed — not a status). `status=hot_negotiation` is hot+negotiation. Drawer params drop `q`; cards (`status`, `visited`, `missed_followup`) do not.\n\nList returns `counts` (pipeline totals, unfiltered). Default sort is NCD NULLS FIRST. Money is raw integer rupees; the client formats lakh/crore. Screen guide: frontend/YASH.md.",
       "item": [
         {
           "name": "List leads",
@@ -1498,7 +1498,7 @@
                 }
               ]
             },
-            "description": "The design's \"Missed f/u\" tab. Not a status — `LEAD_STATUSES` has no such entry — but an overdue next action on a lead that isn't already dead or booked."
+            "description": "The design's \"Missed f/u\" tab. Not a status — `LEAD_STATUSES` has no such entry. An overdue next action on a lead that isn't already dead or booked, or a Visit Planned visit whose time has passed. Logging the visit does not clear it."
           },
           "event": [
             {
@@ -1608,7 +1608,7 @@
                 }
               ]
             },
-            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\nDrawer params are sent without `q` because a drawer field drops `q`. GET `budget_min`/`budget_max` are a window on the stored amount (`budget`), not range overlap. `ncd_from`/`ncd_upto`, `created_from`/`created_upto` and `died_from`/`died_upto` are inclusive IST days. `died_*` matches a change into a dead status, including a lead later revived.\n\n`property_type_id`, `source_id` and `assigned_user_id` repeat or take commas. `source_missing=true` with `source_id` is those sources plus leads with no source. A backwards date pair is 422.\n\n`missed_followup=true` is not a real status — `next_action_at <= now` on a non-terminal lead. `status=hot_negotiation` is hot+negotiation.\n\n`sort` is `ncd` (default, NULLS FIRST), `worklist`, `recent` or `updated`. `typology_ids` repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25. Response includes `counts` (unfiltered pipeline totals)."
+            "description": "Every filter the leads index accepts, in one request — this is the reference for what is queryable.\n\nDrawer params are sent without `q` because a drawer field drops `q`. GET `budget_min`/`budget_max` are a window on the stored amount (`budget`), not range overlap. `ncd_from`/`ncd_upto`, `created_from`/`created_upto` and `died_from`/`died_upto` are inclusive IST days. `died_*` matches a change into a dead status, including a lead later revived.\n\n`property_type_id`, `source_id` and `assigned_user_id` repeat or take commas. `source_missing=true` with `source_id` is those sources plus leads with no source. A backwards date pair is 422.\n\n`missed_followup=true` is not a real status — `next_action_at <= now` on a non-terminal lead, or a Visit Planned lead whose visit_planned_at has passed. `status=hot_negotiation` is hot+negotiation.\n\n`sort` is `ncd` (default, NULLS FIRST), `worklist`, `recent` or `updated`. `typology_ids` repeats as `typology_ids[]=`. `per_page` is clamped to 1..50; absent or 0 means 25. Response includes `counts` (unfiltered pipeline totals)."
           },
           "event": [
             {
@@ -2081,10 +2081,10 @@
                 "followups"
               ]
             },
-            "description": "The only write path for a follow-up comment and for moving NCD. Optional `status` runs TransitionStatus in the same transaction — do not also POST /leads/:id/status.\n\n`comment` is required. Omit `next_action_at` to leave the lead's current NCD. Dead needs `reason`; booked needs `booked_on` (application date on leads.booked_at, no booking row). Terminal statuses clear NCD.\n\nTop-level next_action_at on POST/PATCH /leads is ignored.",
+            "description": "The only write path for a follow-up comment and for moving NCD. Optional `status` runs TransitionStatus in the same transaction — do not also POST /leads/:id/status. Omitting `status` leaves it (Schedule a call).\n\nChecks, in order, each 422 and a no-op: blank `comment` (`comment_required`); `status: new` (`new_not_allowed`); no `next_action_at` unless the lead ends Booked or Dead (`next_call_required`); a next call more than 2 minutes ago (`next_call_in_past`); Visit Planned with no `visit_at`, or a blank `visit_at` on a lead already Visit Planned (`visit_at_required`); a visit that is not in the future (`visit_in_past`); a next call that is not before the visit (`reminder_after_visit`).\n\nDead needs `reason`; booked needs `booked_on` (application date on leads.booked_at, no booking row). Terminal statuses clear NCD. Leaving Visit Planned clears `visit_planned_at`. Logging a visit does not.\n\nTop-level next_action_at on POST/PATCH /leads is ignored. A nested followup on POST /leads refuses a past next call with the same `next_call_in_past`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comment\": \"Call back after site visit\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"status\": \"followup\"\n}"
+              "raw": "{\n  \"comment\": \"Call back after site visit\",\n  \"next_action_at\": \"2026-09-02T10:30:00+05:30\",\n  \"visit_at\": \"2026-09-03T16:00:00+05:30\",\n  \"status\": \"visit_planned\"\n}"
             }
           },
           "event": [
@@ -2374,7 +2374,7 @@
                 "status"
               ]
             },
-            "description": "Deliberately refused. A lead marked dead with no reason is a lead nobody can learn from, and the dead-leads report exists to answer \"why\".",
+            "description": "Deliberately refused. A lead marked dead with no reason is a lead nobody can learn from, and the dead-leads report exists to answer \"why\".\n\n`status: new` on a lead that is not New is `new_not_allowed`. `status: visit_planned` is `visit_needs_date` — plan the visit on POST /leads/:id/followups with `visit_at`. Leaving Visit Planned clears `visit_planned_at`.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"dead\"\n}"

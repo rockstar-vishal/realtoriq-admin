@@ -25,7 +25,7 @@ RSpec.describe Trainings::Announce do
     result = described_class.call(training:)
 
     expect(result.notified).to eq(2)
-    expect(inbox_for(first).first.title).to eq("New training: Closing Techniques")
+    expect(inbox_for(first).first.title).to eq("New Training: Closing Techniques")
     expect(inbox_for(first).first.data).to include("page" => "skills-training", "item" => training.id)
     expect(inbox_for(second).count).to eq(1)
   end
