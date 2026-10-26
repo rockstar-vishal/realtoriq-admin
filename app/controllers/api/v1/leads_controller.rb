@@ -258,6 +258,8 @@ module Api
           .with_sources(params[:source_id], missing: ActiveModel::Type::Boolean.new.cast(params[:source_missing]))
 
         scope = scope.where(transaction_type: params[:transaction_type]) if params[:transaction_type].present?
+        # Picker filter. Not a drawer key, so it keeps `q`. Anything else is ignored.
+        scope = scope.where(transaction_type: params[:side]) if %w[sale rent].include?(params[:side].to_s)
         if Typology::CATEGORIES.include?(params[:category].to_s)
           scope = scope.where(category: params[:category])
         end

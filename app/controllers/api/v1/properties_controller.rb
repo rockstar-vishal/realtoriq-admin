@@ -160,6 +160,8 @@ module Api
           .in_locality(params[:locality_id])
 
         scope = scope.where(listing_for: params[:listing_for]) if params[:listing_for].present?
+        # Picker filter. Not a drawer key, so it keeps `q`. Anything else is ignored.
+        scope = scope.where(listing_for: params[:side]) if %w[sale rent].include?(params[:side].to_s)
         scope = scope.where(typology_id: params[:typology_id]) if params[:typology_id].present?
         if Typology::CATEGORIES.include?(params[:category].to_s)
           scope = scope.joins(:typology).where(typologies: { category: params[:category] })
