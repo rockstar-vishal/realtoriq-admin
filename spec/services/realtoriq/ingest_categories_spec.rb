@@ -21,6 +21,7 @@ RSpec.describe "LaunchIQ configuration rows", type: :request do
       rera_number: "P51800000001",
       possession_on: "2027-12-31",
       city: "Mumbai",
+      locality: "Worli",
       rm_name: "Asha Rao",
       rm_contact: "9876543210",
       unit_types: units

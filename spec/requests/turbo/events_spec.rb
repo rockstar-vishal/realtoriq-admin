@@ -357,6 +357,18 @@ RSpec.describe "Turbo marketplace events" do
     expect(project.reload.brochure_source_url).to be_nil
   end
 
+  it "refuses an upsert without a locality" do
+    expect { post_event(upsert_payload(locality: "")) }.not_to change { Project.unscoped.count }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body["error"]).to eq("locality is required")
+
+    payload = upsert_payload
+    payload.delete(:locality)
+    expect { post_event(payload) }.not_to change { Project.unscoped.count }
+    expect(response.parsed_body["error"]).to eq("locality is required")
+  end
+
   it "refuses an upsert without a developer name, RERA number, or possession date" do
     post_event(upsert_payload(developer_name: " "))
 

@@ -716,15 +716,16 @@ RSpec.describe "API v1 leads" do
       expect(Lead.across_firms.find_by(name: "Junk Caller")).to be_nil
     end
 
-    it "does not flag an incomplete lead" do
+    it "flags an incomplete lead" do
       bare = create(:lead, firm:, lead_status: new_status)
 
       patch "/api/v1/leads/#{bare.id}", params: { unqualified: true },
         headers: auth(manager), as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(bare.reload).not_to be_unqualified
-      expect(AuditEvent.where(action: "lead.unqualified", subject: bare)).to be_empty
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload).to be_unqualified
+      event = AuditEvent.find_by!(action: "lead.unqualified", subject: bare)
+      expect(event.metadata["unqualified"]).to be(true)
     end
   end
 
@@ -937,7 +938,7 @@ RSpec.describe "API v1 leads" do
       expect(lead.reload.name).to eq("Original")
     end
 
-    it "refuses a save that would leave the lead with no locality" do
+    it "saves a name on a lead that has no locality" do
       lead = create(:lead, firm:, name: "Original")
       lead.typologies << create(:typology, name: "Studio Z")
 
@@ -945,8 +946,9 @@ RSpec.describe "API v1 leads" do
         params: { name: "Changed" },
         headers: auth(super_admin), as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(lead.reload.name).to eq("Original")
+      expect(response).to have_http_status(:ok)
+      expect(lead.reload.name).to eq("Changed")
+      expect(lead.lead_localities).to be_empty
     end
 
     it "still replaces the set on a successful update" do
@@ -960,6 +962,79 @@ RSpec.describe "API v1 leads" do
 
       expect(response).to have_http_status(:ok)
       expect(lead.reload.typologies.map(&:id)).to eq([ typologies.first.id ])
+    end
+  end
+
+  describe "PATCH /leads/:id without a locality" do
+    let!(:other_agent) { create(:user, firm:, role: :agent) }
+    let!(:bare) do
+      create(:lead, firm:, lead_status: new_status, assigned_user: agent, budget_max: 16_000_000).tap do |lead|
+        lead.typologies << match_typology
+      end
+    end
+
+    it "reassigns and writes the audit" do
+      patch "/api/v1/leads/#{bare.id}", params: { assigned_user_id: other_agent.id },
+        headers: auth(super_admin), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload.assigned_user).to eq(other_agent)
+      expect(AuditEvent.find_by!(action: "lead.reassigned", subject: bare).metadata["to"]).to eq(other_agent.id)
+    end
+
+    it "marks the lead unqualified and then restores matching" do
+      patch "/api/v1/leads/#{bare.id}", params: { unqualified: true },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload).to be_unqualified
+
+      patch "/api/v1/leads/#{bare.id}", params: { unqualified: false },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload).not_to be_unqualified
+    end
+
+    it "saves an EMI" do
+      patch "/api/v1/leads/#{bare.id}",
+        params: { emi: { loan_amount: 8_000_000, annual_rate: "8.50", tenure_years: 20 } },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload.emi_loan_amount).to eq(8_000_000)
+      expect(bare.emi_saved_at).to be_present
+    end
+
+    it "refuses a requirement save that leaves out the locality" do
+      patch "/api/v1/leads/#{bare.id}", params: {
+        name: "Renamed", budget: 12_000_000, typology_ids: [ match_typology.id ], locality_ids: []
+      }, headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to include("must include a locality")
+      bare.reload
+      expect(bare.name).not_to eq("Renamed")
+      expect(bare.budget_max).to eq(16_000_000)
+      expect(bare.lead_localities).to be_empty
+    end
+
+    it "saves a locality when one is sent" do
+      patch "/api/v1/leads/#{bare.id}", params: { locality_ids: [ match_locality.id ] },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(bare.reload.locality_ids).to eq([ match_locality.id ])
+    end
+
+    it "refuses a blank budget on a complete lead" do
+      complete = create(:lead, :matchable, firm:, lead_status: new_status, budget_max: 16_000_000)
+
+      patch "/api/v1/leads/#{complete.id}", params: { budget: "" },
+        headers: auth(manager), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(complete.reload.budget_max).to eq(16_000_000)
     end
   end
 
