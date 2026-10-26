@@ -303,6 +303,7 @@ RSpec.describe "Property location", type: :request do
       rera_number: "P51800000001",
       possession_on: "2027-12-31",
       city: "Mumbai",
+      locality: "Worli",
       address:,
       lat:,
       lng:,

@@ -44,6 +44,7 @@ module Realtoriq
 
       city = resolve_city
       return city if city.is_a?(Result)
+      return failure("locality is required") if payload["locality"].to_s.strip.blank?
 
       builder = resolve_builder
       return builder if builder.is_a?(Result)
@@ -277,8 +278,6 @@ module Realtoriq
 
     def resolve_locality(city)
       name = payload["locality"].to_s.strip
-      return if name.blank?
-
       found = find_named(Locality.where(city:), name)
       return found if found
 

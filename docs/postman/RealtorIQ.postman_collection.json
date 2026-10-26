@@ -1983,7 +1983,7 @@
                 "{{lead_id}}"
               ]
             },
-            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.\n\n`unqualified` leaves the lead out of matching. Omit the key to leave it. Send false to clear it. Status changes do not clear it.",
+            "description": "Every accepted field. Send only what changed — this body sends everything to document the shape.\n\nSending `typology_ids` **replaces the whole set**; omitting the key leaves it alone. A partial list silently drops the rest.\n\n`next_action_at` / `next_action_note` are ignored on PATCH. Move NCD with POST /leads/:id/followups.\n\nOptional `emi` replaces the saved Quick EMI calculation. Omit it to leave a saved one alone. All three of `loan_amount`, `annual_rate` (string), and `tenure_years` are required when `emi` is present.\n\n`unqualified` leaves the lead out of matching. Omit the key to leave it. Send false to clear it. Status changes do not clear it.\n\nWhen the request sends `budget`, `typology_ids` or `locality_ids`, the saved lead must still have a budget, at least one configuration and at least one locality, or the PATCH is 422 invalid and changes nothing. A PATCH that sends none of them (reassign, unqualified, EMI) is not checked.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Yash Raheja\",\n  \"mobile\": \"97597 54343\",\n  \"alt_mobile\": \"+919820144288\",\n  \"email\": \"yash.r@example.com\",\n  \"transaction_type\": \"sale\",\n  \"property_type_id\": \"{{property_type_id}}\",\n  \"budget\": 19000000,\n  \"possession_by\": \"2027-12-31\",\n  \"lead_source_id\": \"{{lead_source_id}}\",\n  \"source_detail\": \"Referred by Mehta\",\n  \"assigned_user_id\": \"{{user_id}}\",\n  \"notes\": \"Budget widened after loan approval.\",\n  \"unqualified\": false,\n  \"typology_ids\": [\n    \"{{typology_id}}\"\n  ],\n  \"emi\": {\n    \"loan_amount\": 8000000,\n    \"annual_rate\": \"8.50\",\n    \"tenure_years\": 20\n  },\n  \"near_place\": {\n    \"label\": \"Office\",\n    \"address\": \"Bandra Kurla Complex\",\n    \"lat\": 19.066,\n    \"lng\": 72.869,\n    \"google_place_id\": \"ChIJoffice\"\n  }\n}"
@@ -5200,7 +5200,7 @@
     },
     {
       "name": "Turbo marketplace",
-      "description": "Server-to-server. Not the broker JWT. Sign the raw body with HMAC-SHA256 and send X-RealtorIQ-Signature: sha256=<hex>. The secret is realtoriq.webhook_secret. Failures are { error: string }.",
+      "description": "Server-to-server. Not the broker JWT. Sign the raw body with HMAC-SHA256 and send X-RealtorIQ-Signature: sha256=<hex>. The secret is realtoriq.webhook_secret. Failures are { error: string }.\n\nAn upsert requires developer_name, city, locality, rera_number and possession_on. A blank or missing locality is \"locality is required\". A catalog row already stored without a locality stays until the next push includes one.",
       "item": [
         {
           "name": "Upsert project",

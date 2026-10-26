@@ -408,9 +408,14 @@ module Api
         end
       end
 
-      # Every broker save must leave a budget, a configuration and a locality.
+      # Runs only when the request sends budget, typology_ids, or locality_ids.
+      # The lead form always sends all three, so that save is checked as before.
+      # A reassignment, an unqualified flag, or an EMI save sends none of them
+      # and is not checked. The check looks at the lead as it will be saved.
       # Follow-ups and status changes use other endpoints and do not come here.
       def ensure_match_fields
+        return unless params.key?(:budget) || params.key?(:typology_ids) || params.key?(:locality_ids)
+
         @lead.errors.add(:budget, "is required") if @lead.budget_amount.blank?
         @lead.errors.add(:typology_ids, "must include a configuration") if @lead.lead_typologies.empty?
         @lead.errors.add(:locality_ids, "must include a locality") if @lead.lead_localities.empty?
