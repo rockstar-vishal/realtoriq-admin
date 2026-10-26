@@ -1441,7 +1441,7 @@
                 "leads"
               ]
             },
-            "description": "Default sort is NCD: `next_action_at ASC NULLS FIRST` (no date sits above overdue). `sort=worklist` is overdue-first.\n\nFilters: `q` (dropped if any drawer param is set), `status` (`new` · `hot_negotiation` · codes, or `status[]=`), `visited`, `missed_followup`, drawer `name`/`mobile`/`email`/`ncd_from`/`ncd_upto`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`/`budget_max` (window on stored amount), `possession_from`/`possession_to`, `source_id`, `assigned_user_id`, `sort` (`ncd` default · `worklist` · `recent` · `updated`), `page`, `per_page` (max 50).\n\nResponse includes `counts`. Saves the first lead's id for the requests below."
+            "description": "Default sort is NCD: `next_action_at ASC NULLS FIRST` (no date sits above overdue). `sort=worklist` is overdue-first.\n\nFilters: `q` (dropped if any drawer param is set), `status` (`new` · `hot_negotiation` · codes, or `status[]=`), `visited`, `missed_followup`, `side` (`sale` or `rent`; keeps `q`, for pickers; any other value is ignored), drawer `name`/`mobile`/`email`/`ncd_from`/`ncd_upto`, `transaction_type`, `property_type_id`, `typology_ids[]`, `budget_min`/`budget_max` (window on stored amount), `possession_from`/`possession_to`, `source_id`, `assigned_user_id`, `sort` (`ncd` default · `worklist` · `recent` · `updated`), `page`, `per_page` (max 50).\n\nResponse includes `counts`. Saves the first lead's id for the requests below."
           },
           "event": [
             {
@@ -3508,7 +3508,7 @@
                 "properties"
               ]
             },
-            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description — not the city; dropped if any drawer param is set; `status` does not drop `q`; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default · `booked` · `sold_out` · `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.** List rows also carry `building_name`, `city` and `locality` (`{id, name}`), `address`, `lat`, `lng`, `pin_approximate`, `google_place_id`, `has_pool`, `has_gym`, `has_pin`. `pin_approximate` is true when that pin is only the locality centre. There is no `building` object."
+            "description": "Filters: `q` (card title `{typology} in {locality}`, either half of it, building name, or description — not the city; dropped if any drawer param is set; `status` and `side` do not drop `q`; `side` is `sale` or `rent` on `listing_for`, for pickers, and any other value is ignored; the marketplace list does not take it; omitting `status` is `available`), `listing_for`, `city_id`, `locality_id`, `typology_id`, `floor_band`, `price_min`, `price_max`, `carpet_min`, `carpet_max` (NULL carpet drops out), `status` (`available` default · `booked` · `sold_out` · `all`).\n\n`price` is the sale price, or the **monthly rent** when `listing_for` is `rent` — so `rate_per_sqft` on a rental is rent per sqft per month.\n\n**`confidential_note` is never in this payload.** List rows also carry `building_name`, `city` and `locality` (`{id, name}`), `address`, `lat`, `lng`, `pin_approximate`, `google_place_id`, `has_pool`, `has_gym`, `has_pin`. `pin_approximate` is true when that pin is only the locality centre. There is no `building` object."
           },
           "event": [
             {
@@ -3593,7 +3593,7 @@
                 }
               ]
             },
-            "description": "Every filter on the properties index. `q` matches the card title, the building name, or the description — not the city. `status` is `available` / `booked` / `sold_out`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`. Drawer params drop `q`. `carpet_min`/`carpet_max` skip listings with no carpet.\n\nNo list payload carries `confidential_note`, whatever the filter."
+            "description": "Every filter on the properties index. `q` matches the card title, the building name, or the description — not the city. `status` is `available` / `booked` / `sold_out`, `floor_band` is `lower` / `middle` / `higher`, `listing_for` is `sale` / `rent`. `side` is `sale` or `rent` and keeps `q` (for pickers; any other value is ignored). Drawer params drop `q`. `carpet_min`/`carpet_max` skip listings with no carpet.\n\nNo list payload carries `confidential_note`, whatever the filter."
           },
           "event": [
             {

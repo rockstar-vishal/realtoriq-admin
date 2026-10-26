@@ -364,6 +364,29 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).not_to include(matching_q.id)
     end
 
+    it "keeps q when side is rent and ignores any other side" do
+      sale = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      rental = create(:lead, :rent, firm:, lead_status: new_status, name: "Alpha Shah")
+      create(:lead, :rent, firm:, lead_status: new_status, name: "Beta Shah")
+
+      get "/api/v1/leads", params: { q: "Alpha", side: "rent" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ rental.id ])
+
+      get "/api/v1/leads", params: { q: "Alpha", side: "foo" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to contain_exactly(sale.id, rental.id)
+    end
+
+    it "still ignores q when transaction_type is the drawer filter" do
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      rental = create(:lead, :rent, firm:, lead_status: new_status, name: "Beta Shah")
+
+      get "/api/v1/leads", params: { q: "Alpha", transaction_type: "rent" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ rental.id ])
+    end
+
     it "still applies q when only a card filter is present" do
       matching = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
       create(:lead, firm:, lead_status: new_status, name: "Beta Shah")

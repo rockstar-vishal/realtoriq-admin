@@ -640,13 +640,14 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`, `missed_followup`) do **not** drop `q` |
+| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`, `missed_followup`) and `side` do **not** drop `q` |
 | `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
 | `visited` | `true` / `false` — at least one `lead_visits` row, or none |
 | `missed_followup` | `true` / `false` — `next_action_at <= now` on a non-terminal lead. ANDs with `status` |
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
+| `side` | `sale` · `rent`. Not a drawer field, so it keeps `q`. Any other value is ignored. Meant for pickers that need one side without dropping the search |
 | `property_type_id`, `source_id`, `assigned_user_id` | Drawer. Repeat the key, or comma-separate. An IN list. `source_missing=true` with `source_id` is those sources plus leads with no source |
 | `source_missing` | Drawer. `true` keeps leads whose source is blank |
 | `created_from`, `created_upto` | Drawer. Inclusive **IST** calendar days on `created_at` |
@@ -1513,9 +1514,11 @@ any other.
 
 Also: `q` (the card title `{typology} in {locality}`, either half of that
 title, the building name, or the description — **not the city**. Ignored when a
-**drawer** param is set; `status` does not drop `q`. Omitting `status` is
+**drawer** param is set; `status` and `side` do not drop `q`. Omitting `status` is
 `available`, so a search does not return booked or sold-out listings unless
-`status` asks for them), `listing_for`, `city_id`, `locality_id`, `typology_id`,
+`status` asks for them), `listing_for`, `side` (`sale` · `rent` on `listing_for`;
+any other value is ignored; not a drawer field, so a picker can keep `q`;
+the marketplace list does not take it), `city_id`, `locality_id`, `typology_id`,
 `price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL
 carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
 `locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
@@ -2659,8 +2662,10 @@ deletion takes the attachment id from `photos[].id`.
 
 **7. Drawer filters drop `q`.** If any drawer param is present, `GET /leads`,
 `GET /projects` and `GET /properties` ignore `q`. Heading pills (`status`) and
-lead cards (`status`, `visited`) do not. Sending `q=Aurum&city_id=…` searches
-only by city.
+lead cards (`status`, `visited`) do not. `side` (`sale` or `rent`) on leads and
+on the firm's own properties does not either: it is for pickers that need one
+side and still want the search. Any other `side` is ignored. Sending
+`q=Aurum&city_id=…` searches only by city.
 
 **8. `budget` on write is not `budget_min` / `budget_max` on GET.** Create and
 PATCH store a single amount in `budget`. On GET those two names are the filter

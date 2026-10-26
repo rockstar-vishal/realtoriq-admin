@@ -629,6 +629,22 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body["properties"].map { |p| p["listing_for"] }).to eq([ "rent" ])
     end
 
+    it "keeps q when side is rent and ignores any other side" do
+      create_property(description: "Corner sale")
+      sale_id = response.parsed_body.dig("property", "id")
+      create_property(description: "Corner rent", listing_for: "rent", price: 52_000)
+      rent_id = response.parsed_body.dig("property", "id")
+      create_property(description: "Quiet rent", listing_for: "rent", price: 48_000)
+
+      get "/api/v1/properties", params: { q: "Corner", side: "rent" }, headers: auth
+
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).to eq([ rent_id ])
+
+      get "/api/v1/properties", params: { q: "Corner", side: "foo" }, headers: auth
+
+      expect(response.parsed_body["properties"].map { |p| p["id"] }).to contain_exactly(sale_id, rent_id)
+    end
+
     it "matches the card title, the building name and the description, and not the city" do
       locality.update!(name: "Kharghar")
       city.update!(name: "Navi Mumbai")
