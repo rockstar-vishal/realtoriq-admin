@@ -1,16 +1,25 @@
 # frozen_string_literal: true
 
 module Localities
-  # One Geocoding API lookup. The key stays in the query string. Failures are
-  # swallowed so a timeout or socket error cannot print the request URL.
+  # One Geocoding API lookup. The key stays in the query string. A timeout or
+  # socket error is swallowed so the request URL cannot be printed. The centre
+  # job sets reraise and gets a URL-free Unavailable instead.
   class GoogleGeocoder
     ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json"
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 5
     CITY_TYPES = %w[locality administrative_area_level_2 administrative_area_level_3].freeze
 
-    def initialize(api_key)
+    # A transport failure, with no request URL in the message.
+    class Unavailable < StandardError
+      def initialize
+        super("Geocoding failed")
+      end
+    end
+
+    def initialize(api_key, reraise: false)
       @api_key = api_key
+      @reraise = reraise
     end
 
     def coordinates(address)
@@ -35,7 +44,7 @@ module Localities
 
     private
 
-    attr_reader :api_key
+    attr_reader :api_key, :reraise
 
     def geocode(params)
       uri = URI(ENDPOINT)
@@ -45,6 +54,8 @@ module Localities
 
       JSON.parse(response.body)
     rescue StandardError
+      raise Unavailable if reraise
+
       nil
     end
 

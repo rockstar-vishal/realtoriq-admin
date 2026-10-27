@@ -33,6 +33,7 @@ RSpec.describe Localities::GeocodeCenters do
       "Kharghar, Mumbai, Maharashtra, India" => [ 19.047, 73.069 ]
     }
 
+    expect(described_class).to receive(:fill_one).twice.and_call_original
     expect(Inventory::RebuildLocalityNeighbors).to receive(:call).once.and_call_original
     described_class.call(client: client_for(answers))
 
