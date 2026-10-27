@@ -159,7 +159,18 @@ RSpec.describe "API v1 inbound leads" do
     expect(lead.lead_projects).to be_empty
   end
 
-  it "refuses to guess when two cities share a name" do
+    it "does not create a city it has not heard of" do
+      expect {
+        post_inbound("general", "projects", buyer(
+          budget: "12000000", city: "Ahmedabad", locality: "Shela", configuration: "2 BHK"
+        ))
+      }.not_to change(City, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("We don't have a city named Ahmedabad.")
+    end
+
+    it "refuses to guess when two cities share a name" do
     create(:city, name: "Aurangabad", state: "Maharashtra")
     create(:city, name: "Aurangabad", state: "Bihar")
 

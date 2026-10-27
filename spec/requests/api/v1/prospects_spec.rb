@@ -369,12 +369,174 @@ RSpec.describe "API v1 prospects" do
     end
   end
 
+  describe "worklist" do
+    def names
+      response.parsed_body["prospects"].map { |row| row["name"] }
+    end
+
+    it "keeps New and Following and leaves out a closed prospect" do
+      create(:prospect, firm:, name: "Asha", status: "new")
+      create(:prospect, firm:, name: "Rohan", status: "following")
+      create(:prospect, firm:, name: "Meera", status: "interested")
+      create(:prospect, firm:, name: "Dev", status: "not_interested")
+
+      get "/api/v1/prospects", params: { view: "worklist" }, headers: auth(agent)
+
+      expect(response).to have_http_status(:ok)
+      expect(names).to contain_exactly("Asha", "Rohan")
+      expect(response.parsed_body["prospects"]).to all(satisfy { |row| !row.key?("mobile") })
+    end
+
+    it "filters a comma list of statuses and ignores an unknown value" do
+      create(:prospect, firm:, name: "Asha", status: "new")
+      create(:prospect, firm:, name: "Meera", status: "interested")
+      create(:prospect, firm:, name: "Dev", status: "not_interested")
+
+      get "/api/v1/prospects", params: { status: "interested,not_interested" }, headers: auth(agent)
+
+      expect(names).to contain_exactly("Meera", "Dev")
+
+      get "/api/v1/prospects", params: { status: "interested,bogus" }, headers: auth(agent)
+
+      expect(names).to eq([ "Meera" ])
+    end
+
+    it "keeps an overdue Following prospect and leaves out a later call and a closed one" do
+      zone = Time.zone
+      travel_to zone.local(2026, 10, 28, 15, 0) do
+        create(:prospect, firm:, name: "Overdue", status: "following",
+          next_action_at: zone.local(2026, 10, 28, 10, 0))
+        create(:prospect, firm:, name: "Later", status: "following",
+          next_action_at: zone.local(2026, 10, 28, 18, 0))
+        create(:prospect, firm:, name: "Closed", status: "interested",
+          next_action_at: zone.local(2026, 10, 28, 9, 0))
+
+        get "/api/v1/prospects", params: { missed_followup: true }, headers: auth(agent)
+
+        expect(names).to eq([ "Overdue" ])
+      end
+    end
+
+    it "keeps a next call at 11:30 PM IST on the filtered day" do
+      zone = Time.zone
+      travel_to zone.local(2026, 10, 28, 15, 0) do
+        create(:prospect, firm:, name: "Late", status: "following",
+          next_action_at: zone.local(2026, 10, 28, 23, 30))
+        create(:prospect, firm:, name: "After midnight", status: "following",
+          next_action_at: zone.local(2026, 10, 29, 0, 30))
+
+        get "/api/v1/prospects",
+          params: { ncd_from: "2026-10-28", ncd_upto: "2026-10-28" },
+          headers: auth(agent)
+
+        expect(names).to eq([ "Late" ])
+      end
+    end
+
+    it "filters added dates and rejects a bad date" do
+      zone = Time.zone
+      kept = create(:prospect, firm:, name: "Kept", status: "new")
+      dropped = create(:prospect, firm:, name: "Dropped", status: "new")
+      kept.update_columns(created_at: zone.local(2026, 10, 28, 23, 30))
+      dropped.update_columns(created_at: zone.local(2026, 10, 29, 0, 30))
+
+      get "/api/v1/prospects",
+        params: { created_from: "2026-10-28", created_upto: "2026-10-28" },
+        headers: auth(agent)
+
+      expect(names).to eq([ "Kept" ])
+
+      get "/api/v1/prospects", params: { created_from: "2026-13-01" }, headers: auth(agent)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "code")).to eq("invalid")
+      expect(response.parsed_body.dig("error", "message"))
+        .to eq("Dates must be YYYY-MM-DD, and from must be on or before upto.")
+    end
+
+    it "filters a name and a 4-digit phone fragment" do
+      create(:prospect, firm:, name: "Asha Rao", mobile: "+919876543210", status: "new")
+      create(:prospect, firm:, name: "Rohan", mobile: "+919111112222", status: "following")
+
+      get "/api/v1/prospects", params: { name: "asha" }, headers: auth(agent)
+      expect(names).to eq([ "Asha Rao" ])
+
+      get "/api/v1/prospects", params: { mobile: "6543" }, headers: auth(agent)
+      expect(names).to eq([ "Asha Rao" ])
+    end
+
+    it "narrows search inside the status filter" do
+      create(:prospect, firm:, name: "Asha", mobile: "+919876543210", status: "following")
+      create(:prospect, firm:, name: "Rohan", mobile: "+919111112222", status: "new")
+
+      get "/api/v1/prospects", params: { status: "new", q: "Rohan" }, headers: auth(agent)
+      expect(names).to eq([ "Rohan" ])
+
+      get "/api/v1/prospects", params: { status: "new", q: "9876543210" }, headers: auth(agent)
+      expect(names).to eq([])
+    end
+
+    it "puts a prospect with no next call first, newest first, then the earliest call" do
+      blank_new = create(:prospect, firm:, name: "Blank new", status: "new")
+      blank_old = create(:prospect, firm:, name: "Blank old", status: "new")
+      create(:prospect, firm:, name: "Soon", status: "following", next_action_at: 2.hours.from_now)
+      create(:prospect, firm:, name: "Later", status: "following", next_action_at: 2.days.from_now)
+      blank_new.update_columns(created_at: 1.hour.ago)
+      blank_old.update_columns(created_at: 2.days.ago)
+
+      get "/api/v1/prospects", headers: auth(agent)
+
+      expect(names).to eq([ "Blank new", "Blank old", "Soon", "Later" ])
+    end
+
+    it "sorts by the latest update when asked" do
+      first = create(:prospect, firm:, name: "First", status: "interested", next_action_at: 1.hour.from_now)
+      second = create(:prospect, firm:, name: "Second", status: "not_interested", next_action_at: 2.days.from_now)
+      first.update_columns(updated_at: 2.hours.ago)
+      second.update_columns(updated_at: 1.minute.ago)
+
+      get "/api/v1/prospects", params: { sort: "updated" }, headers: auth(agent)
+
+      expect(names).to eq([ "Second", "First" ])
+    end
+
+    it "counts the worklist, today's calls and missed calls, and ignores filters" do
+      zone = Time.zone
+      travel_to zone.local(2026, 10, 28, 15, 0) do
+        create(:prospect, firm:, name: "Fresh", status: "new")
+        create(:prospect, firm:, name: "Overdue", status: "following",
+          next_action_at: zone.local(2026, 10, 27, 18, 0))
+        create(:prospect, firm:, name: "Later", status: "following",
+          next_action_at: zone.local(2026, 10, 28, 18, 0))
+        create(:prospect, firm:, name: "Keen", status: "interested")
+        create(:prospect, firm:, name: "Done", status: "not_interested",
+          next_action_at: zone.local(2026, 10, 28, 16, 0))
+
+        get "/api/v1/prospects",
+          params: { status: "interested", q: "does-not-match" },
+          headers: auth(agent)
+
+        expect(names).to eq([])
+        expect(response.parsed_body["counts"]).to eq(
+          "new" => 1,
+          "following" => 2,
+          "interested" => 1,
+          "not_interested" => 1,
+          "total" => 5,
+          "worklist" => 3,
+          "todays_followups" => 2,
+          "missed_followup" => 1
+        )
+      end
+    end
+  end
+
   describe "search and tenancy" do
     it "searches name, number, and status across the list" do
       create(:prospect, firm:, name: "Asha", mobile: "+919876543210", status: "following")
       create(:prospect, firm:, name: "Rohan", mobile: "+919111112222", status: "new")
 
-      get "/api/v1/prospects", params: { status: "new", q: "9876543210" }, headers: auth(agent)
+      get "/api/v1/prospects", params: { q: "9876543210" }, headers: auth(agent)
 
       names = response.parsed_body["prospects"].map { |row| row["name"] }
       expect(names).to eq([ "Asha" ])

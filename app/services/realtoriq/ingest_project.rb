@@ -269,11 +269,55 @@ module Realtoriq
       name = payload["city"].to_s.strip
       return failure("city is required") if name.blank?
 
-      matches = City.where("LOWER(name) = ?", name.downcase).to_a
-      return failure("City #{name} is not in RealtorIQ") if matches.empty?
-      return failure("City #{name} matches more than one state") if matches.size > 1
+      found = cities_named(name)
+      return failure("City #{name} matches more than one state") if found.size > 1
+      return found.first if found.one?
 
-      matches.first
+      create_city(name)
+    end
+
+    # LaunchIQ is the only automatic creator. A missing state refuses the share.
+    def create_city(name)
+      state = state_for_new_city(name)
+      return missing_state(name) if state.blank?
+
+      city = City.create!(name:, state:, active: true)
+      Rails.logger.info("[marketplace] created city #{city.name}, #{city.state}")
+      city
+    rescue ActiveRecord::RecordNotUnique
+      found = cities_named(name)
+      return failure("City #{name} matches more than one state") if found.size > 1
+      return found.first if found.one?
+
+      missing_state(name)
+    end
+
+    def state_for_new_city(name)
+      geocoder = google_geocoder
+      return if geocoder.nil?
+
+      lat = payload["lat"]
+      lng = payload["lng"]
+      if IndiaPin.pin_inside_india?(lat, lng)
+        geocoder.state_from_pin(lat, lng)
+      else
+        geocoder.state_from_city(name)
+      end
+    end
+
+    def google_geocoder
+      key = ENV["GOOGLE_GEOCODING_API_KEY"].presence
+      return if key.blank?
+
+      Localities::GoogleGeocoder.new(key)
+    end
+
+    def cities_named(name)
+      City.where("LOWER(name) = ?", name.downcase).to_a
+    end
+
+    def missing_state(name)
+      failure("City #{name} is not in RealtorIQ, and its state could not be found")
     end
 
     def resolve_locality(city)

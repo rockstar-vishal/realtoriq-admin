@@ -90,7 +90,7 @@ console session.
 
 `cities` (with `state_code` — `MH`, not a truncation of "Maharashtra"),
 `localities` (`lat` / `lng` decimal(10,7), both or neither, and only inside
-Maharashtra — the center used for nearby matching; blank until geocoded or
+India — the center used for nearby matching; blank until geocoded or
 edited in Admin → Masters), `builders`, `typologies` (decimal `bedrooms` for 2.5 BHK),
 `lead_sources`, `lead_statuses` (`is_dead` / `is_booked` are what make the
 reports writable without hardcoding names in SQL), `property_types`

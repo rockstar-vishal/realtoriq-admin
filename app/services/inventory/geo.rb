@@ -13,20 +13,16 @@ module Inventory
     CENTER_DISAGREEMENT_M = 5_000
     EARTH_M = 6_371_000.0
     METRES_PER_DEGREE = 111_320.0
-    # Maharashtra, with margin. A swapped lat/lng falls outside.
-    LAT_RANGE = (15.6..22.1)
-    LNG_RANGE = (72.6..80.9)
+    # India, the same box as IndiaPin. A swapped lat/lng falls outside.
+    LAT_RANGE = IndiaPin::LAT_RANGE
+    LNG_RANGE = IndiaPin::LNG_RANGE
 
     Box = Data.define(:min_lat, :max_lat, :min_lng, :max_lng)
 
     module_function
 
-    def inside_maharashtra?(lat, lng)
-      lat_f = numeric(lat)
-      lng_f = numeric(lng)
-      return false if lat_f.nil? || lng_f.nil?
-
-      LAT_RANGE.cover?(lat_f) && LNG_RANGE.cover?(lng_f)
+    def inside_india?(lat, lng)
+      IndiaPin.pin_inside_india?(lat, lng)
     end
 
     def distance_m(lat1, lng1, lat2, lng2)
@@ -64,20 +60,20 @@ module Inventory
 
       center = pair(locality_lat, locality_lng)
       pin = pair(lat, lng)
-      return unless pin && inside_maharashtra?(*pin) && (center.nil? || distance_m(*pin, *center) <= PIN_DRIFT_M)
+      return unless pin && inside_india?(*pin) && (center.nil? || distance_m(*pin, *center) <= PIN_DRIFT_M)
 
       { lat: pin[0], lng: pin[1] }
     end
 
-    # A property or project pin. Outside Maharashtra, or more than 20 km from
+    # A property or project pin. Outside India, or more than 20 km from
     # its own locality center, the center is used instead. A pin with no
-    # center is kept only inside Maharashtra. Nil when nothing is usable.
+    # center is kept only inside India. Nil when nothing is usable.
     def listing_point(lat:, lng:, locality_lat:, locality_lng:, approximate: false)
       own = own_pin(lat:, lng:, locality_lat:, locality_lng:, approximate:)
       return own if own
 
       center = pair(locality_lat, locality_lng)
-      return { lat: center[0], lng: center[1] } if center && inside_maharashtra?(*center)
+      return { lat: center[0], lng: center[1] } if center && inside_india?(*center)
 
       nil
     end

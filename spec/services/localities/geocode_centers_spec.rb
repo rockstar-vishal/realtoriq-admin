@@ -29,8 +29,8 @@ RSpec.describe Localities::GeocodeCenters do
     kharghar = create(:locality, city:, name: "Kharghar")
     hand = create(:locality, city:, name: "Bandra West", lat: 19.06, lng: 72.83)
     answers = {
-      "Nepean Sea Road, Maharashtra, India" => [ 18.954, 72.800 ],
-      "Kharghar, Maharashtra, India" => [ 19.047, 73.069 ]
+      "Nepean Sea Road, Mumbai, Maharashtra, India" => [ 18.954, 72.800 ],
+      "Kharghar, Mumbai, Maharashtra, India" => [ 19.047, 73.069 ]
     }
 
     expect(Inventory::RebuildLocalityNeighbors).to receive(:call).once.and_call_original
@@ -42,10 +42,18 @@ RSpec.describe Localities::GeocodeCenters do
     expect(LocalityNeighbor.where(locality: napean)).to be_none
   end
 
-  it "leaves the center blank when the geocode is outside Maharashtra" do
+  it "keeps a centre inside India and outside Maharashtra" do
     locality = create(:locality, city:, name: "Kharghar")
 
-    described_class.call(client: client_for("Kharghar, Maharashtra, India" => [ 28.6, 77.2 ]))
+    described_class.call(client: client_for("Kharghar, Mumbai, Maharashtra, India" => [ 28.6, 77.2 ]))
+
+    expect(locality.reload.lat.to_f).to eq(28.6)
+  end
+
+  it "leaves the center blank when the geocode is outside India" do
+    locality = create(:locality, city:, name: "Kharghar")
+
+    described_class.call(client: client_for("Kharghar, Mumbai, Maharashtra, India" => [ 51.5, -0.1 ]))
 
     expect(locality.reload.lat).to be_nil
   end
@@ -59,19 +67,38 @@ RSpec.describe Localities::GeocodeCenters do
     end
 
     expect {
-      described_class.call(client: client_for("Kharghar, Maharashtra, India" => [ 19.047, 73.069 ]))
+      described_class.call(client: client_for("Kharghar, Mumbai, Maharashtra, India" => [ 19.047, 73.069 ]))
     }.to output(/review Kharghar, Mumbai: geocode 19.047,73.069 inventory /).to_stdout
     expect(locality.reload.lat).to be_nil
   end
 
-  it "rejects a center outside Maharashtra and a lat without a lng" do
+  it "rejects a center outside India, a swapped lat and lng, and a lat without a lng" do
     locality = create(:locality, city:, name: "Kharghar")
 
     expect(locality.update(lat: 1, lng: 1)).to be(false)
-    expect(locality.errors[:lat]).to include("must be inside Maharashtra")
+    expect(locality.errors[:lat]).to include("must be inside India")
+    locality.reload
+    expect(locality.update(lat: 72, lng: 19)).to be(false)
+    expect(locality.errors[:lat]).to include("must be inside India")
     locality.reload
     expect(locality.update(lat: 19.0, lng: nil)).to be(false)
     expect(locality.errors[:lat]).to include("and longitude are set together")
+  end
+
+  it "saves a Gujarat centre and asks Google for that city's state" do
+    ahmedabad = create(:city, name: "Ahmedabad", state: "Gujarat")
+    shela = create(:locality, city: ahmedabad, name: "Shela")
+    nameless = create(:city, name: "No State", state: "Gujarat")
+    nameless.update_columns(state: "")
+    blank = create(:locality, city: nameless, name: "Bare")
+
+    described_class.call(client: client_for(
+      "Shela, Ahmedabad, Gujarat, India" => [ 23.01, 72.46 ],
+      "Bare, No State, India" => [ 23.02, 72.47 ]
+    ))
+
+    expect(shela.reload.lat.to_f).to eq(23.01)
+    expect(blank.reload.lng.to_f).to eq(72.47)
   end
 end
 

@@ -8,7 +8,7 @@ class Locality < ApplicationRecord
   validates :pincode, format: { with: /\A\d{6}\z/ }, allow_blank: true
   validates :lat, :lng, numericality: true, allow_nil: true
   validate :coordinates_are_a_pair
-  validate :coordinates_are_in_maharashtra
+  validate :coordinates_are_in_india
 
   after_commit :rebuild_neighbor_pairs, if: :saved_change_to_coordinates?
 
@@ -33,11 +33,11 @@ class Locality < ApplicationRecord
     errors.add(:lat, "and longitude are set together")
   end
 
-  def coordinates_are_in_maharashtra
+  def coordinates_are_in_india
     return if lat.blank? && lng.blank?
-    return if Inventory::Geo.inside_maharashtra?(lat, lng)
+    return if Inventory::Geo.inside_india?(lat, lng)
 
-    errors.add(:lat, "must be inside Maharashtra")
+    errors.add(:lat, "must be inside India")
   end
 
   def saved_change_to_coordinates?

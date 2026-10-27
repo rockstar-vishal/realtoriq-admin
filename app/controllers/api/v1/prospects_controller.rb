@@ -6,13 +6,11 @@ module Api
       before_action :set_prospect, only: %i[mobile update destroy move_to_following]
 
       def index
-        scope = Prospect.includes(:project, :property, :lead)
-        scope = if params[:q].present?
-          scope.search(params[:q]).order(updated_at: :desc, id: :desc)
-        else
-          status = Prospect::STATUSES.include?(params[:status].to_s) ? params[:status].to_s : "new"
-          scope.where(status:).merge(Prospect.ordered_for(status))
+        if (message = invalid_date_range)
+          return render_error("invalid", message, status: :unprocessable_content)
         end
+
+        scope = filtered_scope
         @pagy, records = pagy(scope, limit: per_page)
         Prospect.preload_latest_notes(records)
         render json: {
@@ -63,6 +61,33 @@ module Api
 
       def set_prospect
         @prospect = Prospect.find(params[:id])
+      end
+
+      # Every param ANDs, including q. Nothing applied returns every prospect.
+      # The app sends view=worklist for the opening list.
+      def filtered_scope
+        scope = Prospect.includes(:project, :property, :lead)
+          .search(params[:q])
+          .named_like(params[:name])
+          .mobile_like(params[:mobile])
+          .with_status(params[:status])
+          .with_missed_followup(params[:missed_followup])
+          .ncd_between(params[:ncd_from], params[:ncd_upto])
+          .created_between(params[:created_from], params[:created_upto])
+        scope = scope.worklist if params[:view].to_s == "worklist"
+        params[:sort].to_s == "updated" ? scope.as_updated : scope.as_ncd
+      end
+
+      def invalid_date_range
+        message = "Dates must be YYYY-MM-DD, and from must be on or before upto."
+        from = params[:created_from]
+        upto = params[:created_upto]
+        return if from.blank? && upto.blank?
+        return message if from.present? && !::Reports::Window.date?(from)
+        return message if upto.present? && !::Reports::Window.date?(upto)
+        return if from.blank? || upto.blank?
+
+        message if Date.iso8601(from.to_s) > Date.iso8601(upto.to_s)
       end
 
       def prospect_params

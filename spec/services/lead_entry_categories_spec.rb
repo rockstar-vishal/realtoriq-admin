@@ -54,6 +54,26 @@ RSpec.describe "lead entry categories" do
       )
     end
 
+    it "does not create a city named on the form" do
+      form.update!(field_mappings: { "full_name" => "name", "phone_number" => "mobile", "city" => "notes" })
+
+      expect {
+        created = Facebook::LeadImporter.call(
+          import: create(:facebook_lead_import, firm:, facebook_page: form.facebook_page),
+          form:,
+          payload: {
+            "field_data" => [
+              { "name" => "full_name", "values" => [ "Rhea Kapoor" ] },
+              { "name" => "phone_number", "values" => [ "9876500188" ] },
+              { "name" => "city", "values" => [ "Ahmedabad" ] }
+            ]
+          }
+        )
+        expect(created.status).to eq(:created), created.error.to_s
+      }.not_to change(City, :count)
+      expect(City.where("LOWER(name) = ?", "ahmedabad")).to be_none
+    end
+
     it "uses the form category on a mixed project and ignores another category" do
       residential_lead("9876500100")
 

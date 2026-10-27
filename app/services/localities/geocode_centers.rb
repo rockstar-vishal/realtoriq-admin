@@ -28,9 +28,9 @@ module Localities
     attr_reader :client
 
     def fill(locality)
-      found = client.coordinates("#{ALIASES.fetch(locality.name, locality.name)}, Maharashtra, India")
+      found = client.coordinates(query_for(locality))
       return if found.nil?
-      return unless Inventory::Geo.inside_maharashtra?(*found)
+      return unless Inventory::Geo.inside_india?(*found)
 
       median = inventory_median(locality)
       if median && Inventory::Geo.distance_m(*found, *median) > Inventory::Geo::CENTER_DISAGREEMENT_M
@@ -42,6 +42,12 @@ module Localities
 
       locality.update!(lat: found[0], lng: found[1])
       @cities << locality.city_id
+    end
+
+    def query_for(locality)
+      name = ALIASES.fetch(locality.name, locality.name)
+      city = locality.city
+      [ name, city&.name, city&.state.to_s.strip.presence, "India" ].compact.join(", ")
     end
 
     def inventory_median(locality)

@@ -383,7 +383,9 @@ key being present, not on the values.
 
 **`prospects` is four firm-wide counts**, the same numbers for an agent and a
 manager. Prospects are not assigned. The block has no names and no phone
-numbers. Home buttons deep-link to `GET /prospects?status=`.
+numbers. Home buttons deep-link to `GET /prospects?status=`. The list's own
+`counts` add `worklist`, `todays_followups` and `missed_followup`. This block
+stays these four.
 
 Everything else is scoped the same way the list endpoints are: an agent's
 counters cover only leads assigned to them.
@@ -849,7 +851,7 @@ not add a pin, and the place on the lead is ignored. Preferred localities are
 the next group, then neighbor localities whose centres are within 6 km and in
 the same city. `anchors` is `[]` and each row's `anchor` is null.
 
-A pin outside Maharashtra, or more than 20 km from its own locality center,
+A pin outside India, or more than 20 km from its own locality center,
 is ignored and the center is used instead. The saved pin is left as entered.
 Shown distances use a real pin on both ends. A preferred-locality row has no
 distance. A pin-circle row whose pin is a centre fallback has no distance.
@@ -1134,17 +1136,30 @@ The list does not include phone numbers. Call and Edit load one number with
 
 ### `GET /prospects`
 
-Query: `status` (`new` when `q` is blank; ignored when `q` is present), `q`,
-`page`, `per_page` (default 25, clamp 1–50).
+Every param is optional and they AND, including `q`. Nothing sent returns
+every prospect. The app sends `view=worklist` when nothing is applied.
+`?status=following` from Home is a status filter.
 
-`q` matches the name, the status label (`not interested` or `not_interested`),
-or a phone fragment of at least 4 digits. One leading `91` is stripped when the
-digit string is longer than 10, and a leading `0` is stripped. Search is
-global: it does not stay inside the status chip. Order while searching is
-`updated_at` desc.
+| Param | |
+| --- | --- |
+| `view=worklist` | `status` in `new`, `following`. Any other `view` is ignored |
+| `status` | Comma list of `new`, `following`, `interested`, `not_interested`. Unknown values are ignored |
+| `name` | Name contains, case-insensitive |
+| `mobile` | Phone fragment of at least 4 digits, cleaned the same way as `q` (leading `0` stripped, one leading `91` stripped when the digit string is longer than 10). Shorter than 4 digits does not filter |
+| `missed_followup` | `true`: `next_action_at <= now` and status `new` or `following`. `false`: everyone else. Blank does nothing |
+| `ncd_from`, `ncd_upto` | Next call on these IST calendar days, inclusive, same bounds as a lead's `ncd_between` |
+| `created_from`, `created_upto` | Added on these IST calendar days, inclusive |
+| `q` | Name, status label (`not interested` or `not_interested`), or a phone fragment of at least 4 digits |
+| `sort` | `updated` is `updated_at` desc, then `id` desc. Anything else, or nothing, is the default order |
+| `page`, `per_page` | `per_page` default 25, clamp 1–50 |
 
-Without `q`, order is New oldest first, Following by `next_action_at` ASC
-NULLS LAST, Interested and Not interested by `updated_at` desc.
+A bad or backwards `created_from` / `created_upto` is `422 invalid` with
+"Dates must be YYYY-MM-DD, and from must be on or before upto." One side on
+its own is an open range.
+
+Default order is `next_action_at ASC NULLS FIRST, created_at DESC, id`.
+`sort=updated` is what Interested and Not Interested send so those lists stay
+latest update first.
 
 ```json
 {
@@ -1158,14 +1173,20 @@ NULLS LAST, Interested and Not interested by `updated_at` desc.
     "lead_code": null, "lead_accessible": false,
     "created_at": "…", "updated_at": "…"
   } ],
-  "counts": { "new": 12, "following": 4, "interested": 2, "not_interested": 1, "total": 19 },
+  "counts": {
+    "new": 12, "following": 4, "interested": 2, "not_interested": 1, "total": 19,
+    "worklist": 16, "todays_followups": 3, "missed_followup": 2
+  },
   "can_clear": false,
   "meta": { "page": 1, "per_page": 25, "total_count": 12, "total_pages": 1 }
 }
 ```
 
-`counts` are firm-wide and ignore `q` and `status`. `can_clear` is true for a
-manager or super admin (`permissions.manage_prospects`). `lead_code` is present
+`counts` are firm-wide and ignore every filter and `q`. `worklist` is `new` or
+`following`. `todays_followups` is `next_action_at` today, IST, any status.
+`missed_followup` is `next_action_at <= now` on `new` or `following`.
+`can_clear` is true for a manager or super admin (`permissions.manage_prospects`).
+`lead_code` is present
 for every user once a lead exists. `lead_id` is added only when
 `lead_accessible` is true (super admin, manager, or the lead's assignee).
 Another firm's id is 404. The card has no `mobile`.
