@@ -241,7 +241,8 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].size).to eq(3)
       expect(response.parsed_body["counts"]).to include(
         "new" => 3, "missed_followup" => 0, "visit_planned" => 0,
-        "visited" => 0, "hot_negotiation" => 0, "booked" => 0
+        "visited" => 0, "hot_negotiation" => 0, "booked" => 0,
+        "worklist" => 3, "todays_calls" => 0
       )
       expect(response.parsed_body["meta"]).to include("total_count" => 3, "per_page" => 25)
     end
@@ -367,14 +368,32 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ in_window.id ])
     end
 
-    it "ignores q when a drawer filter is present" do
-      matching_q = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
-      matching_name = create(:lead, firm:, lead_status: new_status, name: "Beta Shah")
+    it "ANDs q with a drawer name filter" do
+      both = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Shah")
+      create(:lead, firm:, lead_status: new_status, name: "Beta Kapoor")
 
-      get "/api/v1/leads", params: { q: "Alpha", name: "Beta" }, headers: auth(manager)
+      get "/api/v1/leads", params: { q: "Kapoor", name: "Alpha" }, headers: auth(manager)
 
-      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ matching_name.id ])
-      expect(response.parsed_body["leads"].map { |l| l["id"] }).not_to include(matching_q.id)
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ both.id ])
+    end
+
+    it "ANDs q with today's next-call window and a source" do
+      source = create(:lead_source, name: "99acres")
+      other = create(:lead_source, name: "Walk-in")
+      today = Time.zone.today
+      match = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor",
+        lead_source: source, next_action_at: Time.current)
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Shah",
+        lead_source: other, next_action_at: Time.current)
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Later",
+        lead_source: source, next_action_at: 3.days.from_now)
+
+      get "/api/v1/leads",
+        params: { q: "Alpha", ncd_from: today.iso8601, ncd_upto: today.iso8601, source_id: source.id },
+        headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ match.id ])
     end
 
     it "keeps q when side is rent and ignores any other side" do
@@ -391,9 +410,10 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to contain_exactly(sale.id, rental.id)
     end
 
-    it "still ignores q when transaction_type is the drawer filter" do
+    it "ANDs q with transaction_type" do
       create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
-      rental = create(:lead, :rent, firm:, lead_status: new_status, name: "Beta Shah")
+      rental = create(:lead, :rent, firm:, lead_status: new_status, name: "Alpha Shah")
+      create(:lead, :rent, firm:, lead_status: new_status, name: "Beta Shah")
 
       get "/api/v1/leads", params: { q: "Alpha", transaction_type: "rent" }, headers: auth(manager)
 
@@ -454,6 +474,114 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"]).to eq([])
       expect(response.parsed_body["counts"]).to include("new" => 1, "missed_followup" => 1, "booked" => 1)
     end
+
+    it "opens the worklist without Dead, Booked, or unqualified leads" do
+      kept_new = create(:lead, firm:, lead_status: new_status, name: "New")
+      kept_hot = create(:lead, firm:, lead_status: create(:lead_status, :hot), name: "Hot")
+      kept_visit = create(:lead, firm:, lead_status: create(:lead_status, :visit_planned), name: "Visit")
+      create(:lead, firm:, lead_status: dead_status, dead_reason: "Not interested", name: "Dead")
+      create(:lead, firm:, lead_status: create(:lead_status, :booked), name: "Booked")
+      create(:lead, firm:, lead_status: new_status, unqualified: true, name: "Unqualified")
+
+      get "/api/v1/leads", params: { view: "worklist" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to contain_exactly(
+        kept_new.id, kept_hot.id, kept_visit.id
+      )
+    end
+
+    it "filters unqualified on and off" do
+      unqualified = create(:lead, firm:, lead_status: new_status, unqualified: true, name: "Set aside")
+      qualified = create(:lead, firm:, lead_status: new_status, unqualified: false, name: "In play")
+
+      get "/api/v1/leads", params: { unqualified: true }, headers: auth(manager)
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ unqualified.id ])
+
+      get "/api/v1/leads", params: { unqualified: false }, headers: auth(manager)
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ qualified.id ])
+    end
+
+    it "counts the worklist and today's calls, and follows category" do
+      travel_to Time.zone.local(2026, 10, 27, 11, 0, 0) do
+        later_today = Time.zone.local(2026, 10, 27, 15, 0, 0)
+        create(:lead, firm:, lead_status: new_status, category: "residential",
+          next_action_at: later_today)
+        create(:lead, firm:, lead_status: new_status, category: "commercial")
+        create(:lead, firm:, lead_status: create(:lead_status, :hot), category: "commercial",
+          next_action_at: later_today)
+        create(:lead, firm:, lead_status: create(:lead_status, :booked), category: "commercial",
+          next_action_at: later_today)
+
+        get "/api/v1/leads", params: { category: "commercial" }, headers: auth(manager)
+
+        expect(response.parsed_body["counts"]).to include(
+          "new" => 1, "hot_negotiation" => 1, "booked" => 1,
+          "worklist" => 2, "todays_calls" => 2, "missed_followup" => 0, "visited" => 0
+        )
+
+        get "/api/v1/leads", params: { category: "residential", q: "nobody" }, headers: auth(manager)
+
+        expect(response.parsed_body["leads"]).to eq([])
+        expect(response.parsed_body["counts"]).to include(
+          "new" => 1, "worklist" => 1, "todays_calls" => 1, "booked" => 0
+        )
+      end
+    end
+
+    it "lists the latest booking first and a blank booked_at last" do
+      create(:lead, firm:, lead_status: create(:lead_status, :booked), name: "Older",
+        booked_at: 2.days.ago)
+      create(:lead, firm:, lead_status: LeadStatus.find_by!(code: "booked"), name: "Newer",
+        booked_at: 1.hour.ago)
+      create(:lead, firm:, lead_status: LeadStatus.find_by!(code: "booked"), name: "Blank",
+        booked_at: nil)
+
+      get "/api/v1/leads", params: { sort: "booked" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["name"] }).to eq(%w[Newer Older Blank])
+    end
+
+    it "lists the latest visit first, once, and a lead with no visit last" do
+      latest = create(:lead, firm:, lead_status: new_status, name: "Latest")
+      create(:lead_visit, firm:, lead: latest, visited_at: 5.days.ago)
+      create(:lead_visit, firm:, lead: latest, visited_at: 1.day.ago)
+      create(:lead_visit, firm:, lead: latest, visited_at: 3.days.ago)
+      older = create(:lead, firm:, lead_status: new_status, name: "Older")
+      create(:lead_visit, firm:, lead: older, visited_at: 10.days.ago)
+      create(:lead, firm:, lead_status: new_status, name: "None")
+
+      get "/api/v1/leads", params: { sort: "visited" }, headers: auth(manager)
+
+      names = response.parsed_body["leads"].map { |lead| lead["name"] }
+      expect(names).to eq(%w[Latest Older None])
+      expect(names.uniq).to eq(names)
+    end
+
+    it "sorts booked and visited with a typology and a status, without duplicating rows" do
+      typology = create(:typology, name: "2 BHK")
+      hot = create(:lead_status, :hot)
+      earlier = create(:lead, firm:, lead_status: hot, name: "Earlier", booked_at: 2.days.ago)
+      later = create(:lead, firm:, lead_status: hot, name: "Later", booked_at: 1.hour.ago)
+      [ earlier, later ].each { |lead| lead.typologies << typology }
+      create(:lead, firm:, lead_status: hot, name: "Other config")
+      create(:lead_visit, firm:, lead: earlier, visited_at: 1.day.ago)
+      create(:lead_visit, firm:, lead: later, visited_at: 4.days.ago)
+      create(:lead_visit, firm:, lead: earlier, visited_at: 6.days.ago)
+
+      get "/api/v1/leads",
+        params: { sort: "booked", typology_ids: [ typology.id ], status: "hot" },
+        headers: auth(manager)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["leads"].map { |lead| lead["name"] }).to eq(%w[Later Earlier])
+
+      get "/api/v1/leads",
+        params: { sort: "visited", typology_ids: [ typology.id ], status: "hot" },
+        headers: auth(manager)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body["leads"].map { |lead| lead["name"] }).to eq(%w[Earlier Later])
+    end
   end
 
   describe "visibility" do
@@ -464,6 +592,16 @@ RSpec.describe "API v1 leads" do
       get "/api/v1/leads", headers: auth(agent)
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ agents_lead.id ])
+      expect(response.parsed_body.dig("counts", "new")).to eq(1)
+    end
+
+    it "keeps an agent's worklist and counts to their own leads" do
+      create(:lead, firm:, lead_status: dead_status, dead_reason: "Not interested", assigned_user: agent)
+
+      get "/api/v1/leads", params: { view: "worklist" }, headers: auth(agent)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ agents_lead.id ])
+      expect(response.parsed_body.dig("counts", "worklist")).to eq(1)
       expect(response.parsed_body.dig("counts", "new")).to eq(1)
     end
 

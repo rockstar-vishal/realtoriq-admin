@@ -9,13 +9,15 @@ module Api
         "ncd" => :as_ncd,
         "worklist" => :as_worklist,
         "recent" => -> { order(created_at: :desc) },
-        "updated" => -> { order(updated_at: :desc) }
+        "updated" => -> { order(updated_at: :desc) },
+        "booked" => :as_booked,
+        "visited" => :as_visited
       }.freeze
       DEFAULT_SORT = "ncd"
 
-      # Drawer fields. Heading-card params (`status`, `visited`,
-      # `missed_followup`) are not in this list — they must not drop `q`, or
-      # My Leads search-plus-New would break.
+      # Drawer fields. They AND with `q`. Heading-card params (`status`,
+      # `visited`, `missed_followup`) and `side` are not in this list; they
+      # AND with `q` too.
       DRAWER_KEYS = %w[
         name mobile email ncd_from ncd_upto budget_min budget_max
         typology_ids transaction_type property_type_id possession_from possession_to
@@ -247,13 +249,14 @@ module Api
       def filtered_scope
         scope = visible_leads
           .includes(:lead_status, :property_type, :lead_source, :assigned_user, :typologies, localities: :city)
-          .search(drawer_filters_present? ? nil : params[:q])
+          .search(params[:q])
           .named_like(params[:name])
           .mobile_like(params[:mobile])
           .email_like(params[:email])
           .ncd_between(params[:ncd_from], params[:ncd_upto])
           .with_status(params[:status])
           .with_visited(params[:visited])
+          .with_unqualified(params[:unqualified])
           .with_missed_followup(params[:missed_followup])
           .budget_between(params[:budget_min], params[:budget_max])
           .possession_between(params[:possession_from], params[:possession_to])
@@ -263,11 +266,12 @@ module Api
           .with_sources(params[:source_id], missing: ActiveModel::Type::Boolean.new.cast(params[:source_missing]))
 
         scope = scope.where(transaction_type: params[:transaction_type]) if params[:transaction_type].present?
-        # Picker filter. Not a drawer key, so it keeps `q`. Anything else is ignored.
+        # Picker filter. Anything other than sale or rent is ignored. ANDs with `q`.
         scope = scope.where(transaction_type: params[:side]) if %w[sale rent].include?(params[:side].to_s)
         if Typology::CATEGORIES.include?(params[:category].to_s)
           scope = scope.where(category: params[:category])
         end
+        scope = scope.worklist if params[:view].to_s == "worklist"
         property_types = ::Reports::Filters.list(params[:property_type_id])
         scope = scope.where(property_type_id: property_types) if property_types.any?
         # Agents are already narrowed to themselves; for them this can only
@@ -276,10 +280,6 @@ module Api
         scope = scope.where(assigned_user_id: assignees) if assignees.any?
 
         apply_sort(scope)
-      end
-
-      def drawer_filters_present?
-        DRAWER_KEYS.any? { |key| params[key].present? }
       end
 
       def invalid_date_range
@@ -301,9 +301,10 @@ module Api
         sort.is_a?(Symbol) ? scope.public_send(sort) : scope.instance_exec(&sort)
       end
 
-      # Pipeline totals for the six cards, visibility-scoped and independent of
-      # the current list filter. Cards overlap (New + overdue is both New and
-      # Missed), so these will not sum to meta.total_count.
+      # Pipeline totals for the pills, visibility-scoped. Independent of the
+      # list's filters and search, except `category`, which narrows them the
+      # same way it narrows the list. Cards overlap, so these will not sum to
+      # meta.total_count.
       def card_counts
         now = Time.current
         sql = <<~SQL.squish
@@ -312,12 +313,18 @@ module Api
           COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM lead_visits WHERE lead_visits.lead_id = leads.id)),
           COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation')),
-          COUNT(*) FILTER (WHERE lead_statuses.code = 'booked')
+          COUNT(*) FILTER (WHERE lead_statuses.code = 'booked'),
+          COUNT(*) FILTER (WHERE leads.unqualified = FALSE AND lead_statuses.is_terminal = FALSE),
+          COUNT(*) FILTER (WHERE leads.next_action_at BETWEEN :day_start AND :day_end)
         SQL
-        row = visible_leads.joins(:lead_status).pick(
-          Arel.sql(Lead.sanitize_sql_array([ sql, { now: } ]))
-        )
-        new_count, missed, visit_planned, visited, hot_negotiation, booked = Array(row)
+        scope = visible_leads.joins(:lead_status)
+        if Typology::CATEGORIES.include?(params[:category].to_s)
+          scope = scope.where(category: params[:category])
+        end
+        row = scope.pick(Arel.sql(Lead.sanitize_sql_array([
+          sql, { now:, day_start: now.beginning_of_day, day_end: now.end_of_day }
+        ])))
+        new_count, missed, visit_planned, visited, hot_negotiation, booked, worklist, todays_calls = Array(row)
 
         {
           new: new_count.to_i,
@@ -325,7 +332,9 @@ module Api
           visit_planned: visit_planned.to_i,
           visited: visited.to_i,
           hot_negotiation: hot_negotiation.to_i,
-          booked: booked.to_i
+          booked: booked.to_i,
+          worklist: worklist.to_i,
+          todays_calls: todays_calls.to_i
         }
       end
 

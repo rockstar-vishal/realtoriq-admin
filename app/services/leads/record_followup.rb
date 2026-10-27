@@ -23,6 +23,7 @@ module Leads
     end
 
     NEXT_CALL_GRACE = 2.minutes
+    REMINDER_LEAD_TIME = 2.hours
 
     def initialize(lead:, actor:, comment:, next_action_at: nil, status: nil,
                    reason: nil, booked_on: nil, visit_at: nil, visit_at_supplied: false,
@@ -111,7 +112,7 @@ module Leads
       end
 
       reminder_at = reminder_visit_time(to_status)
-      if parsed_ncd && reminder_at && parsed_ncd >= reminder_at
+      if parsed_ncd && reminder_at && parsed_ncd >= reminder_at && !visit_too_soon?(reminder_at)
         return failure("reminder_after_visit", "The reminder call must be before the visit.")
       end
 
@@ -145,6 +146,12 @@ module Leads
       return lead.visit_planned_at if will_be_visit_planned?(to_status)
 
       nil
+    end
+
+    # A visit already this close has no room for a reminder call before it.
+    # One that has passed is not this case: the reminder check still applies.
+    def visit_too_soon?(visit_time)
+      visit_time > Time.current && visit_time < Time.current + REMINDER_LEAD_TIME
     end
 
     def booking_change?(to_status)
