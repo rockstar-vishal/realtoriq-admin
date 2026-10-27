@@ -1,0 +1,29 @@
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  These background jobs failed and will not be retried on their own.
+</p>
+
+<ul style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <% @lines.each do |line| %>
+    <li><%= line[:at] %> — <%= line[:job_class] %> — <%= line[:error_class] %> — <%= line[:message] %></li>
+  <% end %>
+</ul>
+
+<% if @more.positive? %>
+  <p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+    and <%= @more %> more
+  </p>
+<% end %>
+
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  <%= @total %> failed jobs are waiting in total
+</p>
+
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  Look at them:
+</p>
+<pre style="font-family: ui-monospace, monospace; font-size: 13px;"><%= @look %></pre>
+
+<p style="font-family: Archivo, system-ui, sans-serif; font-size: 15px; color: #201e1d;">
+  Retry or discard one (replace ID):
+</p>
+<pre style="font-family: ui-monospace, monospace; font-size: 13px;"><%= @retry_or_discard %></pre>

@@ -162,6 +162,13 @@ A lead, project, property, assignee or lead source that is removed nullifies
 the foreign key. Disconnect does not delete the connection, so the page setup
 stays.
 
+### Ops
+
+**`ops_alert_marks`** — **built**, one row per alert name (not firm-scoped).
+`last_reported_at` is the newest Solid Queue failure already emailed.
+`last_emailed_at` is when that email went out, so a burst of failures sends
+at most one email an hour. See `docs/operations.md`.
+
 ---
 
 ## Phase 2 — designed, not yet migrated
