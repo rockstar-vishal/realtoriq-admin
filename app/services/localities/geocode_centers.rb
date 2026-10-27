@@ -11,22 +11,38 @@ module Localities
       new(client:).call
     end
 
+    # One locality. Returns its city id when a centre was saved, otherwise nil.
+    # A hand-set centre is the caller's concern. Saving runs Locality's
+    # neighbour rebuild unless the caller is inside skipping_neighbor_rebuild.
+    def self.fill_one(locality, client:)
+      new(client:).fill_one(locality)
+    end
+
     def initialize(client:)
       @client = client
-      @cities = []
     end
 
     def call
+      city_ids = []
       Locality.skipping_neighbor_rebuild do
-        Locality.includes(:city).where(lat: nil).find_each { |locality| fill(locality) }
+        Locality.includes(:city).where(lat: nil).find_each do |locality|
+          city_ids << self.class.fill_one(locality, client:)
+        end
       end
-      @cities.uniq.each { |city_id| Inventory::RebuildLocalityNeighbors.call(city_id:) }
+      city_ids.compact.uniq.each { |city_id| Inventory::RebuildLocalityNeighbors.call(city_id:) }
+    end
+
+    def fill_one(locality)
+      fill(locality)
     end
 
     private
 
     attr_reader :client
 
+    # City id when the centre was saved, so the rake task can rebuild once
+    # per city. Nil when Google has nothing, the point is outside India, or
+    # the inventory median disagrees.
     def fill(locality)
       found = client.coordinates(query_for(locality))
       return if found.nil?
@@ -41,7 +57,7 @@ module Localities
       end
 
       locality.update!(lat: found[0], lng: found[1])
-      @cities << locality.city_id
+      locality.city_id
     end
 
     def query_for(locality)

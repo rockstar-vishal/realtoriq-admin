@@ -327,7 +327,17 @@ module Realtoriq
 
       locality = Locality.create!(city:, name:)
       Rails.logger.info("[marketplace] created locality #{locality.name}")
+      enqueue_centre_lookup(locality)
       locality
+    end
+
+    # The create is inside the share's transaction. The callback runs when
+    # that transaction commits, and is dropped if the share rolls back.
+    def enqueue_centre_lookup(locality)
+      locality_id = locality.id
+      Locality.current_transaction.after_commit do
+        Localities::GeocodeCenterJob.perform_later(locality_id)
+      end
     end
 
     def resolve_builder
