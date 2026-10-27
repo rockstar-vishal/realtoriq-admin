@@ -31,6 +31,9 @@ staging:
   onboarding_purge:
     class: Onboarding::PurgeJob
     schedule: at 4am every day
+  failed_jobs_alert:
+    class: Ops::FailedJobsAlertJob
+    schedule: every 15 minutes
 
 production:
   onboarding_purge:
@@ -57,3 +60,6 @@ production:
   facebook_cleanup:
     class: Facebook::CleanupJob
     schedule: at 3am every day
+  failed_jobs_alert:
+    class: Ops::FailedJobsAlertJob
+    schedule: every 15 minutes

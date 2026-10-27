@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_170000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_28_020000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -930,6 +930,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_170000) do
     t.index ["purpose", "destination", "created_at"], name: "index_one_time_codes_on_purpose_and_destination_and_created_at"
     t.index ["user_id"], name: "index_one_time_codes_on_user_id"
     t.check_constraint "purpose::text = ANY (ARRAY['login'::character varying::text, 'verify_email'::character varying::text, 'verify_mobile'::character varying::text, 'verify_whatsapp'::character varying::text])", name: "one_time_codes_purpose_check"
+  end
+
+  create_table "ops_alert_marks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", null: false
+    t.datetime "last_reported_at"
+    t.datetime "last_emailed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_ops_alert_marks_on_name", unique: true
   end
 
   create_table "plans", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
