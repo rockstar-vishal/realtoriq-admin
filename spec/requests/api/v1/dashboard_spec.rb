@@ -42,6 +42,7 @@ RSpec.describe "API v1 dashboard" do
         expect(response).to have_http_status(:ok)
         leads = response.parsed_body["leads"]
         expect(leads["total"]).to eq(5)
+        expect(leads["worklist"]).to eq(5)
         expect(leads["hot"]).to eq(2)
         expect(leads["hot_negotiation"]).to eq(2)
         expect(leads["new"]).to eq(0)
@@ -50,6 +51,19 @@ RSpec.describe "API v1 dashboard" do
         expect(leads["todays_followups"]).to eq(1)
         expect(leads["visited"]).to eq(1)
       end
+    end
+
+    it "counts the worklist without booked or unqualified leads" do
+      booked = create(:lead_status, :booked)
+      create(:lead, firm:, lead_status: followup)
+      create(:lead, firm:, lead_status: booked)
+      create(:lead, firm:, lead_status: followup, unqualified: true)
+
+      get "/api/v1/dashboard", headers: auth
+
+      leads = response.parsed_body["leads"]
+      expect(leads["total"]).to eq(3)
+      expect(leads["worklist"]).to eq(1)
     end
 
     it "does not count a historical visit activity as visited" do

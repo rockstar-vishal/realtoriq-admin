@@ -203,6 +203,20 @@ class Lead < ApplicationRecord
     end
   }
 
+  # `true` is unqualified only, `false` is qualified only. Blank does nothing.
+  scope :with_unqualified, ->(flag) {
+    next all if flag.nil? || flag.to_s.strip == ""
+
+    where(unqualified: ActiveModel::Type::Boolean.new.cast(flag))
+  }
+
+  # The Leads page opens here: still in play, and not set aside as unqualified.
+  # Dead and Booked are the terminal statuses.
+  scope :worklist, -> {
+    where(unqualified: false)
+      .where(lead_status_id: LeadStatus.where(is_terminal: false).select(:id))
+  }
+
   # Inclusive IST calendar days: ncd_from at 00:00 through ncd_upto at 23:59:59.
   scope :ncd_between, ->(from, to) {
     zone = Time.find_zone(NCD_ZONE)
@@ -273,6 +287,21 @@ class Lead < ApplicationRecord
   # overdue — a new lead with nothing scheduled is the thing to pick up first.
   scope :as_ncd, -> {
     order(Arel.sql("leads.next_action_at ASC NULLS FIRST, leads.created_at DESC"))
+  }
+
+  # Booked pill: latest booking first. A lead with no booked_at sits last.
+  scope :as_booked, -> {
+    order(Arel.sql("leads.booked_at DESC NULLS LAST, leads.created_at DESC"))
+  }
+
+  # Visited pill: the lead's latest visit first. A subquery, not a join, so a
+  # lead with several visits is one row and paging stays correct.
+  scope :as_visited, -> {
+    order(Arel.sql(<<~SQL.squish))
+      (SELECT MAX(lead_visits.visited_at) FROM lead_visits WHERE lead_visits.lead_id = leads.id)
+      DESC NULLS LAST,
+      leads.created_at DESC
+    SQL
   }
 
   # GET /leads?sort=worklist: overdue followups first (a missed call or a

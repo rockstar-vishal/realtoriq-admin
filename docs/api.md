@@ -352,7 +352,7 @@ exposes, so the alternative was six round trips for one card.
 ```json
 {
   "leads": {
-    "total": 29, "new": 4, "hot": 14, "hot_negotiation": 19,
+    "total": 29, "worklist": 22, "new": 4, "hot": 14, "hot_negotiation": 19,
     "todays_followups": 3, "missed_followups": 4,
     "visit_planned": 2, "visited": 8, "bookings": 2,
     "recent": [ /* at most 3 missed followups, most overdue first; same item shape as GET /leads */ ]
@@ -394,6 +394,7 @@ counters cover only leads assigned to them.
 | --- | --- |
 | `revenue_till_date` | Σ `agreement_value` over **live** bookings — gross value sold |
 | `brokerage_earned` | Σ `net_income` — what the firm keeps. A different number |
+| `worklist` | Not terminal (not Dead or Booked) and not unqualified. Home tile: **Worklist**. `total` stays |
 | `new` | Status code `new` |
 | `visit_planned` | Status code `visit_planned` — not `visited` |
 | `hot_negotiation` | Status `hot` **or** `negotiation`. `hot` is still hot-only |
@@ -402,12 +403,14 @@ counters cover only leads assigned to them.
 | `missed_followups` | `next_action_at <= now` on a non-terminal lead, **or** a Visit Planned lead whose `visit_planned_at` has passed. Today's Calls stays `next_action_at` only |
 | `cancelled` | Counted **separately** and excluded from every figure above |
 
-The home **Your pipeline** snapshot uses six of these: `total`, `new`,
+The home **Your pipeline** snapshot uses `worklist`, `new`,
 `todays_followups`, `missed_followups`, `visit_planned`, `hot_negotiation`.
-`hot`, `visited` and `bookings` remain on the payload. This set is **not**
-`GET /leads` `counts` (that one has Visited + Booked and has no Total / today's).
-There is no `status=todays_followup`; the Today's Calls tile lists via
-`ncd_from` / `ncd_upto` for today (IST).
+`total` stays for anything that still reads it. `hot`, `visited` and `bookings`
+remain on the payload. `GET /leads` `counts` has `worklist` and `todays_calls`
+(the same today rule as `todays_followups`) plus Visited and Booked, and has no
+Total. There is no `status=todays_followup`; the Today's Calls tile lists via
+`ncd_from` / `ncd_upto` for today (IST). The Worklist tile lists via
+`view=worklist`.
 
 **`leads.recent` is the missed-followup strip under the grid** — at most three,
 most overdue first (`next_action_at ASC`), same item shape as `GET /leads`.
@@ -641,14 +644,16 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Name, mobile or email. **Ignored when any drawer param below is present** — drawer replaces search, it does not AND. Card/pill params (`status`, `visited`, `missed_followup`) and `side` do **not** drop `q` |
+| `q` | Name, mobile or email. ANDs with every other filter |
+| `view` | `worklist` leaves out terminal statuses (Dead and Booked) and unqualified leads. Any other value is ignored. Combines with every other param |
 | `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
 | `visited` | `true` / `false` — at least one `lead_visits` row, or none |
+| `unqualified` | `true` / `false` — only unqualified leads, or only qualified ones. Blank does nothing |
 | `missed_followup` | `true` / `false` — `next_action_at <= now` on a non-terminal lead, or a Visit Planned lead whose `visit_planned_at` has passed. ANDs with `status` |
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
-| `side` | `sale` · `rent`. Not a drawer field, so it keeps `q`. Any other value is ignored. Meant for pickers that need one side without dropping the search |
+| `side` | `sale` · `rent` on `transaction_type`. Any other value is ignored. ANDs with `q`. Meant for pickers |
 | `property_type_id`, `source_id`, `assigned_user_id` | Drawer. Repeat the key, or comma-separate. An IN list. `source_missing=true` with `source_id` is those sources plus leads with no source |
 | `source_missing` | Drawer. `true` keeps leads whose source is blank |
 | `created_from`, `created_upto` | Drawer. Inclusive **IST** calendar days on `created_at` |
@@ -656,8 +661,8 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
 | `possession_from`, `possession_to` | Drawer |
 | `typology_ids[]` | Drawer. Repeat the key |
-| `category` | `residential` · `commercial` · `land`. Not a drawer field, so it still applies with `q` |
-| `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` |
+| `category` | `residential` · `commercial` · `land`. ANDs with `q`. Pill `counts` follow it; nothing else narrows the counts |
+| `sort` | **`ncd`** (default) · `worklist` · `recent` · `updated` · `booked` · `visited` |
 | `page`, `per_page` | |
 
 Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `source_missing`, `assigned_user_id`, `created_from`, `created_upto`, `died_from`, `died_upto`.
@@ -678,21 +683,27 @@ row whose max is ₹90L even if its old min was ₹80L.
 
 Default sort is `next_action_at ASC NULLS FIRST, created_at DESC` — leads with
 no next action sit **above** overdue. `sort=worklist` is the old overdue-first
-order. **`GET /dashboard` `leads.recent` is missed followups only** (at most
+order. `sort=booked` is `booked_at DESC NULLS LAST, created_at DESC`.
+`sort=visited` orders by the lead's latest `lead_visits.visited_at`
+(`DESC NULLS LAST`, then `created_at DESC`), via a correlated subquery so a
+lead with several visits is one row. **`GET /dashboard` `leads.recent` is missed followups only** (at most
 three, most overdue first), so the home strip and this list disagree by design.
 
-The response includes **`counts`** every time, visibility-scoped and **not**
-narrowed by the current filter:
+The response includes **`counts`** every time, visibility-scoped. They ignore
+the list's filters and search. They follow `category` when it is sent.
 
 ```json
 "counts": {
   "new": 4, "missed_followup": 2, "visit_planned": 1,
-  "visited": 3, "hot_negotiation": 5, "booked": 1
+  "visited": 3, "hot_negotiation": 5, "booked": 1,
+  "worklist": 18, "todays_calls": 3
 }
 ```
 
-Cards overlap (New + overdue NCD is both New and Missed), so counts will not sum
-to `meta.total_count`. Hide the cards in the UI when `q` or a drawer param is on.
+`worklist` is not terminal and not unqualified. `todays_calls` is
+`next_action_at` today (IST), any status — the same rule as Home
+`todays_followups`. The other keys are unchanged. Cards overlap (New + overdue
+NCD is both New and Missed), so counts will not sum to `meta.total_count`.
 
 ### Lead payload
 
@@ -1063,7 +1074,7 @@ and changes nothing:
 | `comment` | **required.** Blank is `422 comment_required` |
 | `status` | optional status **code**. Omit it to leave the status. `new` is `422 new_not_allowed` ("A lead can't go back to New."). Do **not** also call `POST /leads/:id/status` |
 | `next_action_at` | required unless the lead ends up Booked or Dead (`422 next_call_required`, "Next call is required."). A time more than 2 minutes ago is `422 next_call_in_past` ("The next call must be in the future."). There is no way to clear NCD except by moving to a terminal status |
-| `visit_at` | required when `status` is `visit_planned`, and when the lead is already Visit Planned and this key is sent blank (`422 visit_at_required`, "Visit date is required."). A time that is not in the future is `422 visit_in_past` ("The visit must be in the future."). The next call has to be before it (`422 reminder_after_visit`, "The reminder call must be before the visit.") |
+| `visit_at` | required when `status` is `visit_planned`, and when the lead is already Visit Planned and this key is sent blank (`422 visit_at_required`, "Visit date is required."). A time that is not in the future is `422 visit_in_past` ("The visit must be in the future."). A next call that is not before the visit is refused (`422 reminder_after_visit`, "The reminder call must be before the visit.") unless the visit is less than 2 hours away |
 | `reason` | required when `status` is a dead status (`422 reason_required`); the followup is rolled back |
 | `booked_on` | required when `status` is a booked status (`422 application_date_required`). IST start of day, stored on `leads.booked_at`. **Does not create a booking row** |
 

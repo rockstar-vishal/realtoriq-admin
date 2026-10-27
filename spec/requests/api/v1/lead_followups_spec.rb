@@ -196,6 +196,70 @@ RSpec.describe "API v1 lead followups" do
       expect(lead.reload.visit_planned_at).to be_nil
     end
 
+    it "allows a next call after a visit that is less than two hours away" do
+      travel_to Time.zone.local(2026, 10, 27, 15, 0, 0) do
+        post "/api/v1/leads/#{lead.id}/followups",
+          params: {
+            comment: "Coming up", status: visit_status.code,
+            next_action_at: Time.zone.local(2026, 10, 28, 11, 0, 0).iso8601,
+            visit_at: Time.zone.local(2026, 10, 27, 16, 30, 0).iso8601
+          }, headers: auth(agent), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(lead.reload.lead_status).to eq(visit_status)
+        expect(lead.next_action_at).to eq(Time.zone.local(2026, 10, 28, 11, 0, 0))
+      end
+    end
+
+    it "refuses a next call after a visit that is three hours away" do
+      travel_to Time.zone.local(2026, 10, 27, 15, 0, 0) do
+        post "/api/v1/leads/#{lead.id}/followups",
+          params: {
+            comment: "Too soon to skip", status: visit_status.code,
+            next_action_at: Time.zone.local(2026, 10, 28, 11, 0, 0).iso8601,
+            visit_at: Time.zone.local(2026, 10, 27, 18, 0, 0).iso8601
+          }, headers: auth(agent), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.dig("error", "code")).to eq("reminder_after_visit")
+        expect(lead.reload.lead_status).to eq(new_status)
+        expect(lead.lead_followups.count).to eq(0)
+      end
+    end
+
+    it "allows a later next call when the planned visit is an hour away" do
+      travel_to Time.zone.local(2026, 10, 27, 15, 0, 0) do
+        lead.update!(lead_status: visit_status, visit_planned_at: Time.zone.local(2026, 10, 27, 16, 0, 0))
+
+        post "/api/v1/leads/#{lead.id}/followups",
+          params: {
+            comment: "Call tomorrow",
+            next_action_at: Time.zone.local(2026, 10, 28, 11, 0, 0).iso8601
+          }, headers: auth(agent), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(lead.reload.lead_status).to eq(visit_status)
+        expect(lead.visit_planned_at).to eq(Time.zone.local(2026, 10, 27, 16, 0, 0))
+      end
+    end
+
+    it "refuses a next call after a visit that has already passed" do
+      travel_to Time.zone.local(2026, 10, 27, 15, 0, 0) do
+        lead.update!(lead_status: visit_status, visit_planned_at: Time.zone.local(2026, 10, 27, 14, 0, 0))
+
+        post "/api/v1/leads/#{lead.id}/followups",
+          params: {
+            comment: "Call tomorrow",
+            next_action_at: Time.zone.local(2026, 10, 28, 11, 0, 0).iso8601
+          }, headers: auth(agent), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.dig("error", "code")).to eq("reminder_after_visit")
+        expect(lead.reload.visit_planned_at).to eq(Time.zone.local(2026, 10, 27, 14, 0, 0))
+        expect(lead.lead_followups.count).to eq(0)
+      end
+    end
+
     it "saves Booked and Dead with no next call" do
       headers = auth(agent)
 

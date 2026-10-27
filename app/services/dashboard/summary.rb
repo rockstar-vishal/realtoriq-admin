@@ -55,12 +55,13 @@ module Dashboard
       COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM lead_visits WHERE lead_visits.lead_id = leads.id)),
       COUNT(*) FILTER (WHERE lead_statuses.code = 'new'),
       COUNT(*) FILTER (WHERE lead_statuses.code = 'visit_planned'),
-      COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation'))
+      COUNT(*) FILTER (WHERE lead_statuses.code IN ('hot', 'negotiation')),
+      COUNT(*) FILTER (WHERE leads.unqualified = FALSE AND lead_statuses.is_terminal = FALSE)
     SQL
 
     def leads_block
       total, hot, todays_followups, missed_followups, visited,
-        new_count, visit_planned, hot_negotiation =
+        new_count, visit_planned, hot_negotiation, worklist =
         visible_leads.joins(:lead_status).pick(Arel.sql(counts_select))
 
       recent = visible_leads
@@ -72,6 +73,7 @@ module Dashboard
 
       {
         total: total.to_i,
+        worklist: worklist.to_i,
         new: new_count.to_i,
         hot: hot.to_i,
         hot_negotiation: hot_negotiation.to_i,

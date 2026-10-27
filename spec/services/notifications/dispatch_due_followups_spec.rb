@@ -71,20 +71,41 @@ RSpec.describe Notifications::DispatchDueFollowups do
     end
   end
 
-  it "names the due call a reminder when the visit has a time" do
+  it "names the due call a reminder when the next call is before the visit" do
+    zone = Time.find_zone!("Asia/Kolkata")
+    travel_to(zone.local(2026, 10, 27, 10, 0, 0))
     described_class.call
-    visit_at = Time.find_zone!("Asia/Kolkata").local(2026, 10, 27, 11, 0, 0)
     create(:lead, firm:, assigned_user: assignee, name: "Rhea Kapoor",
       lead_status: create(:lead_status, :visit_planned),
-      next_action_at: 30.seconds.from_now, visit_planned_at: visit_at)
+      next_action_at: zone.local(2026, 10, 27, 10, 30, 0),
+      visit_planned_at: zone.local(2026, 10, 27, 11, 0, 0))
 
-    travel 1.minute do
-      expect(described_class.call.dispatched).to eq(1)
-      note = assignee.notifications.sole
-      expect(note.kind).to eq("followup_due")
-      expect(note.title).to eq("Reminder Call — Rhea Kapoor")
-      expect(note.body).to eq("Site Visit Tue 27 Oct, 11:00 AM")
-    end
+    travel_to(zone.local(2026, 10, 27, 10, 31, 0))
+    expect(described_class.call.dispatched).to eq(1)
+    note = assignee.notifications.sole
+    expect(note.kind).to eq("followup_due")
+    expect(note.title).to eq("Reminder Call — Rhea Kapoor")
+    expect(note.body).to eq("Site Visit Tue 27 Oct, 11:00 AM")
+  ensure
+    travel_back
+  end
+
+  it "uses the plain follow-up text when the next call is not before the visit" do
+    zone = Time.find_zone!("Asia/Kolkata")
+    travel_to(zone.local(2026, 10, 27, 10, 0, 0))
+    described_class.call
+    create(:lead, firm:, assigned_user: assignee, name: "Rhea Kapoor",
+      lead_status: create(:lead_status, :visit_planned),
+      next_action_at: zone.local(2026, 10, 27, 10, 30, 0),
+      visit_planned_at: zone.local(2026, 10, 27, 10, 15, 0))
+
+    travel_to(zone.local(2026, 10, 27, 10, 31, 0))
+    expect(described_class.call.dispatched).to eq(1)
+    note = assignee.notifications.sole
+    expect(note.title).to eq("Followup — Rhea Kapoor")
+    expect(note.body).to eq("Due 27 Oct, 10:30 AM")
+  ensure
+    travel_back
   end
 
   it "keeps the plain follow-up text when the visit has no time, and for any other status" do

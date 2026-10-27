@@ -83,7 +83,10 @@ module Notifications
     # A visit planned with a time makes this call the reminder before the
     # visit. A visit planned before that time was stored keeps the plain text.
     def reminder_call?(lead)
-      lead.lead_status&.code == "visit_planned" && lead.visit_planned_at.present?
+      lead.lead_status&.code == "visit_planned" &&
+        lead.visit_planned_at.present? &&
+        lead.next_action_at.present? &&
+        lead.next_action_at < lead.visit_planned_at
     end
 
     def title_for(lead)
