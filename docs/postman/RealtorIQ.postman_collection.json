@@ -1090,7 +1090,7 @@
     },
     {
       "name": "Prospects",
-      "description": "A firm-wide calling list, separate from leads. Every user sees every prospect. Managers can delete and clear. The list does not include phone numbers. GET /prospects/:id/mobile returns one number for Call or Edit. Home uses GET /dashboard prospects counts only.\n\nCap is 5,000 per firm. Statuses: new, following, interested, not_interested. Search (q) ignores status. counts ignore both.",
+      "description": "A firm-wide calling list, separate from leads. Every user sees every prospect. Managers can delete and clear. The list does not include phone numbers. GET /prospects/:id/mobile returns one number for Call or Edit. Home uses GET /dashboard prospects counts only, and those stay the four status counts.\n\nCap is 5,000 per firm. Statuses: new, following, interested, not_interested. Filters AND together, including q. counts ignore every filter and q.",
       "item": [
         {
           "name": "List prospects",
@@ -1109,11 +1109,11 @@
                 {
                   "key": "status",
                   "value": "new",
-                  "description": "Ignored when q is set. Default new."
+                  "description": "Comma list of new, following, interested, not_interested. Unknown values are ignored. ANDs with q and every other filter."
                 }
               ]
             },
-            "description": "Firm-wide. Default status is new (oldest first). Following sorts by next_action_at ASC NULLS LAST. Interested and not interested sort by updated_at desc. per_page defaults to 25 and clamps to 50. counts are firm-wide and ignore q and status. The card has no mobile. lead_code is visible to every user. lead_id is present only when lead_accessible is true."
+            "description": "Firm-wide. Nothing sent returns every prospect, ordered next_action_at ASC NULLS FIRST, created_at DESC, id. view=worklist is new and following. sort=updated is latest update first. per_page defaults to 25 and clamps to 50. counts are firm-wide and ignore every filter and q. They add worklist, todays_followups and missed_followup. The card has no mobile. lead_code is visible to every user. lead_id is present only when lead_accessible is true. A bad created_from or created_upto is 422 invalid."
           },
           "event": [
             {
@@ -1124,7 +1124,7 @@
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
                   "pm.test('counts', () => {",
-                  "  pm.expect(body.counts).to.include.keys('new', 'following', 'interested', 'not_interested', 'total');",
+                  "  pm.expect(body.counts).to.include.keys('new', 'following', 'interested', 'not_interested', 'total', 'worklist', 'todays_followups', 'missed_followup');",
                   "});",
                   "if (body.prospects.length) {",
                   "  pm.collectionVariables.set('prospect_id', body.prospects[0].id);",
@@ -1866,7 +1866,7 @@
                 "matches"
               ]
             },
-            "description": "Unmapped inventory for this lead. Until nearby matching is on, a preferred locality must overlap. After that, the first group fills the 50: listings within 6 km of a tagged pin, then preferred localities, then neighbor localities whose centers are within 6 km. A higher score does not jump a group. Optional JSON body { q } searches the full set and returns every hit with no cap. A q of only symbols, such as -, returns no rows. Without q, truncated is true when more matches exist. Each row has distance_m, group (locality or nearby), and near_shortlist. The body also has interest_localities and neighbor_localities. Score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. A preferred locality is 30 points. Nearby is 20. Rent leads see rentals only. Ready-possession leads see sale properties and projects whose possession month is this month, one of the next two, or any past month. A label with no date that starts with the word Ready, such as Ready to move, counts as ready. A lead with no budget scores 25 price points and matched_on omits price. A shortlisted pin is enough: a lead with no preferred locality still matches listings within 6 km once nearby matching is on. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches. A listing is scored only in the lead's category. Commercial and Plot & Land also require the chosen configuration and score area instead of configuration. An unpriced one scores 0 price points when another chosen configuration has a price. A pre-leased commercial sale listing scores 10 more, capped at 100, and sorts first when scores tie. A mixed project shows that category's starting price. Each row adds category, area, area_sqft, area_unit, area_value, pre_leased, and score_breakdown keys fit, configuration, area, and bonus. With anchor matching on, anchors lists each anchor as kind, name, listing_kind and listing_id, and an anchor-band row includes distance_rounded and anchor, for example { \"distance_m\": 1200, \"distance_rounded\": false, \"near_shortlist\": true, \"anchor\": { \"kind\": \"visited\", \"name\": \"Mehta Marquina\" } }. While anchor matching is off, anchors is [] and anchor is null. distance_m is the shown distance and is null on a preferred row."
+            "description": "Unmapped inventory for this lead. A pin outside India, or more than 20 km from its locality centre, is ignored and the centre is used. Until nearby matching is on, a preferred locality must overlap. After that, the first group fills the 50: listings within 6 km of a tagged pin, then preferred localities, then neighbor localities whose centers are within 6 km. A higher score does not jump a group. Optional JSON body { q } searches the full set and returns every hit with no cap. A q of only symbols, such as -, returns no rows. Without q, truncated is true when more matches exist. Each row has distance_m, group (locality or nearby), and near_shortlist. The body also has interest_localities and neighbor_localities. Score floor: above 30 for this firm's own stock, above 50 for catalog projects and other firms' shared properties. A preferred locality is 30 points. Nearby is 20. Rent leads see rentals only. Ready-possession leads see sale properties and projects whose possession month is this month, one of the next two, or any past month. A label with no date that starts with the word Ready, such as Ready to move, counts as ready. A lead with no budget scores 25 price points and matched_on omits price. A shortlisted pin is enough: a lead with no preferred locality still matches listings within 6 km once nearby matching is on. Under-construction leads see projects only. An unqualified lead or a booked lead returns matches: []. A dead lead still matches. A listing is scored only in the lead's category. Commercial and Plot & Land also require the chosen configuration and score area instead of configuration. An unpriced one scores 0 price points when another chosen configuration has a price. A pre-leased commercial sale listing scores 10 more, capped at 100, and sorts first when scores tie. A mixed project shows that category's starting price. Each row adds category, area, area_sqft, area_unit, area_value, pre_leased, and score_breakdown keys fit, configuration, area, and bonus. With anchor matching on, anchors lists each anchor as kind, name, listing_kind and listing_id, and an anchor-band row includes distance_rounded and anchor, for example { \"distance_m\": 1200, \"distance_rounded\": false, \"near_shortlist\": true, \"anchor\": { \"kind\": \"visited\", \"name\": \"Mehta Marquina\" } }. While anchor matching is off, anchors is [] and anchor is null. distance_m is the shown distance and is null on a preferred row."
           },
           "event": [
             {

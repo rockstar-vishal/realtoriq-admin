@@ -223,7 +223,7 @@ class Project < ApplicationRecord
     "CASE WHEN #{usable_pin_sql} THEN projects.lng ELSE (SELECT localities.lng FROM localities WHERE localities.id = projects.locality_id) END"
   end
 
-  # A pin inside Maharashtra and within about 20 km of its locality center.
+  # A pin inside India and within about 20 km of its locality center.
   # Degree checks stand in for the haversine so the ORDER BY stays one expression.
   def self.usable_pin_sql
     <<~SQL.squish

@@ -138,7 +138,7 @@ module Inventory
 
     def placed_anchor(lead)
       return if lead.near_lat.blank? || lead.near_lng.blank?
-      return unless Geo.inside_maharashtra?(lead.near_lat, lead.near_lng)
+      return unless Geo.inside_india?(lead.near_lat, lead.near_lng)
 
       Anchor.new(
         lat: lead.near_lat.to_f, lng: lead.near_lng.to_f, kind: "placed", name: lead.near_label,

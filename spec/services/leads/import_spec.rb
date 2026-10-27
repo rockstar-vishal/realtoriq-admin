@@ -32,6 +32,16 @@ RSpec.describe Leads::Import do
     described_class.new(firm:, actor:, io: csv_for(rows)).call
   end
 
+  it "does not create a city named in the sheet" do
+    result = nil
+    expect {
+      result = import([ sale(location: "Shela, Ahmedabad", mobile: "9820155099") ])
+    }.not_to change(City, :count)
+
+    expect(result.created_count).to eq(0)
+    expect(result.results.first[:error]).to eq("Unknown location Shela, Ahmedabad.")
+  end
+
   def sale(**values)
     {
       name: "Rhea Kapoor", mobile: "9820155001", transaction_type: "sale",

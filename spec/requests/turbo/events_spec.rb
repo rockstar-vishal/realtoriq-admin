@@ -87,7 +87,9 @@ RSpec.describe "Turbo marketplace events" do
     post_event(upsert_payload(city: "Nowhere"))
 
     expect(response).to have_http_status(:unprocessable_content)
-    expect(response.parsed_body["error"]).to eq("City Nowhere is not in RealtorIQ")
+    expect(response.parsed_body["error"]).to eq(
+      "City Nowhere is not in RealtorIQ, and its state could not be found"
+    )
   end
 
   describe "enquiries" do

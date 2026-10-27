@@ -7,29 +7,57 @@ module Localities
     ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json"
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 5
+    CITY_TYPES = %w[locality administrative_area_level_2 administrative_area_level_3].freeze
 
     def initialize(api_key)
       @api_key = api_key
     end
 
     def coordinates(address)
-      uri = URI(ENDPOINT)
-      uri.query = URI.encode_www_form(address:, key: api_key, region: "in")
-      response = fetch(uri)
-      return unless response.is_a?(Net::HTTPSuccess)
-
-      body = JSON.parse(response.body)
-      location = body.dig("results", 0, "geometry", "location")
+      location = first_result(geocode(address:))&.dig("geometry", "location")
       return if location.nil?
 
       [ location["lat"], location["lng"] ]
-    rescue StandardError
-      nil
+    end
+
+    # administrative_area_level_1, long name. Nil when Google has no state.
+    def state_from_pin(lat, lng)
+      state_name(first_result(geocode(latlng: "#{lat},#{lng}")))
+    end
+
+    # Forward lookup. Accepted only when the first hit is a city or a district.
+    def state_from_city(name)
+      result = first_result(geocode(address: "#{name}, India"))
+      return unless result && CITY_TYPES.intersect?(Array(result["types"]))
+
+      state_name(result)
     end
 
     private
 
     attr_reader :api_key
+
+    def geocode(params)
+      uri = URI(ENDPOINT)
+      uri.query = URI.encode_www_form(params.merge(key: api_key, region: "in"))
+      response = fetch(uri)
+      return unless response.is_a?(Net::HTTPSuccess)
+
+      JSON.parse(response.body)
+    rescue StandardError
+      nil
+    end
+
+    def first_result(body)
+      body&.dig("results", 0)
+    end
+
+    def state_name(result)
+      component = Array(result&.dig("address_components")).find { |row|
+        Array(row["types"]).include?("administrative_area_level_1")
+      }
+      component&.dig("long_name").presence
+    end
 
     def fetch(uri)
       Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
