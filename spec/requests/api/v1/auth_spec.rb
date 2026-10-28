@@ -279,6 +279,42 @@ RSpec.describe "API v1 auth" do
     end
   end
 
+  describe "POST /auth/otp rate limits" do
+    let(:store) { ActiveSupport::Cache::MemoryStore.new }
+    let!(:other) { create(:user, firm:, mobile: "+919820144211") }
+
+    before do
+      allow(Rails).to receive(:cache).and_return(store)
+      allow(Rails.configuration.x).to receive(:otp_mobile_limit).and_return(5)
+      allow(Rails.configuration.x).to receive(:otp_ip_limit).and_return(60)
+    end
+
+    it "limits the sixth request for one mobile and still accepts another" do
+      5.times do
+        request_code(user.mobile)
+        expect(response).to have_http_status(:ok)
+      end
+
+      request_code(user.mobile)
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.parsed_body.dig("error", "code")).to eq("rate_limited")
+
+      request_code(other.mobile)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "limits the 61st request from one IP, including unknown mobiles" do
+      60.times do |n|
+        request_code(format("90000%05d", n))
+        expect(response).to have_http_status(:not_found)
+      end
+
+      request_code("9000000060")
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.parsed_body.dig("error", "code")).to eq("rate_limited")
+    end
+  end
+
   describe "DELETE /auth/session" do
     it "revokes the session" do
       token = sign_in["refresh_token"]

@@ -35,6 +35,8 @@ module Matches
 
     # The shared-properties fetch uses this same key. A listing that leaves
     # the set has to delete it, or other firms keep matching it for the hour.
+    # There is no batch key: one load fills these per-locality entries, and
+    # this delete is what the next pass reads.
     def self.forget_shared_properties(locality_id)
       return if locality_id.blank?
 
@@ -81,8 +83,12 @@ module Matches
     end
 
     def marketplace_projects
-      locality_ids.flat_map { |locality_id| cached_marketplace_projects(locality_id) }
-        .filter_map { |row| marketplace_project_candidate(row) }
+      batched_rows(locality_ids, method(:marketplace_projects_cache_key)) { |missing|
+        Project.marketplace.where(locality_id: missing)
+          .includes(:locality, project_typologies: :typology)
+          .group_by(&:locality_id)
+          .transform_values { |projects| projects.map { |project| project_payload(project) } }
+      }.filter_map { |row| marketplace_project_candidate(row) }
     end
 
     def own_properties
@@ -96,25 +102,45 @@ module Matches
       return [] if Current.firm_id.blank? || Current.firm&.review_demo?
 
       eligible = Firm.marketplace_eligible.where.not(id: Current.firm_id).pluck(:id).to_set
-      locality_ids.flat_map { |locality_id| cached_shared_properties(locality_id) }
-        .filter_map { |row| shared_property_candidate(row, eligible) }
-    end
-
-    def cached_marketplace_projects(locality_id)
-      Rails.cache.fetch("matches/marketplace-projects/v4/#{locality_id}", expires_in: CACHE_TTL) do
-        Project.marketplace.where(locality_id:)
-          .includes(:locality, project_typologies: :typology)
-          .map { |project| project_payload(project) }
-      end
-    end
-
-    def cached_shared_properties(locality_id)
-      Rails.cache.fetch(self.class.shared_properties_cache_key(locality_id), expires_in: CACHE_TTL) do
+      batched_rows(locality_ids, self.class.method(:shared_properties_cache_key)) { |missing|
         Property.unscoped
-          .where(listed_on_marketplace: true, status: "available", locality_id:)
+          .where(listed_on_marketplace: true, status: "available", locality_id: missing)
           .includes(:typology, :firm, :locality)
-          .map { |property| property_payload(property) }
+          .group_by(&:locality_id)
+          .transform_values { |properties| properties.map { |property| property_payload(property) } }
+      }.filter_map { |row| shared_property_candidate(row, eligible) }
+    end
+
+    # Read every locality already cached. One query fills the rest, and each
+    # locality — including one with no rows — is written back under its own key.
+    def batched_rows(ids, key_for)
+      return [] if ids.empty?
+
+      keys = ids.to_h { |id| [ key_for.call(id), id ] }
+      cached = Rails.cache.read_multi(*keys.keys)
+      missing = []
+      by_id = {}
+      ids.each do |id|
+        key = key_for.call(id)
+        if cached.key?(key)
+          by_id[id] = Array(cached[key])
+        else
+          missing << id
+        end
       end
+      if missing.any?
+        loaded = yield(missing)
+        missing.each do |id|
+          payload = Array(loaded[id])
+          Rails.cache.write(key_for.call(id), payload, expires_in: CACHE_TTL)
+          by_id[id] = payload
+        end
+      end
+      ids.flat_map { |id| by_id[id] }
+    end
+
+    def marketplace_projects_cache_key(locality_id)
+      "matches/marketplace-projects/v4/#{locality_id}"
     end
 
     def box_projects

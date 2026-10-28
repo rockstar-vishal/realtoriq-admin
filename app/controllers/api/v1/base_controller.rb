@@ -70,17 +70,39 @@ module Api
       end
 
       # Pagy raises on page 0, a negative page, or a non-numeric one, and the
-      # raise surfaced as a 500 HTML page on every index endpoint. A client
-      # sending `page=0` for its first page, or an empty string from an unset
-      # form field, is making an ordinary mistake and should get page one.
+      # raise used to surface as a 500 HTML page. `page=0` and a negative page
+      # still open page 1. A value that is not a whole number is 422.
       #
       # `Pagy::DEFAULT[:overflow] = :last_page` only covers the other end —
       # a page past the last one.
+      # A missing page, 0, or a negative page opens page 1: clients send 0 for
+      # the first page. Anything that is not a whole number is a bad filter.
       def normalise_page
         raw = params[:page]
         return if raw.nil?
+        # JSON wrapping names the body after the controller (`PagesController`
+        # → `page`). That is a resource, not a list page.
+        return if raw.is_a?(ActionController::Parameters) || raw.is_a?(Hash)
 
-        params[:page] = raw.is_a?(String) || raw.is_a?(Numeric) ? [ raw.to_i, 1 ].max : 1
+        # An empty page is an unset field. Leave it off the params so Pagy
+        # opens page 1. An array is not a page number.
+        if !raw.is_a?(String) && !raw.is_a?(Numeric)
+          render_error("invalid", "Page must be a whole number, 0 or more.", status: :unprocessable_content)
+          return
+        end
+
+        text = raw.is_a?(Numeric) ? raw.to_s : raw.to_s.strip
+        if text.empty?
+          params.delete(:page)
+          return
+        end
+
+        unless text.match?(/\A-?\d+\z/)
+          render_error("invalid", "Page must be a whole number, 0 or more.", status: :unprocessable_content)
+          return
+        end
+
+        params[:page] = [ text.to_i, 1 ].max
       end
 
       def set_request_context

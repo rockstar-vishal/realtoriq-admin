@@ -4,11 +4,10 @@ module Api
   module V1
     # Sign-in. No passwords. A pending firm cannot sign in; ops activate it.
     class AuthController < BaseController
-      # The unauthenticated surface, so it carries its own rate limit on top of
-      # the per-user lockout. See config/application.rb — strict in production,
-      # loose in development so a test loop doesn't lock itself out.
-      rate_limit to: Rails.configuration.x.otp_rate_limit, within: 5.minutes, only: :request_code,
-        with: -> { render_error("rate_limited", "Too many attempts. Try again shortly.", status: :too_many_requests) }
+      # Two buckets, both read from config on each request. See application.rb.
+      # An unknown mobile still counts against the IP. The per-user lockout
+      # after three wrong codes is separate and stays on verify.
+      before_action :enforce_otp_limits, only: :request_code
 
       def request_code
         user = User.find_for_sign_in(mobile: params[:mobile])
@@ -140,6 +139,20 @@ module Api
       end
 
       private
+
+      def enforce_otp_limits
+        mobile = Phone.normalise(params[:mobile])
+        limited = mobile.present? && otp_bucket_full?("mobile", mobile, Rails.configuration.x.otp_mobile_limit, 15.minutes)
+        limited = true if otp_bucket_full?("ip", request.remote_ip.to_s, Rails.configuration.x.otp_ip_limit, 5.minutes)
+        return unless limited
+
+        render_error("rate_limited", "Too many attempts. Try again shortly.", status: :too_many_requests)
+      end
+
+      def otp_bucket_full?(name, identity, limit, within)
+        count = Rails.cache.increment("rate-limit/otp/#{name}/#{identity}", 1, expires_in: within)
+        count.present? && count > limit
+      end
 
       # `device` is optional and advisory, so anything unusable is simply ignored.
       #

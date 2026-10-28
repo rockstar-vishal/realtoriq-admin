@@ -60,11 +60,12 @@ module KgenRealtoriqAdmin
       ENV["OTP_FIXED_CODE"].presence ||
       ("888888" if Rails.env.development? || Rails.env.staging?)
 
-    # Sign-in code requests allowed per IP per 5 minutes. Tight in production,
-    # where /auth/otp is the app's only unauthenticated write. Loose elsewhere:
-    # a developer machine, a Postman run or a QA pass legitimately makes a dozen
-    # requests from one address.
-    config.x.otp_rate_limit = Rails.env.production? ? 12 : 100
+    # Sign-in code requests for one mobile, per 15 minutes. The number is
+    # normalised the same way the user lookup is, so an office does not share it.
+    config.x.otp_mobile_limit = Rails.env.production? ? 5 : 100
+
+    # Sign-in code requests for one IP, per 5 minutes. Unknown mobiles count here.
+    config.x.otp_ip_limit = Rails.env.production? ? 60 : 100
 
     # The Next.js BFF sits in front of this API. Rails only honours
     # X-Forwarded-For from trusted hops; loopback and RFC1918 are already in

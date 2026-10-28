@@ -12,7 +12,8 @@ RSpec.describe "Environment guarantees" do
       otp_fixed_code: ENV["OTP_FIXED_CODE"].presence ||
         ("888888" if env.in?(%w[development staging])),
       otp_delivery: ENV.fetch("OTP_DELIVERY") { env == "production" ? "msg91" : "log" },
-      otp_rate_limit: env == "production" ? 12 : 100
+      otp_mobile_limit: env == "production" ? 5 : 100,
+      otp_ip_limit: env == "production" ? 60 : 100
     }
   end
 
@@ -42,7 +43,8 @@ RSpec.describe "Environment guarantees" do
     end
 
     it "has a loose rate limit, for QA passes" do
-      expect(config_for("staging")[:otp_rate_limit]).to eq(100)
+      expect(config_for("staging")[:otp_mobile_limit]).to eq(100)
+      expect(config_for("staging")[:otp_ip_limit]).to eq(100)
     end
 
     it "is its own environment, not production with a flag" do
@@ -119,7 +121,8 @@ RSpec.describe "Environment guarantees" do
     end
 
     it "keeps the tight rate limit" do
-      expect(config_for("production")[:otp_rate_limit]).to eq(12)
+      expect(config_for("production")[:otp_mobile_limit]).to eq(5)
+      expect(config_for("production")[:otp_ip_limit]).to eq(60)
     end
 
     it "refuses to boot if a fixed code is supplied" do

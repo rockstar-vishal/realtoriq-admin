@@ -10,7 +10,7 @@ hour. Staging sends only when `OPS_ALERT_EMAIL` is set.
 Look at them:
 
 ```bash
-bin/rails runner 'SolidQueue::FailedExecution.includes(:job).order(:created_at).find_each { |row| puts [row.id, row.job.class_name, row.exception_class].join(" ") }'
+bin/rails runner 'SolidQueue::FailedExecution.includes(:job).order(:created_at).find_each { |row| puts [row[:id], row.job.class_name, row.exception_class].join(" ") }'
 ```
 
 Retry or discard one. Replace `ID` with an id from the list. `retry` runs the

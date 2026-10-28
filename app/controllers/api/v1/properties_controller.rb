@@ -25,6 +25,10 @@ module Api
       before_action :set_property, only: %i[show update add_photos remove_photo visitors lead_matches mapped_customers portal_codes]
 
       def index
+        if (message = list_filter_error)
+          return render_error("invalid", message, status: :unprocessable_content)
+        end
+
         @pagy, records = pagy(filtered_scope, limit: per_page)
 
         render json: {
@@ -54,6 +58,10 @@ module Api
 
       # Every other active firm's shared, available listing. Safe cards only.
       def marketplace_index
+        if (message = list_filter_error)
+          return render_error("invalid", message, status: :unprocessable_content)
+        end
+
         scope = Inventory::MarketplaceListings.new(query: params[:q]).scope
         @pagy, records = pagy(scope, limit: per_page)
         channels = ContactChannel.unscoped
@@ -185,6 +193,24 @@ module Api
       def render_validation_errors(errors)
         render_error("invalid", errors.full_messages.to_sentence,
                      status: :unprocessable_content, details: errors.to_hash)
+      end
+
+      def list_filter_error
+        Api::ListParams.error(
+          params,
+          rupees: %i[price_min price_max],
+          areas: %i[carpet_min carpet_max area_min area_max],
+          ids: %i[city_id locality_id typology_id],
+          enums: {
+            listing_for: Property::LISTING_FOR,
+            side: Property::LISTING_FOR,
+            category: Typology::CATEGORIES,
+            floor_band: Property::FLOOR_BANDS,
+            status: Property::STATUSES + %w[all],
+            sort: SORTS.keys
+          },
+          per_page: true
+        )
       end
 
       def per_page

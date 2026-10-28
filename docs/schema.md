@@ -210,6 +210,10 @@ designed. Columns are in the migrations; the rules that aren't obvious from them
   `budget_min`. The `budget_min` column stays for leftover rows; it is not
   written anymore. `GET /leads` `budget_min` / `budget_max` are a **filter
   window** on `COALESCE(budget_max, budget_min)`, not a range overlap.
+  A value that is not a whole number of rupees is `422`, and the scope casts
+  before it binds so a raw string never reaches SQL.
+- **`index_leads_on_firm_id_and_booked_at`** is
+  `(firm_id, booked_at DESC NULLS LAST, created_at DESC)`, the booked sort.
 - **Mappings** live in `lead_projects` and `lead_properties` (many, kept after a
   booking). There is no `leads.project_id`.
 
@@ -245,7 +249,10 @@ destroys invoices and collections, so that check is what keeps money records.
 - **`mobile`** is `+91` and a 10-digit Indian mobile starting 6–9. Unique on
   `(firm_id, mobile)`. Extraction accepts broker formatting and rejects
   landlines, two mobiles in one cell, and Excel scientific notation. Lead
-  normalisation is a different, looser method.
+  normalisation is a different, looser method. Name search uses a GIN trigram
+  index on `name`. A phone fragment uses a GIN trigram index on
+  `regexp_replace(mobile, '\D', '', 'g')`, the same expression as
+  `Prospect.mobile_like`. `(firm_id, created_at)` supports the created-date list.
 - **One inventory link.** `project_id` or `property_id`, not both (CHECK).
   The project association is unscoped and may be a marketplace project.
   A property must belong to this firm.

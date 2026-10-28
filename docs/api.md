@@ -65,7 +65,18 @@ all the same number.
 "meta": { "page": 1, "per_page": 25, "total_count": 23, "total_pages": 1 }
 ```
 
-`per_page` is clamped to 1–50. Absent or `0` means **25**.
+`per_page` is clamped to 1–50. Absent or `0` means **25**. A `page` or
+`per_page` that is not a whole number is `422 invalid` ("Page must be a whole
+number, 0 or more." / "per_page must be a whole number, 0 or more."). `page`
+of `0` or below still opens page 1.
+
+A list filter that is present but cannot be read is `422 invalid` as well.
+That is a budget or price that is not a whole number of rupees (spaces and
+commas are stripped first; `1,00,000` is 100000), an area that is not a whole
+number, a brokerage that is not a number, a date that is not `YYYY-MM-DD` or a
+from-date after its upto, an id that is not a record id, or an enum outside
+the values listed for that endpoint. The message names the field, in the same
+shape as the date error. A parameter the endpoint does not use is still ignored.
 
 **Errors** always have this shape, and you switch on `code`, never on the prose:
 
@@ -115,7 +126,10 @@ how a stolen token gets caught.
 
 The number comes back masked. An unknown mobile is `404 not_registered`, and the
 message points at `https://api.realtoriq.kgen.tech/self-signup`. A pending firm is
-`403 account_unapproved` and no code is sent.
+`403 account_unapproved` and no code is sent. Production allows 5 requests for
+one mobile per 15 minutes, and 60 per IP per 5 minutes. Other environments
+allow 100 of each. An unknown mobile still counts against the IP. Either limit
+is `429 rate_limited`. Three wrong codes on verify still lock that user.
 
 ### `POST /auth/verify`
 
@@ -444,7 +458,7 @@ Shared filters, all optional:
 | --- | --- |
 | `from`, `upto` | `YYYY-MM-DD`. `from` after `upto`, or a non-date, is `422 invalid` |
 | `transaction_type` | `sale` or `rent`. Blank is both. Anything else is `422 invalid` |
-| `property_type_id` | Repeat the key, or comma-separate. Rent leads have no property type, so rent plus a type is an empty report |
+| `property_type_id` | Repeat the key, or comma-separate. Rent leads have no property type, so rent plus a type is an empty report. A value that is not an id is `422 invalid` |
 | `source_id` | Repeat or comma-separate |
 | `source_missing` | `true` adds leads with no source. With `source_id`, the list is those sources **plus** no source |
 | `assigned_user_id` | Repeat or comma-separate. Narrows the leads the caller can already see. An agent cannot widen it to someone else's leads |
@@ -647,7 +661,7 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | Filter | Notes |
 | --- | --- |
 | `q` | Name, mobile or email. ANDs with every other filter |
-| `view` | `worklist` leaves out terminal statuses (Dead and Booked) and unqualified leads. Any other value is ignored. Combines with every other param |
+| `view` | `worklist` leaves out terminal statuses (Dead and Booked) and unqualified leads. Any other value is `422 invalid`. Combines with every other param |
 | `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
 | `visited` | `true` / `false` — at least one `lead_visits` row, or none |
 | `unqualified` | `true` / `false` — only unqualified leads, or only qualified ones. Blank does nothing |
@@ -655,12 +669,12 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 | `name`, `mobile`, `email` | Drawer. ILIKE; `mobile` matches on digits so `98201 44210` hits stored `+919820144210` |
 | `ncd_from`, `ncd_upto` | Drawer. Inclusive **IST** calendar days |
 | `transaction_type` | Drawer. `sale` · `rent` |
-| `side` | `sale` · `rent` on `transaction_type`. Any other value is ignored. ANDs with `q`. Meant for pickers |
+| `side` | `sale` · `rent` on `transaction_type`. Any other value is `422 invalid`. ANDs with `q`. Meant for pickers |
 | `property_type_id`, `source_id`, `assigned_user_id` | Drawer. Repeat the key, or comma-separate. An IN list. `source_missing=true` with `source_id` is those sources plus leads with no source |
 | `source_missing` | Drawer. `true` keeps leads whose source is blank |
 | `created_from`, `created_upto` | Drawer. Inclusive **IST** calendar days on `created_at` |
 | `died_from`, `died_upto` | Drawer. Inclusive **IST** days of a change into a dead status. A lead later revived still matches |
-| `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields |
+| `budget_min`, `budget_max` | Drawer. Filter **window on the stored amount** (`budget` / `budget_max`, leftover `budget_min` if max is null). Not range overlap. These names on GET are the window, not write fields. A value that is not a whole number of rupees, 0 or more, is `422 invalid`. Spaces and commas are stripped first |
 | `possession_from`, `possession_to` | Drawer |
 | `typology_ids[]` | Drawer. Repeat the key |
 | `category` | `residential` · `commercial` · `land`. ANDs with `q`. Pill `counts` follow it; nothing else narrows the counts |
@@ -669,14 +683,13 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 Drawer params: `name`, `mobile`, `email`, `ncd_from`, `ncd_upto`, `budget_min`, `budget_max`, `typology_ids`, `transaction_type`, `property_type_id`, `possession_from`, `possession_to`, `source_id`, `source_missing`, `assigned_user_id`, `created_from`, `created_upto`, `died_from`, `died_upto`.
 
-A backwards or non-date `created_*` or `died_*` pair is `422 invalid` with "Dates must be YYYY-MM-DD, and from must be on or before upto." One side on its own is an open range.
+A backwards or non-date `created_*`, `died_*`, `ncd_*`, or `possession_*` pair is `422 invalid` with "Dates must be YYYY-MM-DD, and from must be on or before upto." One side on its own is an open range. `status` must be a lead status code or `hot_negotiation`. `sort` must be one of the values above.
 
 **`missed_followup` is not a real status.** Send it as `missed_followup=true`
 (same shape as `visited`). It means `next_action_at <= now` on a non-terminal
 lead, or a Visit Planned lead whose `visit_planned_at` has passed. It appears
 in the design's tab strip beside the real statuses, but it will never come
-back in `lead_statuses`. `status=missed_followup` looks up a code that does
-not exist and returns an empty list. `hot_negotiation` is the Hot + Negotiation
+back in `lead_statuses`. `status=missed_followup` is `422 invalid`. `hot_negotiation` is the Hot + Negotiation
 codes together.
 
 **Budget on GET is a point-in-window filter**, not overlap. A ₹1–1.3 Cr window
@@ -1142,18 +1155,18 @@ every prospect. The app sends `view=worklist` when nothing is applied.
 
 | Param | |
 | --- | --- |
-| `view=worklist` | `status` in `new`, `following`. Any other `view` is ignored |
-| `status` | Comma list of `new`, `following`, `interested`, `not_interested`. Unknown values are ignored |
+| `view=worklist` | `status` in `new`, `following`. Any other `view` is `422 invalid` |
+| `status` | Comma list of `new`, `following`, `interested`, `not_interested`. An unknown value is `422 invalid` |
 | `name` | Name contains, case-insensitive |
 | `mobile` | Phone fragment of at least 4 digits, cleaned the same way as `q` (leading `0` stripped, one leading `91` stripped when the digit string is longer than 10). Shorter than 4 digits does not filter |
 | `missed_followup` | `true`: `next_action_at <= now` and status `new` or `following`. `false`: everyone else. Blank does nothing |
 | `ncd_from`, `ncd_upto` | Next call on these IST calendar days, inclusive, same bounds as a lead's `ncd_between` |
 | `created_from`, `created_upto` | Added on these IST calendar days, inclusive |
 | `q` | Name, status label (`not interested` or `not_interested`), or a phone fragment of at least 4 digits |
-| `sort` | `updated` is `updated_at` desc, then `id` desc. Anything else, or nothing, is the default order |
+| `sort` | `updated` is `updated_at` desc, then `id` desc. Nothing is the default order. Anything else is `422 invalid` |
 | `page`, `per_page` | `per_page` default 25, clamp 1–50 |
 
-A bad or backwards `created_from` / `created_upto` is `422 invalid` with
+A bad or backwards `created_*` or `ncd_*` pair is `422 invalid` with
 "Dates must be YYYY-MM-DD, and from must be on or before upto." One side on
 its own is an open range.
 
@@ -1410,9 +1423,9 @@ sent with a past date for you to check.
 | `name` | Drawer. Substring of the **project name only**. Applied together with the other drawer filters — this is the advanced-search name, not `q` |
 | `status` | `active` (default) · `archived` · `all` (no status filter). Omitting the param is `active`, not every project. Heading pill — does not drop `q` |
 | `builder_id`, `city_id`, `locality_id` | Drawer |
-| `budget_min`, `budget_max` | Drawer. Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike a lead's stored amount — and a project with no configurations never matches |
-| `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range |
-| `possession_before` | date. Not a drawer field; still applies alongside `q` |
+| `budget_min`, `budget_max` | Drawer. Projects with **at least one configuration whose starting price** is in the window. Not overlap — unlike a lead's stored amount — and a project with no configurations never matches. Not a whole number of rupees is `422 invalid` |
+| `brokerage_min`, `brokerage_max` | Drawer. Rows with `NULL` brokerage drop out of a range. Not a number, 0 or more, is `422 invalid` |
+| `possession_before` | date. Not a drawer field; still applies alongside `q`. A non-date is `422 invalid` |
 | `typology_ids[]` | Drawer. Repeat the key |
 | `category` | `residential` · `commercial` · `land`. Projects with at least one configuration in that category. Not a drawer field |
 | `source` | `catalog` lists the marketplace (active shared projects only). Omit it for My Projects |
@@ -1420,7 +1433,7 @@ sent with a past date for you to check.
 | `page`, `per_page` | 25 per page by default |
 
 **Without `source=catalog` the list is My Projects only** (`source: own`).
-`status=marketplace` is not a status and matches nothing. Use `source=catalog`.
+`status=marketplace` is `422 invalid`. Use `source=catalog`. A `sort` outside `name`, `recent`, and `relevant` is `422 invalid` too. Blank `sort` stays A–Z.
 
 Drawer params: `name`, `builder_id`, `typology_ids`, `budget_min`, `budget_max`,
 `city_id`, `locality_id`, `brokerage_min`, `brokerage_max`.
@@ -1559,10 +1572,10 @@ title, the building name, or the description — **not the city**. Ignored when 
 **drawer** param is set; `status` and `side` do not drop `q`. Omitting `status` is
 `available`, so a search does not return booked or sold-out listings unless
 `status` asks for them), `listing_for`, `side` (`sale` · `rent` on `listing_for`;
-any other value is ignored; not a drawer field, so a picker can keep `q`;
+any other value is `422 invalid`; not a drawer field, so a picker can keep `q`;
 the marketplace list does not take it), `city_id`, `locality_id`, `typology_id`,
-`price_min` / `price_max`, **`carpet_min` / `carpet_max`** (NULL
-carpet drops out of a range), `floor_band`. Drawer params: `city_id`,
+`price_min` / `price_max` (a non-number is `422 invalid`), **`carpet_min` / `carpet_max`** (NULL
+carpet drops out of a range; a non-number is `422 invalid`), `floor_band`. Drawer params: `city_id`,
 `locality_id`, `typology_id`, `price_min`, `price_max`, `carpet_min`,
 `carpet_max`, `listing_for`.
 
@@ -1922,7 +1935,7 @@ by rupees from what the reports sum.
 | `kicker` / `passback` | integer | optional | Default 0 |
 | `customer_name` / `customer_mobile` | string | optional | **Snapshotted** — see below |
 | `project_id` | string | optional | A booking is on a project **or** a listing, not both. Sending both is `422 project_and_listing` |
-| `property_id` | string | optional | The firm's own listing, of any status, or a Marketplace listing this firm can see. The Marketplace rule is the same as a shared property, except the listing need not still be Available. Anything else is `422 listing_not_found`. One **live** booking per listing per firm (`422 listing_already_booked`, `details.booking_id` and `details.code`). Another firm can book the same Marketplace listing. The booking stores the listing's typology. Its title is read from the listing, including after that listing leaves the Marketplace. Existing bookings are not backfilled |
+| `property_id` | string | optional | The firm's own listing, of any status, or a Marketplace listing this firm can see. The Marketplace rule is the same as a shared property, except the listing need not still be Available. Anything else is `422 listing_not_found`. One **live** booking per listing per firm (`422 listing_already_booked`, `details.booking_id` and `details.code`). Another firm can book the same Marketplace listing. The booking stores the listing's typology. Its title is the safe card title when the listing belongs to another firm (configuration and locality, or Listing), and this firm's own title when the listing is theirs, including after that listing leaves the Marketplace. Existing bookings are not backfilled |
 | `project_typology_id` | string | optional | A configuration of that project. The booking stores that typology and label, so a later project save can replace the row without blanking the booking. On a catalog or marketplace booking the id is matched to the firm's copy by typology and label. When the copy has no such row, the booking still saves with the snapshot and `project_typology_id` null. A configuration of some other project is `422 invalid`. On PATCH, omit the key to keep the snapshot; send null to clear it. Removing the project clears it. Nothing is backfilled |
 | `mark_lead_booked` | boolean | optional | When true, the lead moves to the active Booked status in the same transaction, with the same timeline entry as `POST /leads/:id/status`. `booked_at` is `booked_on` at the start of that day in Asia/Kolkata, not the time the booking was entered. When the firm has no Booked status the booking still saves and the response adds top-level `lead_status_unchanged: true`. A failed move (for example `duplicate_lead`) rolls the booking back. Omit it, or send false, and the lead stays as it is |
 | `mark_property_booked` | boolean | optional | When true, and the listing is the firm's own and Available, the listing becomes `booked` in the same transaction. Otherwise it is ignored and the response adds top-level `property_status_unchanged: true`. On PATCH this applies only when `property_id` changes to a different listing. The listing it pointed at before is left as it is. Omit it, or send false, and the listing stays as it is |
@@ -1973,10 +1986,10 @@ already has that name: **`422 project_name_clash`** with
 | --- | --- |
 | `q` | Substring of customer name, customer phone, unit, builder ref, booking code, or **project name**. When it contains 4 or more digits, the phone is also matched on those digits alone, so `98201 55011` and `+91 98201-55011` find `+919820155011` |
 | `stage` | `to_invoice` · `awaiting_payment` · `paid` · `cancelled`. Replaces the default of live. Anything else is `422 invalid` |
-| `status` | Still accepted for older clients: `live` (the default when neither `stage` nor `status` is sent) · `cancelled` |
+| `status` | Still accepted for older clients: `live` (the default when neither `stage` nor `status` is sent) · `cancelled`. Anything else is `422 invalid` |
 | `registration` | `done` · `pending`. Anything else is `422 invalid` |
-| `client_phone`, `project_id` | |
-| `booked_from`, `booked_to` | |
+| `client_phone`, `project_id` | `project_id` that is not an id is `422 invalid` |
+| `booked_from`, `booked_to` | A non-date, or from after to, is `422 invalid` |
 | `page`, `per_page` | 25 per page by default |
 
 `totals` is over the **live** rows in the filtered set (`status=cancelled` and `stage=cancelled` therefore return zeros):
@@ -2013,7 +2026,7 @@ A row's `stage` is `cancelled`, else `paid` when `net_income <= 0` or the collec
 }
 ```
 
-`configuration` is null until a booking is saved with one. `label` and `category` come from the snapshot taken then, not from the project's current row. `typology_id` is that typology. `id` is `project_typology_id` while that row still exists; after the project is saved in the configuration editor it is the new row with the same typology and label, or null if the project no longer has one. `category` is repeated at the top level (`residential`, `commercial`, `land`) and is null without a configuration. A booking linked to a listing snapshots that listing's typology the same way, and `property.title` is the listing's current title. `property` is null when the booking has no listing. `property.firm_name` is present only when `own` is false. `oldest_due_invoice_on` is the issue date of the oldest raised invoice that still has a balance of its own; an unlinked collection does not settle an invoice, and a cancelled invoice is ignored.
+`configuration` is null until a booking is saved with one. `label` and `category` come from the snapshot taken then, not from the project's current row. `typology_id` is that typology. `id` is `project_typology_id` while that row still exists; after the project is saved in the configuration editor it is the new row with the same typology and label, or null if the project no longer has one. `category` is repeated at the top level (`residential`, `commercial`, `land`) and is null without a configuration. A booking linked to a listing snapshots that listing's typology the same way, and `property.title` is the safe card title for another firm's listing, or the listing's current title when it is this firm's. `property` is null when the booking has no listing. `property.firm_name` is present only when `own` is false. `oldest_due_invoice_on` is the issue date of the oldest raised invoice that still has a balance of its own; an unlinked collection does not settle an invoice, and a cancelled invoice is ignored.
 
 The list-card figures are top level; the itemised breakdown is under `revenue`. The detail also carries `created_by_name` (who recorded the booking), `documents[]`, `invoices[]`, and `collections[]`.
 
@@ -2559,7 +2572,7 @@ Switch on `code`. The `message` is for humans and may be reworded.
 | `account_unapproved` | 403 | The firm is still pending. No code is sent, and an existing session is not force-logged-out by the web app |
 | `invalid_code` | 401 | Wrong, expired or already-used code. `details.attempts_left` |
 | `otp_locked` | 429 | Three wrong codes. Locked 30 minutes |
-| `rate_limited` | 429 | Too many code requests from this IP |
+| `rate_limited` | 429 | Too many code requests for this mobile or from this IP |
 | `delivery_failed` | 503 | The SMS provider refused |
 | `unauthorized` | 401 | Missing, malformed or revoked token |
 | `account_suspended` | 403 | Firm suspended. Sign out |

@@ -71,7 +71,9 @@ RSpec.describe Ops::FailedJobsAlertJob do
   end
 
   def mail_body
-    CGI.unescapeHTML(ActionMailer::Base.deliveries.last.body.decoded)
+    mail = ActionMailer::Base.deliveries.last
+    source = mail.html_part ? mail.html_part.body.decoded : mail.body.decoded
+    CGI.unescapeHTML(source)
   end
 
   context "in production" do
@@ -165,7 +167,7 @@ RSpec.describe Ops::FailedJobsAlertJob do
 
       expect(mail_body).to include("KeepJob")
       expect(mail_body).not_to include("Ops::FailedJobsAlertJob")
-      expect(mail_body).to include("1 failed jobs are waiting in total")
+      expect(mail_body).to include("1 failed job is waiting in total")
     end
 
     it "leaves the mark where it is when the email cannot be sent" do

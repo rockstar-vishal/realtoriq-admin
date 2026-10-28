@@ -119,11 +119,13 @@ class Project < ApplicationRecord
   # a broker filtering by budget wants the project that has *something* they
   # can sell at that price, not one whose every configuration fits.
   scope :budget_between, ->(min, max) {
-    next all if min.blank? && max.blank?
+    min = Api::ListParams.whole_rupees(min)
+    max = Api::ListParams.whole_rupees(max)
+    next all if min.nil? && max.nil?
 
     typologies = ProjectTypology.unscoped.select(:project_id)
-    typologies = typologies.where(starting_price: min..) if min.present?
-    typologies = typologies.where(starting_price: ..max) if max.present?
+    typologies = typologies.where(starting_price: min..) unless min.nil?
+    typologies = typologies.where(starting_price: ..max) unless max.nil?
 
     where(id: typologies)
   }
@@ -137,11 +139,13 @@ class Project < ApplicationRecord
   # NULL brokerage drops out of a range — a project that does not disclose
   # percent is not "between 2 and 4".
   scope :brokerage_between, ->(min, max) {
-    next all if min.blank? && max.blank?
+    min = Api::ListParams.decimal_number(min)
+    max = Api::ListParams.decimal_number(max)
+    next all if min.nil? && max.nil?
 
     scope = where.not(brokerage_percent: nil)
-    scope = scope.where(brokerage_percent: min.to_d..) if min.present?
-    scope = scope.where(brokerage_percent: ..max.to_d) if max.present?
+    scope = scope.where(brokerage_percent: min..) unless min.nil?
+    scope = scope.where(brokerage_percent: ..max) unless max.nil?
     scope
   }
 

@@ -159,12 +159,14 @@ class Lead < ApplicationRecord
   # inside the filter window. Query params keep the names budget_min / budget_max
   # because that is the window, not a range overlap on the lead.
   scope :budget_between, ->(min, max) {
-    next all if min.blank? && max.blank?
+    min = Api::ListParams.whole_rupees(min)
+    max = Api::ListParams.whole_rupees(max)
+    next all if min.nil? && max.nil?
 
     amount = "COALESCE(leads.budget_max, leads.budget_min)"
     scope = all
-    scope = scope.where("#{amount} >= ?", min) if min.present?
-    scope = scope.where("#{amount} <= ?", max) if max.present?
+    scope = scope.where("#{amount} >= ?", min) unless min.nil?
+    scope = scope.where("#{amount} <= ?", max) unless max.nil?
     scope
   }
 
