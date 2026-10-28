@@ -65,8 +65,9 @@ module Api
         # Label and category are the snapshot. id is the project's current row
         # with that typology and label, so the edit form can preselect it
         # after a configuration save replaces the old row.
-        # firm_name is only there for another firm's listing. The title is the
-        # listing's current title, not a copy stored on the booking.
+        # firm_name is only there for another firm's listing. That title is
+        # the safe card, not Property#title: the model falls back to the
+        # building name when the configuration and locality are blank.
         def property_summary(booking)
           listing = booking.property
           return nil if listing.nil?
@@ -75,7 +76,7 @@ module Api
           summary = {
             id: listing.id,
             code: listing.code,
-            title: listing.title,
+            title: own ? listing.title : Inventory::PropertyCard.title_for(listing),
             listing_for: listing.listing_for,
             status: listing.status,
             own:

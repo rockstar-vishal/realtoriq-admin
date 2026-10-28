@@ -516,4 +516,28 @@ RSpec.describe Matches::CurateFirm do
   def ready_lead_named(name)
     Lead.find_by!(firm:, name:)
   end
+
+  it "keeps each lead's ranked matches when shared stock is loaded once and then read from cache" do
+    AnchorMatching.enable!
+    AnchorMatching.set_radius!(6_000)
+    NearbyMatching.enable!
+    memory = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory)
+    lead = ready_lead(name: "Ranked")
+    create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
+      city:, locality:)
+
+    described_class.call(firm:, announce: false)
+    first = MatchDigest.find_by!(firm_id: firm.id).lead_items.map { |row| [ row["lead_id"], row["match_ids"] ] }
+    described_class.call(firm:, announce: false)
+    second = MatchDigest.find_by!(firm_id: firm.id).lead_items.map { |row| [ row["lead_id"], row["match_ids"] ] }
+
+    expect(first).not_to be_empty
+    expect(second).to eq(first)
+    ranked = digest_lead(MatchDigest.find_by!(firm_id: firm.id), lead)
+    expect(ranked["match_ids"]).to eq(match_ids_for(lead))
+  ensure
+    AnchorMatching.delete_all
+    NearbyMatching.delete_all
+  end
 end

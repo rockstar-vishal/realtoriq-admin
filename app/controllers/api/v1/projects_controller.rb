@@ -6,8 +6,8 @@ module Api
       # `sort=name` (the default, so existing callers see no change) or
       # `sort=recent`, which puts a just-created project on page one instead of
       # wherever its name falls alphabetically. `sort=relevant` is handled in
-      # `apply_sort` — it is not a static order. Unknown values fall back to
-      # the default, in keeping with how the rest of the API treats stray params.
+      # `apply_sort` — it is not a static order. A sort outside that list is
+      # 422; a blank sort stays the default.
       #
       # `id` breaks ties in both. Postgres documents that rows with equal sort
       # keys come back in an unspecified order, so under LIMIT/OFFSET a page
@@ -41,6 +41,10 @@ module Api
       before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo portal_codes]
 
       def index
+        if (message = list_filter_error)
+          return render_error("invalid", message, status: :unprocessable_content)
+        end
+
         scope = filtered_scope
         @pagy, records = pagy(scope, limit: per_page)
 
@@ -354,6 +358,23 @@ module Api
       def render_validation_errors(errors)
         render_error("invalid", errors.full_messages.to_sentence,
                      status: :unprocessable_content, details: errors.to_hash)
+      end
+
+      def list_filter_error
+        Api::ListParams.error(
+          params,
+          rupees: %i[budget_min budget_max],
+          decimals: %i[brokerage_min brokerage_max],
+          dates: %i[possession_before],
+          ids: %i[builder_id typology_ids city_id locality_id],
+          enums: {
+            source: %w[catalog own],
+            status: Project::STATUSES + %w[all],
+            category: Typology::CATEGORIES,
+            sort: SORTS.keys + %w[relevant]
+          },
+          per_page: true
+        )
       end
 
       def per_page

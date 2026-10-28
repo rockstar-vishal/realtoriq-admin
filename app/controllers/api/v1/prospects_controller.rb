@@ -6,7 +6,7 @@ module Api
       before_action :set_prospect, only: %i[mobile update destroy move_to_following]
 
       def index
-        if (message = invalid_date_range)
+        if (message = list_filter_error)
           return render_error("invalid", message, status: :unprocessable_content)
         end
 
@@ -78,16 +78,22 @@ module Api
         params[:sort].to_s == "updated" ? scope.as_updated : scope.as_ncd
       end
 
-      def invalid_date_range
-        message = "Dates must be YYYY-MM-DD, and from must be on or before upto."
-        from = params[:created_from]
-        upto = params[:created_upto]
-        return if from.blank? && upto.blank?
-        return message if from.present? && !::Reports::Window.date?(from)
-        return message if upto.present? && !::Reports::Window.date?(upto)
-        return if from.blank? || upto.blank?
-
-        message if Date.iso8601(from.to_s) > Date.iso8601(upto.to_s)
+      def list_filter_error
+        Api::ListParams.error(
+          params,
+          date_pairs: [ %i[ncd_from ncd_upto], %i[created_from created_upto] ],
+          booleans: %i[missed_followup],
+          enums: {
+            view: %w[worklist],
+            sort: %w[updated],
+            status: {
+              values: Prospect::STATUSES,
+              many: true,
+              message: "status must be new, following, interested, or not_interested."
+            }
+          },
+          per_page: true
+        )
       end
 
       def prospect_params

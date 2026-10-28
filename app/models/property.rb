@@ -86,19 +86,23 @@ class Property < ApplicationRecord
   }
 
   scope :price_between, ->(min, max) {
+    min = Api::ListParams.whole_rupees(min)
+    max = Api::ListParams.whole_rupees(max)
     scope = all
-    scope = scope.where(price: min..) if min.present?
-    scope = scope.where(price: ..max) if max.present?
+    scope = scope.where(price: min..) unless min.nil?
+    scope = scope.where(price: ..max) unless max.nil?
     scope
   }
 
   # NULL carpet drops out of a range — a listing without area is not "600–800".
   scope :carpet_between, ->(min, max) {
-    next all if min.blank? && max.blank?
+    min = Api::ListParams.whole_rupees(min)
+    max = Api::ListParams.whole_rupees(max)
+    next all if min.nil? && max.nil?
 
     scope = where.not(carpet_area_sqft: nil)
-    scope = scope.where(carpet_area_sqft: min.to_i..) if min.present?
-    scope = scope.where(carpet_area_sqft: ..max.to_i) if max.present?
+    scope = scope.where(carpet_area_sqft: min..) unless min.nil?
+    scope = scope.where(carpet_area_sqft: ..max) unless max.nil?
     scope
   }
 

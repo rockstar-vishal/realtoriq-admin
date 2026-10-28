@@ -629,9 +629,8 @@ RSpec.describe "API v1 inventory" do
       expect(response.parsed_body["properties"].map { |p| p["listing_for"] }).to eq([ "rent" ])
     end
 
-    it "keeps q when side is rent and ignores any other side" do
+    it "keeps q when side is rent and rejects any other side" do
       create_property(description: "Corner sale")
-      sale_id = response.parsed_body.dig("property", "id")
       create_property(description: "Corner rent", listing_for: "rent", price: 52_000)
       rent_id = response.parsed_body.dig("property", "id")
       create_property(description: "Quiet rent", listing_for: "rent", price: 48_000)
@@ -642,7 +641,8 @@ RSpec.describe "API v1 inventory" do
 
       get "/api/v1/properties", params: { q: "Corner", side: "foo" }, headers: auth
 
-      expect(response.parsed_body["properties"].map { |p| p["id"] }).to contain_exactly(sale_id, rent_id)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("side must be sale or rent.")
     end
 
     it "matches the card title, the building name and the description, and not the city" do
@@ -870,14 +870,17 @@ RSpec.describe "API v1 inventory" do
           .to eq([ "Marina Bay", "Aurum Vista", "Zephyr Towers" ])
       end
 
-      it "falls back to A–Z for an unknown sort rather than erroring" do
-        expect(names("/api/v1/projects", sort: "sideways"))
-          .to eq([ "Aurum Vista", "Marina Bay", "Zephyr Towers" ])
+      it "rejects an unknown sort" do
+        get "/api/v1/projects", params: { sort: "sideways" }, headers: auth
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.dig("error", "message")).to eq("sort must be name, recent, or relevant.")
       end
 
-      it "ignores a sort sent as an array rather than crashing" do
+      it "rejects a sort sent as an array rather than crashing" do
         get "/api/v1/projects?sort[]=recent", headers: auth
-        expect(response).to have_http_status(:ok)
+
+        expect(response).to have_http_status(:unprocessable_content)
       end
 
       # A correctness property worth holding on its own: walking every page
@@ -940,9 +943,11 @@ RSpec.describe "API v1 inventory" do
           .to eq([ "Aurum Heights", "Bayview", "Cedar Court" ])
       end
 
-      it "falls back to newest first for an unknown sort" do
-        expect(names("/api/v1/properties", sort: "sideways"))
-          .to eq([ "Bayview", "Aurum Heights", "Cedar Court" ])
+      it "rejects an unknown sort" do
+        get "/api/v1/properties", params: { sort: "sideways" }, headers: auth
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.dig("error", "message")).to eq("sort must be recent or name.")
       end
     end
   end

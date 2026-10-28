@@ -1,0 +1,16 @@
+These background jobs failed and will not be retried on their own.
+<% @lines.each do |line| %>
+- <%= line[:at] %> — <%= line[:job_class] %> — <%= line[:error_class] %> — <%= line[:message] %>
+<% end %>
+<% if @more.positive? %>
+and <%= @more %> more
+<% end %>
+<%= @waiting_line %>
+
+Look at them:
+
+<%= @look %>
+
+Retry or discard one (replace ID):
+
+<%= @retry_or_discard %>

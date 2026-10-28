@@ -4,6 +4,7 @@ module Api
   module V1
     class ReportsController < AuthenticatedController
       before_action :require_manager, only: %i[bookings revenue]
+      before_action :reject_bad_export, only: %i[source_status dead_leads bookings revenue]
 
       def source_status
         respond_with(:source_status, ::Reports::SourceStatus.new(user: current_user, params:).call)
@@ -41,6 +42,12 @@ module Api
         return if current_user.super_admin? || current_user.manager?
 
         render_error("forbidden_role", "Only a manager can work with bookings.", status: :forbidden)
+      end
+
+      def reject_bad_export
+        return if params[:export].blank? || params[:export].to_s == "csv"
+
+        render_error("invalid", "export must be csv.", status: :unprocessable_content)
       end
 
       def respond_with(kind, result)

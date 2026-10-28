@@ -7,7 +7,7 @@ environment can be exercised without reaching a real broker or a real rupee:
 | --- | --- | --- |
 | Sign-in code | **Always `888888`** | Generated, six random digits |
 | Delivery | Written to the log. MSG91 and Twilio are never called | MSG91 (SMS) + Twilio (WhatsApp) + Action Mailer |
-| OTP rate limit | 100 per IP / 5 min | 12 per IP / 5 min |
+| OTP rate limit | 100 per mobile / 15 min, and 100 per IP / 5 min | 5 per mobile / 15 min, and 60 per IP / 5 min |
 | Email | `delivery_method = :test` — nothing leaves | SES over SMTP |
 | CORS | **Any origin** | Explicit `CORS_ORIGINS` list in `config/application.yml` |
 | File storage | **Local disk, always** | S3 (`AWS_BUCKET`) |

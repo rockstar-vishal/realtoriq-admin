@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_28_020000) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -727,6 +727,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_020000) do
     t.datetime "visit_planned_at"
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
+    t.index ["firm_id", "booked_at", "created_at"], name: "index_leads_on_firm_id_and_booked_at", order: { booked_at: "DESC NULLS LAST", created_at: :desc }
     t.index ["firm_id", "code"], name: "index_leads_on_firm_id_and_code", unique: true
     t.index ["firm_id", "lead_status_id"], name: "index_leads_on_firm_id_and_lead_status_id"
     t.index ["firm_id", "next_action_at"], name: "index_leads_on_firm_id_and_next_action_at"
@@ -1149,12 +1150,15 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_020000) do
     t.datetime "next_action_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index "regexp_replace((mobile)::text, '\\D'::text, ''::text, 'g'::text) gin_trgm_ops", name: "index_prospects_on_mobile_digits_trgm", using: :gin
     t.index ["created_by_id"], name: "index_prospects_on_created_by_id"
+    t.index ["firm_id", "created_at"], name: "index_prospects_on_firm_id_and_created_at"
     t.index ["firm_id", "mobile"], name: "index_prospects_on_firm_id_and_mobile", unique: true
     t.index ["firm_id", "next_action_at"], name: "index_prospects_on_firm_id_and_next_action_at"
     t.index ["firm_id", "status"], name: "index_prospects_on_firm_id_and_status"
     t.index ["firm_id"], name: "index_prospects_on_firm_id"
     t.index ["lead_id"], name: "index_prospects_on_lead_id", unique: true
+    t.index ["name"], name: "index_prospects_on_name_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["project_id"], name: "index_prospects_on_project_id"
     t.index ["property_id"], name: "index_prospects_on_property_id"
     t.check_constraint "mobile::text ~ '^\\+91[6-9][0-9]{9}$'::text", name: "prospects_mobile_check"

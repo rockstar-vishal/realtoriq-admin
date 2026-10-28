@@ -26,7 +26,7 @@ module Api
       ].freeze
 
       def index
-        if (message = invalid_date_range)
+        if (message = list_filter_error)
           return render_error("invalid", message, status: :unprocessable_content)
         end
 
@@ -282,18 +282,30 @@ module Api
         apply_sort(scope)
       end
 
-      def invalid_date_range
-        message = "Dates must be YYYY-MM-DD, and from must be on or before upto."
-        %w[created died].each do |prefix|
-          from = params[:"#{prefix}_from"]
-          upto = params[:"#{prefix}_upto"]
-          next if from.blank? && upto.blank?
-          return message if from.present? && !::Reports::Window.date?(from)
-          return message if upto.present? && !::Reports::Window.date?(upto)
-          next if from.blank? || upto.blank?
-          return message if Date.iso8601(from.to_s) > Date.iso8601(upto.to_s)
-        end
-        nil
+      def list_filter_error
+        Api::ListParams.error(
+          params,
+          rupees: %i[budget_min budget_max],
+          date_pairs: [
+            %i[ncd_from ncd_upto], %i[possession_from possession_to],
+            %i[created_from created_upto], %i[died_from died_upto]
+          ],
+          ids: %i[typology_ids property_type_id source_id assigned_user_id],
+          booleans: %i[visited unqualified missed_followup source_missing],
+          enums: {
+            transaction_type: Lead::TRANSACTION_TYPES,
+            side: Lead::TRANSACTION_TYPES,
+            category: Typology::CATEGORIES,
+            view: %w[worklist],
+            sort: SORTS.keys,
+            status: {
+              values: -> { LeadStatus.distinct.pluck(:code) + [ Lead::DERIVED_STATUS_HOT_NEGOTIATION ] },
+              many: true,
+              message: "status must be a lead status code."
+            }
+          },
+          per_page: true
+        )
       end
 
       def apply_sort(scope)

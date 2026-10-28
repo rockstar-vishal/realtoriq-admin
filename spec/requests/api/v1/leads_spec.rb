@@ -316,7 +316,8 @@ RSpec.describe "API v1 leads" do
 
       get "/api/v1/leads", params: { status: "missed_followup" }, headers: auth(manager)
 
-      expect(response.parsed_body["leads"]).to eq([])
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("status must be a lead status code.")
     end
 
     it "ANDs missed_followup with a real status" do
@@ -396,8 +397,8 @@ RSpec.describe "API v1 leads" do
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ match.id ])
     end
 
-    it "keeps q when side is rent and ignores any other side" do
-      sale = create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
+    it "keeps q when side is rent and rejects any other side" do
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Kapoor")
       rental = create(:lead, :rent, firm:, lead_status: new_status, name: "Alpha Shah")
       create(:lead, :rent, firm:, lead_status: new_status, name: "Beta Shah")
 
@@ -407,7 +408,8 @@ RSpec.describe "API v1 leads" do
 
       get "/api/v1/leads", params: { q: "Alpha", side: "foo" }, headers: auth(manager)
 
-      expect(response.parsed_body["leads"].map { |l| l["id"] }).to contain_exactly(sale.id, rental.id)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("side must be sale or rent.")
     end
 
     it "ANDs q with transaction_type" do

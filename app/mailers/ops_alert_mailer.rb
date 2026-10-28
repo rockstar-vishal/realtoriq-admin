@@ -7,6 +7,7 @@ class OpsAlertMailer < ApplicationMailer
     @total = total
     @look = Ops::FailedJobCommands::LOOK
     @retry_or_discard = Ops::FailedJobCommands::RETRY_OR_DISCARD
+    @waiting_line = total == 1 ? "1 failed job is waiting in total" : "#{total} failed jobs are waiting in total"
     mail(to:, subject: self.class.subject_for(lines.size + more))
   end
 

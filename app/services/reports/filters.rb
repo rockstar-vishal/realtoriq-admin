@@ -21,7 +21,18 @@ module Reports
       return INVALID_TYPE if transaction_type == :invalid
       return INVALID_CATEGORY if category == :invalid
 
-      nil
+      Api::ListParams.error(
+        params,
+        ids: %i[property_type_id source_id assigned_user_id],
+        booleans: %i[source_missing],
+        enums: {
+          status: {
+            values: -> { LeadStatus.distinct.pluck(:code) + [ Lead::DERIVED_STATUS_HOT_NEGOTIATION ] },
+            many: true,
+            message: "status must be a lead status code."
+          }
+        }
+      )
     end
 
     def lead_scope(user:, money: false, created: false, status: false)

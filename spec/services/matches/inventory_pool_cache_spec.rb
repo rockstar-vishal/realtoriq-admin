@@ -63,4 +63,59 @@ RSpec.describe Matches::InventoryPool do
 
     expect(ids.call).not_to include(listing.id)
   end
+
+  it "drops an unshared listing from the next pass" do
+    memory = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory)
+    listing = create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true,
+      city:, locality:)
+
+    ids = -> {
+      described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)[:properties].map(&:id)
+    }
+    expect(ids.call).to include(listing.id)
+
+    listing.update!(listed_on_marketplace: false)
+
+    expect(ids.call).not_to include(listing.id)
+  end
+
+  it "keeps a private, booked, sold, suspended, or review-demo listing off another firm's pass" do
+    suspended = create(:firm, :suspended)
+    demo = create(:firm, review_demo: true)
+    rows = [
+      create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: false, city:, locality:),
+      create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true,
+        status: "booked", city:, locality:),
+      create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true,
+        status: "sold_out", city:, locality:),
+      create(:property, firm: suspended, typology: home, price: 8_000_000, listed_on_marketplace: true, city:, locality:),
+      create(:property, firm: demo, typology: home, price: 8_000_000, listed_on_marketplace: true, city:, locality:)
+    ]
+
+    ids = described_class.call(locality_ids: [ locality.id ], price_cap: 20_000_000)[:properties].map(&:id)
+
+    expect(ids).not_to include(*rows.map(&:id))
+  end
+
+  it "loads shared properties for every locality in one query" do
+    memory = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory)
+    other_place = create(:locality, city:, name: "Panvel")
+    create(:property, firm: other, typology: home, price: 8_000_000, listed_on_marketplace: true, city:, locality:)
+    create(:property, firm: other, typology: home, price: 9_000_000, listed_on_marketplace: true,
+      city:, locality: other_place)
+    events = []
+    callback = ->(*, payload) { events << payload }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      described_class.call(locality_ids: [ locality.id, other_place.id ], price_cap: 20_000_000)
+    end
+
+    shared = events.select { |event|
+      sql = event[:sql].to_s
+      sql.include?("listed_on_marketplace") && sql.start_with?("SELECT")
+    }
+    expect(shared.size).to eq(1)
+    expect(Array(shared.first[:type_casted_binds]).map(&:to_s)).to include(locality.id, other_place.id)
+  end
 end

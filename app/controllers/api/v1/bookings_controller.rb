@@ -174,6 +174,11 @@ module Api
       end
 
       def invalid_list_filter?
+        if (message = list_filter_error)
+          render_error("invalid", message, status: :unprocessable_content)
+          return true
+        end
+
         if params[:stage].present? && Booking::STAGES.exclude?(params[:stage].to_s)
           render_error(
             "invalid",
@@ -189,6 +194,16 @@ module Api
         end
 
         false
+      end
+
+      def list_filter_error
+        Api::ListParams.error(
+          params,
+          date_pairs: [ %i[booked_from booked_to] ],
+          ids: %i[project_id],
+          enums: { status: Booking::STATUSES },
+          per_page: true
+        )
       end
 
       # Every filter except stage, and except the default of "live". Stage

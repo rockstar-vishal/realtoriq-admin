@@ -387,7 +387,7 @@ RSpec.describe "API v1 prospects" do
       expect(response.parsed_body["prospects"]).to all(satisfy { |row| !row.key?("mobile") })
     end
 
-    it "filters a comma list of statuses and ignores an unknown value" do
+    it "filters a comma list of statuses and rejects an unknown value" do
       create(:prospect, firm:, name: "Asha", status: "new")
       create(:prospect, firm:, name: "Meera", status: "interested")
       create(:prospect, firm:, name: "Dev", status: "not_interested")
@@ -398,7 +398,10 @@ RSpec.describe "API v1 prospects" do
 
       get "/api/v1/prospects", params: { status: "interested,bogus" }, headers: auth(agent)
 
-      expect(names).to eq([ "Meera" ])
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq(
+        "status must be new, following, interested, or not_interested."
+      )
     end
 
     it "keeps an overdue Following prospect and leaves out a later call and a closed one" do

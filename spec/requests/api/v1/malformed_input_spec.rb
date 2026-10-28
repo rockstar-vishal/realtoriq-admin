@@ -52,7 +52,7 @@ RSpec.describe "API v1 malformed input" do
   describe "a malformed `page`" do
     # `page=0` is what a zero-indexed client sends for its first page, and
     # `page=` is what an unset form field sends.
-    %w[0 -1 abc].each do |value|
+    %w[0 -1].each do |value|
       it "treats page=#{value.inspect} as the first page" do
         headers = auth
         create(:lead, firm:)
@@ -64,6 +64,15 @@ RSpec.describe "API v1 malformed input" do
       end
     end
 
+    it "rejects a page that is not a whole number" do
+      headers = auth
+
+      get "/api/v1/leads", params: { page: "abc" }, headers: headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("Page must be a whole number, 0 or more.")
+    end
+
     it "treats an empty page as the first page" do
       headers = auth
       get "/api/v1/leads", params: { page: "" }, headers: headers
@@ -72,11 +81,12 @@ RSpec.describe "API v1 malformed input" do
       expect(response.parsed_body.dig("meta", "page")).to eq(1)
     end
 
-    it "does not crash when page arrives as an array" do
+    it "rejects a page sent as an array" do
       headers = auth
       get "/api/v1/leads?page[]=1", headers: headers
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body.dig("error", "message")).to eq("Page must be a whole number, 0 or more.")
     end
 
     it "applies to every index endpoint, not just leads" do
