@@ -3083,7 +3083,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "projects", "{{project_id}}", "microsite_kit" ]
             },
-            "description": "202 { kit: { status: preparing } }. 200 with url, filename, byte_size and prepared_on when that kit already exists. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). Same 422 reasons as a personalised creative. Marketplace projects only."
+            "description": "202 { kit: { status: preparing } }. 200 with url, download_url, filename, byte_size and prepared_on when that kit already exists. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). download_url redirects to storage with disposition=attachment. Same 422 reasons as a personalised creative. Marketplace projects only."
           }
         },
         {
@@ -3096,7 +3096,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "projects", "{{project_id}}", "microsite_kit" ]
             },
-            "description": "Latest kit for this firm and project: preparing, ready (url, filename, byte_size, prepared_on) or failed. A ready url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). message is Couldn't Prepare the Kit. 404 when none exists."
+            "description": "Latest kit for this firm and project: preparing, ready (url, download_url, filename, byte_size, prepared_on) or failed. A ready url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). download_url redirects to storage with disposition=attachment. message is Couldn't Prepare the Kit. 404 when none exists."
           }
         },
         {

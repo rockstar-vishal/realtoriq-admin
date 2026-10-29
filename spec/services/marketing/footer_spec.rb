@@ -28,6 +28,16 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
     bodies.uniq
   end
 
+  def composed_band(width, height)
+    bytes = Vips::Image.black(width, height).new_from_image([ 18, 42, 84 ]).copy(interpretation: :srgb).write_to_buffer(".png")
+    file = Tempfile.new([ "artwork", ".png" ])
+    file.binmode
+    file.write(bytes)
+    file.flush
+    composed = Marketing::FooterImage.compose(file.path, firm:, project:, numbers:)
+    [ composed, composed.image.height - height ]
+  end
+
   def box_values(raw)
     raw = raw[:referenced_object] while raw.is_a?(Hash) && raw[:referenced_object]
     Array(raw).map(&:to_f)
@@ -106,7 +116,7 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
 
   it "puts the agent and project registration numbers on their own lines" do
     layout = Marketing::FooterLayout.call(
-      width: 1400, firm:, project:, numbers:, logo_size: nil,
+      width: 400, height: 400, firm:, project:, numbers:, logo_size: nil,
       measurer: ->(text, _size, _weight) { text.length * 8 }
     )
     expect(layout.lines.map(&:text)).to include(
@@ -115,9 +125,48 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
     )
   end
 
+  it "keeps a landscape footer small and puts both registrations on one line" do
+    composed, band = composed_band(1200, 628)
+    expect(band).to be <= (628 * 0.22)
+    registration = composed.lines.select { |line| line.include?("Reg. No.") }
+    expect(registration.size).to eq(1)
+    expect(registration.first).to include("MahaRERA Agent Reg. No.", "Project Reg. No.")
+  end
+
+  it "keeps a portrait footer within 18% of the picture" do
+    _composed, band = composed_band(1080, 1350)
+    expect(band).to be <= (1350 * 0.18)
+  end
+
+  it "sets square type from 3.6% and 2.8% of the width" do
+    layout = Marketing::FooterLayout.call(
+      width: 1080, height: 1080, firm:, project:, numbers:, logo_size: nil,
+      measurer: ->(*) { 10 }
+    )
+    name = layout.lines.find { |line| line.text == firm.name }
+    body = layout.lines.find { |line| line.text.include?("Call") }
+    expect(name.size).to be_within(1).of(39)
+    expect(body.size).to be_within(1).of(30)
+  end
+
+  it "keeps an A4 landscape page footer within 22% of the page" do
+    bytes = Prawn::Document.new(page_size: "A4", page_layout: :landscape, margin: 36) do |pdf|
+      pdf.text "ORIGINAL-BODY"
+    end.render
+    before = box_values(CombinePDF.parse(bytes).pages.first[:MediaBox])
+    file = Tempfile.new([ "landscape", ".pdf" ])
+    file.binmode
+    file.write(bytes)
+    file.close
+    rendered, = Marketing::FooterPdf.apply(file.path, firm:, project:, numbers:)
+    after = box_values(CombinePDF.parse(rendered).pages.first[:MediaBox])
+    original = before[3] - before[1]
+    expect((after[3] - after[1]) - original).to be <= (original * 0.22)
+  end
+
   it "starts the text one pad after the drawn logo" do
     layout = Marketing::FooterLayout.call(
-      width: 1400, firm:, project:, numbers:, logo_size: [ 64, 64 ],
+      width: 1400, height: 1400, firm:, project:, numbers:, logo_size: [ 64, 64 ],
       measurer: ->(*) { 20 }
     )
     expect(layout.drawn_width).to eq(64)
@@ -127,7 +176,7 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
 
   it "gives a wide wordmark twice the logo height" do
     layout = Marketing::FooterLayout.call(
-      width: 1400, firm:, project:, numbers:, logo_size: [ 600, 200 ],
+      width: 1400, height: 1400, firm:, project:, numbers:, logo_size: [ 600, 200 ],
       measurer: ->(*) { 20 }
     )
     expect(layout.drawn_width).to be_within(2).of(236)
@@ -180,7 +229,7 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
 
     rendered, = Marketing::FooterPdf.apply(file.path, firm:, project:, numbers:)
     page = CombinePDF.parse(rendered).pages.first
-    band = Marketing::FooterImage.band(width: (596 * 4), firm:, project:, numbers:)
+    band = Marketing::FooterImage.band(width: 596, height: 836, scale: 4, firm:, project:, numbers:)
     band_pt = band.band_height / 4.0
     crop = box_values(page[:CropBox])
     media = box_values(page[:MediaBox])

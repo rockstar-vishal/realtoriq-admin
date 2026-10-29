@@ -31,6 +31,9 @@ staging:
   onboarding_purge:
     class: Onboarding::PurgeJob
     schedule: at 4am every day
+  purge_old_kits:
+    class: Marketing::PurgeOldKitsJob
+    schedule: at 4:30am every day
   failed_jobs_alert:
     class: Ops::FailedJobsAlertJob
     schedule: every 15 minutes
@@ -39,6 +42,9 @@ production:
   onboarding_purge:
     class: Onboarding::PurgeJob
     schedule: at 4am every day
+  purge_old_kits:
+    class: Marketing::PurgeOldKitsJob
+    schedule: at 4:30am every day
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12

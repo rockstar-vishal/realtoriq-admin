@@ -15,8 +15,8 @@ module Marketing
       new(path, firm:, project:, numbers:, logo_path:).compose
     end
 
-    def self.band(width:, firm:, project:, numbers:, logo_path: nil)
-      new(nil, firm:, project:, numbers:, logo_path:).render_band(width)
+    def self.band(width:, height:, firm:, project:, numbers:, logo_path: nil, scale: 1)
+      new(nil, firm:, project:, numbers:, logo_path:).render_band(width, height, scale)
     end
 
     def self.prepare(image)
@@ -36,20 +36,21 @@ module Marketing
 
     def compose
       source = self.class.prepare(Vips::Image.new_from_file(@path))
-      band = render_band(source.width)
+      band = render_band(source.width, source.height, 1)
       image = stack(source, band.image)
       Result.new(image:, lines: band.lines, band_height: band.band_height)
     end
 
-    def render_band(width)
+    def render_band(width, height, scale)
       Fonts.register!
       layout = FooterLayout.call(
-        width:, firm: @firm, project: @project, numbers: @numbers,
-        logo_size:, measurer: method(:measure)
+        width:, height:, firm: @firm, project: @project, numbers: @numbers,
+        logo_size:, measurer: method(:measure), heights: method(:measured_height)
       )
-      image, placements = paint(layout)
+      image, placements = paint(layout, scale)
       Band.new(
-        image:, lines: layout.lines.map(&:text), band_height: layout.band_height,
+        image:, lines: layout.lines.map(&:text),
+        band_height: (layout.band_height * scale).round,
         placements:, layout:
       )
     end
@@ -71,46 +72,57 @@ module Marketing
       text_mask(text, size, weight).width
     end
 
-    def paint(layout)
-      band = Vips::Image.black(layout.width, layout.band_height).new_from_image([ 255, 255, 255, 255 ])
+    def measured_height(text, size, weight)
+      text_mask(text, size, weight).height
+    end
+
+    def paint(layout, scale)
+      width = (layout.width * scale).round
+      height = (layout.band_height * scale).round
+      band = Vips::Image.black(width, height).new_from_image([ 255, 255, 255, 255 ])
       band = band.copy(interpretation: :srgb)
-      rule = Vips::Image.black(layout.width, 2).new_from_image([ 228, 228, 231, 255 ]).copy(interpretation: :srgb)
+      rule = Vips::Image.black(width, [ (2 * scale).round, 1 ].max).new_from_image([ 228, 228, 231, 255 ])
+      rule = rule.copy(interpretation: :srgb)
       band = band.composite2(rule, :over, x: 0, y: 0)
-      band = place_logo(band, layout) if logo?
-      place_lines(band, layout)
+      band = place_logo(band, layout, scale) if logo?
+      place_lines(band, layout, scale)
     end
 
-    def place_logo(band, layout)
+    def place_logo(band, layout, scale)
       logo = Vips::Image.new_from_file(@logo_path).autorot
-      logo = logo.thumbnail_image(layout.logo_width, height: layout.logo_height, size: :down)
+      box_w = (layout.logo_width * scale).round
+      box_h = (layout.logo_height * scale).round
+      logo = logo.thumbnail_image(box_w, height: box_h, size: :down)
       logo = rgba(logo)
-      y = ((layout.band_height - logo.height) / 2.0).round
-      y = [ y, 2 ].max
-      y = [ y, layout.band_height - logo.height ].min
-      band.composite2(logo, :over, x: layout.pad, y:)
+      y = ((band.height - logo.height) / 2.0).round
+      y = [ y, [ (2 * scale).round, 1 ].max ].max
+      y = [ y, band.height - logo.height ].min
+      band.composite2(logo, :over, x: (layout.pad * scale).round, y:)
     end
 
-    def place_lines(band, layout)
-      rendered = layout.lines.map { |line| [ line, text_image(line) ] }
-      used = rendered.sum { |_, image| image.height + 4 }
-      y = [ (layout.band_height - used) / 2, 6 ].max
+    def place_lines(band, layout, scale)
+      rendered = layout.lines.map { |line| [ line, text_image(line, scale) ] }
+      gap = [ (4 * scale).round, 1 ].max
+      used = rendered.sum { |_, image| image.height + gap }
+      y = [ ((band.height - used) / 2.0).round, [ (6 * scale).round, 1 ].max ].max
       placements = []
       rendered.each do |line, image|
-        x = layout.text_x
-        x = [ x, layout.width - image.width - 2 ].min if image.width + x > layout.width
+        x = (layout.text_x * scale).round
+        limit = band.width - image.width - [ (2 * scale).round, 1 ].max
+        x = [ x, limit ].min if image.width + x > band.width
         x = [ x, 0 ].max
         band = band.composite2(image, :over, x:, y:)
         placements << Placement.new(
           text: line.text, x:, y:, width: image.width, height: image.height,
-          size: line.size, weight: line.weight
+          size: (line.size * scale).round, weight: line.weight
         )
-        y += image.height + 4
+        y += image.height + gap
       end
       [ band, placements ]
     end
 
-    def text_image(line)
-      mask = text_mask(line.text, line.size, line.weight)
+    def text_image(line, scale)
+      mask = text_mask(line.text, (line.size * scale).round, line.weight)
       rgb = mask.new_from_image(rgb(line.color)).copy(interpretation: :srgb)
       rgba(rgb.bandjoin(mask))
     end

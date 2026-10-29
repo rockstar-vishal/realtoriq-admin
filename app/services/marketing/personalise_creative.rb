@@ -6,7 +6,7 @@ module Marketing
   # One firm's footer on a catalog creative. A repeated call with the same
   # details returns the file already stored.
   class PersonaliseCreative
-    VERSION = "mk2c-1"
+    VERSION = "mk2f-1"
     Result = Data.define(:payload, :lines, :cached)
 
     def self.call(creative:, firm:)
@@ -101,7 +101,7 @@ module Marketing
 
     def layout_lines(project, numbers)
       FooterLayout.call(
-        width: 1000, firm:, project:, numbers:, logo_size: nil,
+        width: 1000, height: 1000, firm:, project:, numbers:, logo_size: nil,
         measurer: ->(_text, _size, _weight) { 10 }
       ).lines.map(&:text)
     end
