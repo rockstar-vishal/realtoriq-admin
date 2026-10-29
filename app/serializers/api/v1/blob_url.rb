@@ -25,13 +25,14 @@ module Api
       # forwarded link is worthless by the time it arrives.
       SENSITIVE_TTL = 15.minutes
 
-      def self.call(attachment, expires_in: nil, proxy: false)
+      def self.call(attachment, expires_in: nil, proxy: false, disposition: nil)
         return nil if attachment.blank?
 
         blob = attachment.try(:blob) || attachment
 
         options = url_options
         options[:expires_in] = expires_in if expires_in
+        options[:disposition] = disposition if disposition
 
         helper = proxy ? :rails_storage_proxy_url : :rails_blob_url
         Rails.application.routes.url_helpers.public_send(helper, blob, **options)
@@ -50,6 +51,10 @@ module Api
       # /rails/active_storage/* already allows the app, so the reader has to
       # stay on the API.
       def self.proxy(attachment) = call(attachment, proxy: true)
+
+      # A redirect to storage with Content-Disposition: attachment. The browser
+      # saves the file. The bytes never pass through a Puma thread.
+      def self.download(attachment) = call(attachment, disposition: "attachment")
 
       # A smaller copy. The original stays on `.call` — share links are pasted
       # into WhatsApp and have to keep working if a variant is missing.

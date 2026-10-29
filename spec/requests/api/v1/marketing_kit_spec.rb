@@ -144,10 +144,7 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(composed.image.height).to eq(source.height + composed.band_height)
     drawn = composed.lines.join(" ")
     expect(drawn).to include(firm.name, "+91 98201 55001", "+91 98111 22233", "A51900000001", "P51800000001", "P51800000002")
-    expect(composed.lines).to include(
-      "MahaRERA Agent Reg. No. A51900000001",
-      "Project Reg. No. P51800000001, P51800000002"
-    )
+    expect(drawn).to include("MahaRERA Agent Reg. No. A51900000001", "Project Reg. No. P51800000001")
 
     headers = auth
     lines = []
@@ -247,6 +244,8 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(body["status"]).to eq("ready"), response.body
     expect(body["filename"]).to end_with("-microsite-kit.zip")
     expect(body["url"]).to include("/rails/active_storage/blobs/proxy/")
+    expect(body["download_url"]).to include("/rails/active_storage/blobs/redirect/")
+    expect(body["download_url"]).to include("disposition=attachment")
     get URI.parse(body["url"]).path, headers: { "Origin" => "http://localhost:3000" }
     expect(response).to have_http_status(:ok)
     expect(response.media_type).to eq("application/zip")
@@ -287,6 +286,8 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body.dig("kit", "status")).to eq("ready")
     expect(response.parsed_body.dig("kit", "url")).to include("/rails/active_storage/blobs/proxy/")
+    expect(response.parsed_body.dig("kit", "download_url")).to include("/rails/active_storage/blobs/redirect/")
+    expect(response.parsed_body.dig("kit", "download_url")).to include("disposition=attachment")
   end
 
   it "starts a fresh kit when one has been preparing for more than 10 minutes" do
@@ -317,6 +318,26 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(response.parsed_body.dig("kit", "message")).to eq("Couldn't Prepare the Kit.")
     expect(response.body).not_to include("secret boom")
     expect(response.body).not_to include("NoMethodError")
+  end
+
+  it "loads five creatives in the same number of queries as one" do
+    headers = auth
+    get "/api/v1/projects/#{catalog.id}", headers: headers
+    one = count_sql_queries { get "/api/v1/projects/#{catalog.id}", headers: headers }
+
+    4.times do |index|
+      row = ProjectCreative.create!(
+        project: catalog, external_id: "crt_extra_#{index}", title: "Frame #{index}", kind: "image",
+        position: index + 2, registration_numbers: [], checksum: "pending"
+      )
+      row.file.attach(io: StringIO.new(png_bytes(80, 40)), filename: "frame-#{index}.png", content_type: "image/png")
+      row.file.blob.analyze
+      row.update!(checksum: row.file.blob.checksum)
+    end
+
+    five = count_sql_queries { get "/api/v1/projects/#{catalog.id}", headers: headers }
+    expect(five).to eq(one)
+    expect(response.parsed_body.dig("project", "creatives").size).to eq(5)
   end
 
   it "keeps the kit when one photo cannot be read" do

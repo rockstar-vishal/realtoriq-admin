@@ -41,7 +41,10 @@ module Marketing
     def self.review(directory)
       directory = Pathname(directory)
       FileUtils.mkdir_p(directory)
-      write_jpeg(directory.join("personalised.jpg"), firm("सेठी Realty"), square_logo)
+      write_jpeg(directory.join("personalised.jpg"), firm("सेठी Realty"), square_logo, width: 1080, height: 1350)
+      write_jpeg(
+        directory.join("personalised-landscape.jpg"), firm("सेठी Realty"), square_logo, width: 1200, height: 628
+      )
       write_jpeg(
         directory.join("personalised-wide-logo.jpg"),
         firm("Aarav Realty and Property Consultants LLP"),
@@ -52,8 +55,8 @@ module Marketing
       directory
     end
 
-    def self.write_jpeg(path, firm, logo_bytes)
-      with_files(artwork_png, logo_bytes) do |artwork, logo|
+    def self.write_jpeg(path, firm, logo_bytes, width: 1400, height: 900)
+      with_files(artwork(width, height), logo_bytes) do |artwork, logo|
         composed = FooterImage.compose(
           artwork, firm:, project:, numbers: NUMBERS, logo_path: logo
         )
@@ -85,8 +88,12 @@ module Marketing
       logo&.close!
     end
 
+    def self.artwork(width, height)
+      Vips::Image.black(width, height).new_from_image([ 18, 42, 84 ]).copy(interpretation: :srgb).write_to_buffer(".png")
+    end
+
     def self.artwork_png
-      Vips::Image.black(1400, 900).new_from_image([ 18, 42, 84 ]).copy(interpretation: :srgb).write_to_buffer(".png")
+      artwork(1400, 900)
     end
 
     def self.square_logo

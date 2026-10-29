@@ -185,7 +185,9 @@ module Api
           source = Marketing::CatalogProject.for(project)
           return [] if source.nil?
 
-          source.project_creatives.order(:position, :created_at).map { |creative| creative_payload(creative) }
+          source.project_creatives.includes(file_attachment: :blob).order(:position, :created_at).map { |creative|
+            creative_payload(creative)
+          }
         end
 
         def creative_payload(creative)

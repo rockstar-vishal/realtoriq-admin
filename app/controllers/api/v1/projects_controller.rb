@@ -299,6 +299,7 @@ module Api
           date = kit.prepared_on
           body.merge!(
             url: BlobUrl.proxy(kit.file),
+            download_url: BlobUrl.download(kit.file),
             filename: kit.file.filename.to_s,
             byte_size: kit.file.byte_size,
             prepared_on: date && "#{date.day} #{date.strftime("%b %Y")}"

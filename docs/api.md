@@ -1643,9 +1643,11 @@ The same `422` reasons as a personalised creative.
 
 `POST` returns `202 { kit: { status: "preparing" } }` and builds the zip in
 the background. If a kit with the same firm, project and details is already
-ready, `POST` returns `200 { kit: { status: "ready", url, filename, byte_size, prepared_on } }`.
+ready, `POST` returns `200 { kit: { status: "ready", url, download_url, filename, byte_size, prepared_on } }`.
 `prepared_on` is the India date, for example `29 Oct 2026`. `url` is the same
-permanent proxy URL as a personalised creative.
+permanent proxy URL as a personalised creative. `download_url` is a permanent
+redirect (`/rails/active_storage/blobs/redirect/…?disposition=attachment`) that
+sends the browser to storage to save the zip. Older app builds keep using `url`.
 
 `GET` is the latest kit for this firm and project: `preparing`, `ready` (the
 same fields as the `200`), or `failed` with `message`. `message` is

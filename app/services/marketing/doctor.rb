@@ -12,7 +12,7 @@ module Marketing
     end
 
     def call
-      rows = [ vips, inter, devanagari, fc_scan, preview, gems, samples ]
+      rows = [ vips, vips_cache, inter, devanagari, fc_scan, preview, gems, samples ]
       [ rows.map { |row| row[:line] }, rows.any? { |row| row[:failed] } ]
     end
 
@@ -26,6 +26,18 @@ module Marketing
       { line:, failed: !image.width.positive? }
     rescue StandardError => error
       { line: "vips: FAIL #{error.class}: #{error.message.to_s.truncate(160)}", failed: true }
+    end
+
+    def vips_cache
+      require "vips"
+      max = Vips.cache_max
+      mem = Vips.cache_max_mem
+      files = Vips.cache_max_files
+      ok = max.zero? && mem.zero? && files.zero?
+      detail = "max #{max} mem #{mem} files #{files}"
+      { line: ok ? "vips-cache: #{detail}" : "vips-cache: FAIL #{detail}", failed: !ok }
+    rescue StandardError => error
+      { line: "vips-cache: FAIL #{error.class}: #{error.message.to_s.truncate(160)}", failed: true }
     end
 
     def inter

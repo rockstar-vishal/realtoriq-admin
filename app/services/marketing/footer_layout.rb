@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 module Marketing
-  # The white band under a creative. Sizes are shares of the width. The RERA
-  # line wraps onto another line and the band grows; type never drops under 2%.
+  # The white band under a creative. Sizes come from the shorter side, so a
+  # landscape ad does not grow a band that covers a third of the picture.
+  # Type never drops under 2%. The band still spans the full width.
   class FooterLayout
     Line = Data.define(:text, :size, :weight, :color)
     Result = Data.define(
@@ -11,31 +12,35 @@ module Marketing
     NAME_COLOR = "18181B"
     BODY_COLOR = "3F3F46"
 
-    def self.call(width:, firm:, project:, numbers:, logo_size:, measurer:)
-      new(width:, firm:, project:, numbers:, logo_size:, measurer:).call
+    def self.call(width:, height:, firm:, project:, numbers:, logo_size:, measurer:, heights: nil)
+      new(width:, height:, firm:, project:, numbers:, logo_size:, measurer:, heights:).call
     end
 
-    def initialize(width:, firm:, project:, numbers:, logo_size:, measurer:)
+    def initialize(width:, height:, firm:, project:, numbers:, logo_size:, measurer:, heights:)
       @width = width.to_i
+      @height = height.to_i
       @firm = firm
       @project = project
       @numbers = numbers
       @logo_size = logo_size
       @measurer = measurer
+      @heights = heights
     end
 
     def call
-      pad = [ (@width * 0.04).round, 4 ].max
-      base = [ (@width * 0.14).round, 120 ].max
+      @unit = [ @width, (@height * 1.25).round ].min
+      pad = [ (@unit * 0.04).round, 4 ].max
+      base = [ (@unit * 0.14).round, 120 ].max
+      floor = [ (@unit * 0.02).round, 1 ].max
       logo_height = logo? ? (base * 0.60).round : 0
       logo_width = logo_height * 2
       drawn_w, drawn_h = drawn_logo(logo_width, logo_height)
       text_x = pad + (drawn_w.positive? ? drawn_w + pad : 0)
       column = [ @width - text_x - pad, 1 ].max
-      name_size = [ (@width * 0.032).round, 1 ].max
-      body_size = [ (@width * 0.024).round, 1 ].max
+      name_size = [ (@unit * 0.036).round, floor ].max
+      body_size = [ (@unit * 0.028).round, floor ].max
       lines = wrapped_lines(name_size, body_size, column)
-      content = lines.sum { |line| (line.size * 1.35).round } + (lines.size * 4)
+      content = lines.sum { |line| line_height(line) + 4 }
       band = [ base, content + (pad / 2) ].max
       Result.new(
         width: @width, band_height: band, pad:, logo_width:, logo_height:,
@@ -50,9 +55,27 @@ module Marketing
       lines = wrap(@firm.name.to_s, name_size, :semibold, NAME_COLOR, column)
       phone = contacts.call_line
       lines.concat(wrap(phone, body_size, :regular, BODY_COLOR, column)) if phone.present?
-      lines.concat(wrap(contacts.agent_line(@project), body_size, :regular, BODY_COLOR, column))
-      lines.concat(wrap(contacts.project_line(@numbers), body_size, :regular, BODY_COLOR, column))
+      lines.concat(registration_lines(contacts, body_size, column))
       lines
+    end
+
+    # One line on a wide creative. A narrow column keeps the two MK2b lines.
+    def registration_lines(contacts, body_size, column)
+      agent = contacts.agent_line(@project)
+      project_line = contacts.project_line(@numbers)
+      combined = "#{agent} · #{project_line}"
+      if @measurer.call(combined, body_size, :regular) <= column
+        [ Line.new(text: combined, size: body_size, weight: :regular, color: BODY_COLOR) ]
+      else
+        wrap(agent, body_size, :regular, BODY_COLOR, column) +
+          wrap(project_line, body_size, :regular, BODY_COLOR, column)
+      end
+    end
+
+    def line_height(line)
+      return (line.size * 1.35).round unless @heights
+
+      @heights.call(line.text, line.size, line.weight)
     end
 
     def logo?

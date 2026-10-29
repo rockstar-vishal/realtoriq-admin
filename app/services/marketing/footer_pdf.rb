@@ -31,9 +31,10 @@ module Marketing
         page.fix_rotation if page[:Rotate].to_i != 0
         visible = visible_box(page)
         width = (visible[2] - visible[0]).abs
+        height = (visible[3] - visible[1]).abs
         band = FooterImage.band(
-          width: (width * SCALE).round, firm: @firm, project: @project,
-          numbers: @numbers, logo_path: @logo_path
+          width:, height:, scale: SCALE,
+          firm: @firm, project: @project, numbers: @numbers, logo_path: @logo_path
         )
         band_pt = band.band_height / SCALE.to_f
         lines = band.lines
