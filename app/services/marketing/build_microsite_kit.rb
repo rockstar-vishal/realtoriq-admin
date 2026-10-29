@@ -91,11 +91,26 @@ module Marketing
       project.project_creatives.order(:position, :created_at).each do |creative|
         next unless creative.file.attached?
 
-        result = PersonaliseCreative.call(creative:, firm:)
-        name = result.payload[:filename]
-        PersonalisedCreative.across_firms.find_by(firm_id: firm.id, project_creative_id: creative.id)&.file&.blob&.open do |file|
-          FileUtils.cp(file.path, File.join(dir, "creatives", name))
-        end
+        write_creative(dir, project, firm, creative)
+      end
+    end
+
+    def write_creative(dir, project, firm, creative)
+      dest = nil
+      result = PersonaliseCreative.call(creative:, firm:)
+      dest = File.join(dir, "creatives", result.payload[:filename])
+      copy_creative(firm, creative, dest)
+    rescue StandardError => error
+      FileUtils.rm_f(dest) if dest
+      KitData.warn_skip(project.code, creative.file.attachment&.id, error)
+    end
+
+    def copy_creative(firm, creative, dest)
+      stored = PersonalisedCreative.across_firms.find_by(firm_id: firm.id, project_creative_id: creative.id)
+      return unless stored&.file&.attached?
+
+      stored.file.blob.open do |file|
+        FileUtils.cp(file.path, dest)
       end
     end
 

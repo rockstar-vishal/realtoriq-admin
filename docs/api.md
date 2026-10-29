@@ -1627,7 +1627,8 @@ Any signed-in user. The creative must be on this marketplace project, or on
 the catalog row a booking copy points at. Anything else is `404`.
 
 `200` is `{ file: { url, filename, content_type, byte_size } }`. `url` is a
-permanent blob URL, the same kind as a photo. The file is the original
+permanent proxy URL (`/rails/active_storage/blobs/proxy/…`), streamed by this
+API so the browser can fetch it. It does not expire. The file is the original
 creative with a white footer added underneath. The footer carries this firm's
 name, logo, verified phone and RERA number, and the project's registration
 numbers. A second call with the same details returns the stored file.
@@ -1643,7 +1644,8 @@ The same `422` reasons as a personalised creative.
 `POST` returns `202 { kit: { status: "preparing" } }` and builds the zip in
 the background. If a kit with the same firm, project and details is already
 ready, `POST` returns `200 { kit: { status: "ready", url, filename, byte_size, prepared_on } }`.
-`prepared_on` is the India date, for example `29 Oct 2026`. `url` is permanent.
+`prepared_on` is the India date, for example `29 Oct 2026`. `url` is the same
+permanent proxy URL as a personalised creative.
 
 `GET` is the latest kit for this firm and project: `preparing`, `ready` (the
 same fields as the `200`), or `failed` with `message`. `message` is

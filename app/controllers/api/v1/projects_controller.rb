@@ -298,7 +298,7 @@ module Api
         if kit.ready? && kit.file.attached?
           date = kit.prepared_on
           body.merge!(
-            url: BlobUrl.call(kit.file),
+            url: BlobUrl.proxy(kit.file),
             filename: kit.file.filename.to_s,
             byte_size: kit.file.byte_size,
             prepared_on: date && "#{date.day} #{date.strftime("%b %Y")}"
