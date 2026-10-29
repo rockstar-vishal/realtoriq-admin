@@ -12,13 +12,13 @@ module Realtoriq
 
     retry_on RemoteFile::Error, wait: :polynomially_longer, attempts: 5
 
-    def perform(project_id, images, brochure, pushed_at = nil, brokerage_ladder = nil)
+    def perform(project_id, images, brochure, pushed_at = nil, brokerage_ladder = nil, creatives = nil)
       Current.set(firm_scope_bypassed: true) do
         project = Project.unscoped.find_by(id: project_id)
         return if project.nil?
 
         SyncProjectAssets.call(
-          project:, images:, brochure:, pushed_at: parse_time(pushed_at), brokerage_ladder:
+          project:, images:, brochure:, pushed_at: parse_time(pushed_at), brokerage_ladder:, creatives:
         )
       end
     end

@@ -7,6 +7,9 @@ module Inbound
   class ReceiveLead
     PROJECT_CODE = /\AP-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\z/i
     PROPERTY_CODE = /\AH-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\z/i
+    WEB_KEYS = %w[gclid gbraid wbraid utm_source utm_medium utm_campaign utm_term utm_content].freeze
+    MESSAGE_LIMIT = 500
+    WEB_LIMIT = 200
     ENQUIRY_INDEX = "index_inbound_enquiries_on_firm_channel_and_external_id"
     TEXT_LIMIT = 255
 
@@ -48,6 +51,7 @@ module Inbound
       return unlisted_sale if listing.blank?
 
       project = find_project(listing)
+      return failure("That project is archived.", listing:) if project == :archived
       return failure("We could not find this project.", listing:) if project.nil?
       if project.project_typologies.empty?
         return failure("This project has no configuration. Add one in RealtorIQ, then try again.", listing:)
@@ -120,15 +124,23 @@ module Inbound
     end
 
     def write_project(project, phone, type, category)
+      lead, status, error = save_project(project, phone, type, category)
+      store_web_enquiry!(lead) if error.nil?
+      [ lead, status, error ]
+    end
+
+    def save_project(project, phone, type, category)
       existing = open_lead(phone, "sale", category)
       if existing
         attach_project(existing, project)
         return [ existing, "already_in_pipeline", note_existing(existing, project.name) ]
       end
 
+      attributes = lead_attributes(phone, "sale", type, project.code, category:)
+      attributes[:notes] = enquiry_message if enquiry_message
       result = Leads::Create.new(
         firm:, actor:,
-        attributes: lead_attributes(phone, "sale", type, project.code, category:),
+        attributes:,
         project_id: project.id,
         copy_project_typologies: true,
         copy_project_localities: true,
@@ -275,6 +287,13 @@ module Inbound
     end
 
     def find_project(listing)
+      own = find_own_project(listing)
+      return own if own
+
+      marketplace_project(listing)
+    end
+
+    def find_own_project(listing)
       scope = Project.unscoped.where(firm_id: firm.id, source: "own", status: "active")
       if listing.match?(PROJECT_CODE)
         return scope.find_by("upper(code) = ?", listing.upcase)
@@ -287,6 +306,19 @@ module Inbound
       end
 
       scope.where("lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) = ?", listing.downcase).first
+    end
+
+    def marketplace_project(listing)
+      scope = Project.unscoped.where(firm_id: nil, source: "catalog")
+      row = if listing.match?(PROJECT_CODE)
+        scope.where("upper(code) = ?", listing.upcase).first
+      elsif listing.match?(Leads::Import::LAUNCHIQ_CODE)
+        scope.where("upper(external_ref) = ?", listing.upcase).first
+      end
+      return if row.nil?
+      return :archived if row.archived?
+
+      row
     end
 
     def find_property(listing)
@@ -342,10 +374,32 @@ module Inbound
 
     def note_existing(lead, listing_name)
       comment = [ "New #{Channels.label(channel)} enquiry", listing_name.presence && "for #{listing_name}" ].compact.join(" ")
-      result = Leads::RecordFollowup.new(lead:, actor:, comment: "#{comment}.").call
+      comment = "#{comment}."
+      comment = "#{comment} #{enquiry_message}" if kind == "projects" && enquiry_message
+      result = Leads::RecordFollowup.new(lead:, actor:, comment:).call
       return if result.ok?
 
       result.error_message.presence || "We could not save this enquiry."
+    end
+
+    def enquiry_message
+      payload["message"].to_s.strip.presence
+    end
+
+    def store_web_enquiry!(lead)
+      return if lead.nil?
+
+      incoming = {}
+      WEB_KEYS.each do |key|
+        value = payload[key].to_s.strip
+        next if value.blank?
+
+        incoming[key] = value
+      end
+      incoming["consent_at"] = Time.current.iso8601 if payload["consent"].to_s.strip == "yes"
+      return if incoming.empty?
+
+      lead.update!(web_enquiry: lead.web_enquiry.to_h.merge(incoming))
     end
 
     def store_enquiry!(lead)
@@ -393,6 +447,11 @@ module Inbound
     end
 
     def field_error
+      return "That message is too long." if payload["message"].to_s.length > MESSAGE_LIMIT
+
+      WEB_KEYS.each do |key|
+        return "That #{key} is too long." if payload[key].to_s.length > WEB_LIMIT
+      end
       return "That listing code is too long." if payload["listing"].to_s.length > TEXT_LIMIT
       return "That enquiry id is too long." if payload["enquiry_id"].to_s.strip.length > TEXT_LIMIT
       return "That city name is too long." if payload["city"].to_s.length > TEXT_LIMIT

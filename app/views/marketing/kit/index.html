@@ -1,0 +1,387 @@
+<!doctype html>
+<!--
+  RealtorIQ Microsite Kit: one-page project site.
+  Template syntax is Mustache: {{value}}, {{#list}}…{{/list}}, {{^value}}shown when empty{{/value}}.
+  MK2 renders it into the kit with the project's and the firm's data. Brokers edit the result, not this file.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{project.name}}, {{project.locality}} · {{firm.name}}</title>
+<meta name="description" content="{{project.name}} by {{project.builder}} in {{project.locality}}, {{project.city}}. {{project.configurations_text}}. {{project.starting_price_text}}. Marketed by {{firm.name}}.">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="{{#firm.logo}}{{firm.logo}}{{/firm.logo}}{{^firm.logo}}data:,{{/firm.logo}}">
+
+<!--
+  GOOGLE ADS TAG: paste your Google tag here (Google Ads → Goals → Conversions → Google tag).
+  It looks like this; replace AW-XXXXXXXXXX with your own ID:
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'AW-XXXXXXXXXX');
+  </script>
+-->
+
+<style>
+  :root {
+    --accent: {{accent}};
+    --ink: #18181b; --ink-2: #3f3f46; --ink-3: #52525b; --line: #e4e4e7; --bg: #ffffff; --soft: #f6f6f7;
+    --radius: 14px; --wrap: 1120px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--font); color: var(--ink); background: var(--bg); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  img { max-width: 100%; display: block; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 20px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Header */
+  .site-header { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.96); backdrop-filter: saturate(160%) blur(8px); border-bottom: 1px solid var(--line); }
+  .site-header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; min-width: 0; }
+  .brand img { width: 40px; height: 40px; object-fit: contain; border-radius: 8px; }
+  .brand-text { min-width: 0; }
+  .brand-eyebrow { display: block; font-size: 12px; color: var(--ink-3); letter-spacing: .02em; }
+  .brand-name { display: block; font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header-actions { display: flex; gap: 8px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 10px; font: 600 15px/1 var(--font); text-decoration: none; border: 1px solid transparent; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: #fff; color: var(--ink); border-color: #d4d4d8; }
+  .btn-whatsapp { background: #1f8a4c; color: #fff; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* RERA block: top right of the first screen (MahaRERA Order 46C/2025) */
+  .rera { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 14px 16px; }
+  .rera-title { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); }
+  .rera-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 16px; margin: 0; padding: 0; list-style: none; }
+  .rera-item { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .rera-item img { width: 88px; height: 88px; image-rendering: pixelated; flex: none; }
+  .rera-label { display: block; font-size: 13px; color: var(--ink-3); }
+  .rera-number { display: block; font-size: 16px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rera-site { margin: 10px 0 0; font-size: 16px; font-weight: 600; }
+  .rera-site a { text-decoration: none; color: var(--ink); }
+
+  /* Hero */
+  .hero { padding: 28px 0 8px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr 1fr; grid-template-areas: "text rera" "text image"; gap: 16px 32px; align-items: start; }
+  .hero-text { grid-area: text; padding-top: 8px; }
+  .hero .rera { grid-area: rera; }
+  .hero-image { grid-area: image; }
+  .eyebrow { font-size: 14px; color: var(--ink-3); margin: 0 0 6px; }
+  h1 { font-size: clamp(30px, 4.2vw, 46px); line-height: 1.1; margin: 0 0 8px; letter-spacing: -.01em; }
+  .by { font-size: 17px; color: var(--ink-2); margin: 0 0 18px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+  .facts li { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+  .price { font-size: 26px; font-weight: 800; margin: 0 0 18px; }
+  .price small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-3); }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .hero-image { border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 11; background: var(--soft); }
+  .hero-image img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Sections */
+  section { padding: 40px 0; }
+  section + section { border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; margin: 0 0 16px; letter-spacing: -.01em; }
+  .table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .table th, .table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); }
+  .table th { font-size: 13px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .table td:last-child, .table th:last-child { text-align: right; white-space: nowrap; }
+  .note { font-size: 13px; color: var(--ink-3); margin: 10px 0 0; }
+  .about p { margin: 0 0 12px; font-size: 16px; color: var(--ink-2); max-width: 70ch; white-space: pre-line; }
+  .about dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 24px; margin: 16px 0 0; }
+  .about dt { font-size: 13px; color: var(--ink-3); }
+  .about dd { margin: 0; font-weight: 600; }
+  .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--soft); }
+  .location p { margin: 0 0 12px; font-size: 16px; color: var(--ink-2); }
+
+  /* Enquiry */
+  .enquire .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .field { display: grid; gap: 6px; margin: 0 0 14px; }
+  .field label { font-size: 14px; font-weight: 600; }
+  .field input, .field textarea { font: 16px var(--font); padding: 12px 14px; border: 1px solid #a1a1aa; border-radius: 10px; width: 100%; }
+  .field textarea { min-height: 90px; resize: vertical; }
+  .optional { font-weight: 400; color: var(--ink-3); }
+  .consent { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; font-size: 13px; color: var(--ink-2); margin: 4px 0 16px; }
+  .consent input { width: 20px; height: 20px; margin: 2px 0 0; }
+  .form-error { color: #b42318; font-size: 14px; margin: 0 0 12px; min-height: 20px; }
+  .form-done { display: none; text-align: center; padding: 24px 8px; }
+  .form-done h3 { margin: 0 0 6px; font-size: 22px; }
+  .contact-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
+
+  /* Footer */
+  .site-footer { background: var(--soft); border-top: 1px solid var(--line); padding: 28px 0 96px; font-size: 14px; color: var(--ink-2); }
+  .site-footer p { margin: 0 0 8px; }
+  .site-footer .marketed { font-weight: 700; color: var(--ink); }
+  .disclaimer { font-size: 13px; color: var(--ink-3); max-width: 90ch; }
+
+  /* Phone bar */
+  .phone-bar { display: none; }
+
+  @media (max-width: 860px) {
+    .hero .wrap { grid-template-columns: 1fr; grid-template-areas: "rera" "text" "image"; gap: 18px; }
+    .hero-text { padding-top: 0; }
+    .enquire .wrap { grid-template-columns: 1fr; gap: 20px; }
+    .header-actions { display: none; }
+    .gallery { grid-template-columns: repeat(2, 1fr); }
+    .phone-bar { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); }
+    .phone-bar .btn { padding: 0 10px; }
+    .rera-item img { width: 80px; height: 80px; }
+  }
+  @media (min-width: 861px) { .site-footer { padding-bottom: 28px; } }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="{{firm.name}}, back to top">
+      {{#firm.logo}}<img src="{{firm.logo}}" alt="">{{/firm.logo}}
+      <span class="brand-text">
+        <span class="brand-eyebrow">Marketed by</span>
+        <span class="brand-name">{{firm.name}}</span>
+      </span>
+    </a>
+    <nav class="header-actions" aria-label="Contact {{firm.name}}">
+      <a class="btn btn-secondary" href="tel:{{firm.phone_e164}}" data-conversion="call">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>
+        Call {{firm.phone_display}}
+      </a>
+      {{#firm.whatsapp_e164}}<a class="btn btn-whatsapp" href="https://wa.me/{{firm.whatsapp_digits}}?text={{whatsapp_text}}" target="_blank" rel="noopener" data-conversion="whatsapp">WhatsApp</a>{{/firm.whatsapp_e164}}
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" aria-labelledby="project-name">
+    <div class="wrap">
+      <div class="hero-text">
+        <p class="eyebrow">{{project.locality}}, {{project.city}}</p>
+        <h1 id="project-name">{{project.name}}</h1>
+        <p class="by">by {{project.builder}}</p>
+        <ul class="facts" aria-label="Key facts">
+          {{#project.configurations_text}}<li>{{project.configurations_text}}</li>{{/project.configurations_text}}
+          {{#project.possession_text}}<li>{{project.possession_text}}</li>{{/project.possession_text}}
+          {{#project.category_text}}<li>{{project.category_text}}</li>{{/project.category_text}}
+        </ul>
+        {{#project.starting_price_text}}<p class="price">{{project.starting_price_text}}<small>Starting price, all-inclusive prices on request</small></p>{{/project.starting_price_text}}
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#enquire">Enquire Now</a>
+          {{#project.brochure}}<a class="btn btn-secondary" href="{{project.brochure}}" target="_blank" rel="noopener">Download Brochure</a>{{/project.brochure}}
+        </div>
+      </div>
+
+      <aside class="rera" aria-labelledby="rera-title">
+          <p class="rera-title" id="rera-title">{{rera.authority}} Registration</p>
+          <ul class="rera-list">
+            {{#rera.registrations}}
+            <li class="rera-item">
+              {{#qr}}<img src="{{qr}}" alt="{{rera.authority}} QR code for {{number}}" width="88" height="88">{{/qr}}
+              <span>
+                {{#label}}<span class="rera-label">{{label}}</span>{{/label}}
+                <span class="rera-number">{{number}}</span>
+              </span>
+            </li>
+            {{/rera.registrations}}
+          </ul>
+          <p class="rera-site"><a href="{{rera.website_url}}" target="_blank" rel="noopener">{{rera.website}}</a></p>
+      </aside>
+      {{#project.hero_image}}<div class="hero-image"><img src="{{project.hero_image}}" alt="{{project.name}}" loading="eager"></div>{{/project.hero_image}}
+    </div>
+  </section>
+
+  {{#project.has_configurations}}
+  <section aria-labelledby="prices">
+    <div class="wrap">
+      <h2 id="prices">Configurations and Prices</h2>
+      <table class="table">
+        <thead><tr><th scope="col">Configuration</th><th scope="col">Area From</th><th scope="col">Starting Price</th></tr></thead>
+        <tbody>
+          {{#project.configurations}}<tr><td>{{name}}</td><td>{{area_text}}</td><td>{{price_text}}</td></tr>{{/project.configurations}}
+        </tbody>
+      </table>
+      <p class="note">Prices are indicative, as shared by the developer on {{prepared_on}}. Taxes, registration and other charges are extra. Please confirm before booking.</p>
+    </div>
+  </section>
+  {{/project.has_configurations}}
+
+  <section class="about" aria-labelledby="about">
+    <div class="wrap">
+      <h2 id="about">About {{project.name}}</h2>
+      {{#project.promo_text}}<p>{{project.promo_text}}</p>{{/project.promo_text}}
+      <!-- BROKER: add a few lines of your own here (why buy through you, site-visit pickup, offers you can honour). Google Ads prefers pages with original content. -->
+      <dl>
+        <div><dt>Developer</dt><dd>{{project.builder}}</dd></div>
+        <div><dt>Location</dt><dd>{{project.locality}}, {{project.city}}</dd></div>
+        {{#project.possession_text}}<div><dt>Possession</dt><dd>{{project.possession_text}}</dd></div>{{/project.possession_text}}
+        {{#rera.registrations}}<div><dt>{{rera.authority}} No.{{#label}} ({{label}}){{/label}}</dt><dd>{{number}}</dd></div>{{/rera.registrations}}
+      </dl>
+    </div>
+  </section>
+
+  {{#project.has_photos}}
+  <section aria-labelledby="gallery">
+    <div class="wrap">
+      <h2 id="gallery">Gallery</h2>
+      <div class="gallery">
+        {{#project.photos}}<img src="{{src}}" alt="{{alt}}" loading="lazy">{{/project.photos}}
+      </div>
+      <p class="note">Images are artist's impressions provided by the developer.</p>
+    </div>
+  </section>
+  {{/project.has_photos}}
+
+  <section class="location" aria-labelledby="location">
+    <div class="wrap">
+      <h2 id="location">Location</h2>
+      <p>{{#project.address}}{{project.address}}<br>{{/project.address}}{{project.locality}}, {{project.city}}</p>
+      {{#project.map_url}}<a class="btn btn-secondary" href="{{project.map_url}}" target="_blank" rel="noopener">Open in Google Maps</a>{{/project.map_url}}
+    </div>
+  </section>
+
+  <section class="enquire" id="enquire" aria-labelledby="enquire-title">
+    <div class="wrap">
+      <div>
+        <h2 id="enquire-title">Book a Site Visit</h2>
+        <p>Share your details and {{firm.name}} will call you to plan a visit, share the latest prices and answer your questions.</p>
+        <ul class="contact-list">
+          <li><a class="btn btn-secondary" href="tel:{{firm.phone_e164}}" data-conversion="call">Call {{firm.phone_display}}</a></li>
+          {{#firm.whatsapp_e164}}<li><a class="btn btn-whatsapp" href="https://wa.me/{{firm.whatsapp_digits}}?text={{whatsapp_text}}" target="_blank" rel="noopener" data-conversion="whatsapp">WhatsApp {{firm.whatsapp_display}}</a></li>{{/firm.whatsapp_e164}}
+        </ul>
+      </div>
+
+      <div class="card">
+        <!--
+          FORM HANDLER: set data-endpoint to YOUR server URL (see GUIDE.html, step 3).
+          Never put your RealtorIQ key in this page. Your server adds it and forwards the enquiry to RealtorIQ.
+        -->
+        <form id="enquiry-form" data-endpoint="{{form_handler_url}}" novalidate>
+          <div class="field">
+            <label for="f-name">Name</label>
+            <input id="f-name" name="name" autocomplete="name" maxlength="80" required>
+          </div>
+          <div class="field">
+            <label for="f-mobile">Mobile Number</label>
+            <input id="f-mobile" name="mobile" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="14" placeholder="10-digit mobile" required>
+          </div>
+          <div class="field">
+            <label for="f-email">Email <span class="optional">· Optional</span></label>
+            <input id="f-email" name="email" type="email" autocomplete="email" maxlength="120">
+          </div>
+          <div class="field">
+            <label for="f-message">Message <span class="optional">· Optional</span></label>
+            <textarea id="f-message" name="message" maxlength="500" placeholder="e.g. Looking for a 2 BHK, want to visit this Sunday"></textarea>
+          </div>
+          <input type="hidden" name="listing" value="{{project.code}}">
+          <input type="hidden" name="gclid"><input type="hidden" name="gbraid"><input type="hidden" name="wbraid">
+          <input type="hidden" name="utm_source"><input type="hidden" name="utm_medium"><input type="hidden" name="utm_campaign"><input type="hidden" name="utm_term"><input type="hidden" name="utm_content">
+          <label class="consent">
+            <input type="checkbox" name="consent" value="yes" required>
+            <span>I agree that {{firm.name}} may use my name, number and email to contact me about {{project.name}} and arrange a site visit, as described in the <a href="privacy.html">privacy notice</a>. I can withdraw this consent at any time.</span>
+          </label>
+          <p class="form-error" id="form-error" role="alert"></p>
+          <button class="btn btn-primary" type="submit" style="width:100%">Request a Call Back</button>
+        </form>
+        <div class="form-done" id="form-done" role="status" tabindex="-1">
+          <h3>Thank You</h3>
+          <p>{{firm.name}} will call you shortly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="marketed">Marketed by {{firm.name}}{{#firm.rera_number}} · {{firm.rera_label}} {{firm.rera_number}}{{/firm.rera_number}}</p>
+    <p>Call {{firm.phone_display}}{{#firm.email}} · {{firm.email}}{{/firm.email}}</p>
+    <p class="disclaimer">This website is managed by {{firm.name}}, a registered real estate agent. It is not the official website of {{project.builder}}. Project details, prices, plans and images are indicative and based on information shared by the developer; please verify them with the developer and on {{rera.website}} before booking. {{rera.authority}} registration: {{rera.numbers_text}}.</p>
+    <p><a href="privacy.html">Privacy Notice</a> · Information as of {{prepared_on}}</p>
+  </div>
+</footer>
+
+<nav class="phone-bar" aria-label="Quick contact">
+  <a class="btn btn-secondary" href="tel:{{firm.phone_e164}}" data-conversion="call">Call</a>
+  {{#firm.whatsapp_e164}}<a class="btn btn-whatsapp" href="https://wa.me/{{firm.whatsapp_digits}}?text={{whatsapp_text}}" target="_blank" rel="noopener" data-conversion="whatsapp">WhatsApp</a>{{/firm.whatsapp_e164}}
+  {{^firm.whatsapp_e164}}<span></span>{{/firm.whatsapp_e164}}
+  <a class="btn btn-primary" href="#enquire">Enquire</a>
+</nav>
+
+<script>
+(function () {
+  // 1. Keep Google's click ids and UTM tags for 90 days, so an enquiry made on a later visit still carries them.
+  var KEYS = ['gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  var STORE = 'riq_ad_click';
+  var params = new URLSearchParams(location.search);
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) {}
+  if (saved.expires && saved.expires < Date.now()) saved = {};
+  var fresh = KEYS.some(function (k) { return params.get(k); });
+  if (fresh) {
+    saved = { expires: Date.now() + 90 * 24 * 3600 * 1000 };
+    KEYS.forEach(function (k) { if (params.get(k)) saved[k] = params.get(k).slice(0, 200); });
+    try { localStorage.setItem(STORE, JSON.stringify(saved)); } catch (e) {}
+  }
+  var form = document.getElementById('enquiry-form');
+  KEYS.forEach(function (k) { if (saved[k] && form.elements[k]) form.elements[k].value = saved[k]; });
+
+  // 2. Conversion hook. After you add your Google tag, put your conversion labels here (GUIDE.html, step 4).
+  window.riqConversion = function (kind) {
+    if (typeof window.gtag !== 'function') return;
+    var labels = {
+      enquiry: 'AW-XXXXXXXXXX/ENQUIRY_LABEL',
+      call: 'AW-XXXXXXXXXX/CALL_LABEL',
+      whatsapp: 'AW-XXXXXXXXXX/WHATSAPP_LABEL'
+    };
+    if (labels[kind].indexOf('XXXX') !== -1) return;
+    window.gtag('event', 'conversion', { send_to: labels[kind] });
+  };
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest('[data-conversion]');
+    if (link) window.riqConversion(link.getAttribute('data-conversion'));
+  });
+
+  // 3. The enquiry form posts JSON to your own server, which forwards it to RealtorIQ.
+  var error = document.getElementById('form-error');
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    error.textContent = '';
+    var mobile = form.elements.mobile.value.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+    if (!form.elements.name.value.trim()) { error.textContent = 'Please enter your name.'; form.elements.name.focus(); return; }
+    if (!/^[6-9]\d{9}$/.test(mobile)) { error.textContent = 'Please enter a 10-digit mobile number.'; form.elements.mobile.focus(); return; }
+    if (!form.elements.consent.checked) { error.textContent = 'Please tick the box to agree to be contacted.'; form.elements.consent.focus(); return; }
+    var endpoint = form.getAttribute('data-endpoint');
+    if (!endpoint || endpoint.indexOf('YOUR-') === 0) { error.textContent = 'This form is not connected yet. Please call us instead.'; return; }
+
+    var body = {};
+    Array.prototype.forEach.call(form.elements, function (el) { if (el.name && el.type !== 'checkbox') body[el.name] = el.value.trim(); });
+    body.mobile = mobile;
+    body.consent = 'yes';
+    body.enquiry_id = 'web-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    var button = form.querySelector('button[type=submit]');
+    button.disabled = true; button.textContent = 'Sending…';
+    fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (response) {
+        if (!response.ok) throw new Error('failed');
+        form.style.display = 'none';
+        var done = document.getElementById('form-done');
+        done.style.display = 'block'; done.focus();
+        window.riqConversion('enquiry');
+      })
+      .catch(function () {
+        error.textContent = 'Could not send. Please try again, or call us.';
+        button.disabled = false; button.textContent = 'Request a Call Back';
+      });
+  });
+})();
+</script>
+</body>
+</html>

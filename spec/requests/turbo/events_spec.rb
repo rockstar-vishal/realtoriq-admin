@@ -92,6 +92,47 @@ RSpec.describe "Turbo marketplace events" do
     )
   end
 
+  it "stores normalised registrations and leaves them when the key is omitted" do
+    logged = []
+    allow(Rails.logger).to receive(:info) { |message| logged << message.to_s }
+
+    post_event(upsert_payload(
+      rera_registrations: [
+        { number: " p51800000001 ", label: " Tower A ", maharera_url: "https://maharerait.maharashtra.gov.in/public/project/view/54321?ref=1" },
+        { number: "P51800000002", label: "x" * 50, maharera_url: "https://maharerait.maharashtra.gov.in/project/view/99" },
+        { number: "  ", label: "blank" },
+        { number: "P51800000003", maharera_url: "https://evil.example/project/view/1" }
+      ]
+    ))
+
+    project = Project.unscoped.find_by!(external_ref: "PR4F2A9C")
+    expect(project.rera_registrations).to eq([
+      { "number" => "P51800000001", "label" => "Tower A", "maharera_url" => "https://maharerait.maharashtra.gov.in/project/view/54321" },
+      { "number" => "P51800000002", "label" => "x" * 40, "maharera_url" => "https://maharerait.maharashtra.gov.in/project/view/99" },
+      { "number" => "P51800000003", "label" => nil, "maharera_url" => nil }
+    ])
+    rejection = logged.find { |message| message.include?("rera registration url rejected") }
+    expect(rejection).to eq("rera registration url rejected for PR4F2A9C")
+
+    post_event(upsert_payload(pushed_at: "2026-09-28T12:05:00Z"))
+    expect(project.reload.rera_registrations.size).to eq(3)
+
+    post_event(upsert_payload(pushed_at: "2026-09-28T11:00:00Z", rera_registrations: []))
+    expect(project.reload.rera_registrations.size).to eq(3)
+  end
+
+  it "passes creatives to the asset job only when the key is present" do
+    post_event(upsert_payload)
+    expect(ActiveJob::Base.queue_adapter.enqueued_jobs.last[:args].last).to be_nil
+
+    post_event(upsert_payload(
+      pushed_at: "2026-09-28T12:10:00Z",
+      creatives: [ { id: "crt_1", title: "Front", position: 1, url: "https://launch.example/a.jpg", checksum: "abc", content_type: "image/jpeg" } ]
+    ))
+    creatives = ActiveJob::Base.queue_adapter.enqueued_jobs.last[:args].last
+    expect(creatives).to include(hash_including("id" => "crt_1"))
+  end
+
   describe "enquiries" do
     let(:plan) { create(:plan) }
     let(:firm) { create(:firm, status: :active) }
@@ -301,7 +342,8 @@ RSpec.describe "Turbo marketplace events" do
     expect(project.brochure_source_url).to eq("https://launch.example/brochure.pdf")
     job = ActiveJob::Base.queue_adapter.enqueued_jobs.find { |entry| entry[:job] == Realtoriq::SyncProjectAssetsJob }
     expect(job[:args][2]).to be_nil
-    expect(job[:args].last).to include("url" => "https://launch.example/ladder.jpg")
+    expect(job[:args][4]).to include("url" => "https://launch.example/ladder.jpg")
+    expect(job[:args][5]).to be_nil
   end
 
   it "stores a brochure sent on the API host under the public origin" do

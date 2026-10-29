@@ -47,6 +47,8 @@ class Project < ApplicationRecord
   has_many :typologies, through: :project_typologies
   has_many :lead_projects, -> { unscope(where: :firm_id) }, dependent: :destroy
   has_many :lead_visit_projects, -> { unscope(where: :firm_id) }, dependent: :restrict_with_error
+  has_many :project_creatives, dependent: :destroy
+  has_many :microsite_kits, -> { unscope(where: :firm_id) }, dependent: :destroy
 
   # Photos live on the detail screen, not the create form — the design is
   # explicit about that, so they arrive through their own endpoint.

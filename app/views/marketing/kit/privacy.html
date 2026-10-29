@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- RealtorIQ Microsite Kit: privacy notice. Mustache template, rendered by MK2. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Notice · {{firm.name}}</title>
+<meta name="robots" content="noindex">
+<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif; color: #18181b; line-height: 1.6; background: #fff; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 28px 0 8px; }
+  p, li { font-size: 16px; color: #3f3f46; }
+  .meta { color: #52525b; font-size: 14px; margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; border-bottom: 1px solid #e4e4e7; padding: 10px 8px; vertical-align: top; }
+  th { font-size: 13px; color: #52525b; text-transform: uppercase; letter-spacing: .03em; }
+  a { color: {{accent}}; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Privacy Notice</h1>
+  <p class="meta">{{firm.name}} · Last updated {{prepared_on}}</p>
+
+  <p>This notice explains how {{firm.name}} ("we") uses the details you share on this website about {{project.name}}. We are the data fiduciary for these details.</p>
+
+  <h2>What We Collect</h2>
+  <table>
+    <thead><tr><th scope="col">Data</th><th scope="col">Why</th></tr></thead>
+    <tbody>
+      <tr><td>Your name and mobile number</td><td>To call or message you about {{project.name}} and arrange a site visit</td></tr>
+      <tr><td>Your email address (if you give it)</td><td>To send you project details you ask for</td></tr>
+      <tr><td>Your message (if you write one)</td><td>To understand what you are looking for</td></tr>
+      <tr><td>Ad click and campaign tags (for example gclid, utm_campaign)</td><td>To know which of our ads brought your enquiry</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Who We Share It With</h2>
+  <p>We keep your details in our customer records. If you ask us to arrange a site visit, we share your name and the last digits of your mobile number with {{project.builder}} to register your visit. We do not sell your details.</p>
+
+  <h2>How Long We Keep It</h2>
+  <p>We keep your details while we are helping you with your property search, and delete them when you ask us to, unless the law requires us to keep them longer.</p>
+
+  <h2>Your Choices and Rights</h2>
+  <ul>
+    <li>You can withdraw your consent at any time, as easily as you gave it: call or message us at {{firm.phone_display}}{{#firm.email}} or email {{firm.email}}{{/firm.email}}.</li>
+    <li>You can ask to see, correct or delete your details, or nominate someone to act for you.</li>
+    <li>If you are not satisfied with our reply, you can complain to the Data Protection Board of India.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>{{firm.name}}{{#firm.rera_number}}, {{firm.rera_label}} {{firm.rera_number}}{{/firm.rera_number}}<br>Phone: {{firm.phone_display}}{{#firm.email}}<br>Email: {{firm.email}}{{/firm.email}}</p>
+  <p><a href="index.html">Back to {{project.name}}</a></p>
+</div>
+</body>
+</html>
