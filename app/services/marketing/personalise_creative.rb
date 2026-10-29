@@ -135,7 +135,7 @@ module Marketing
     def payload_for(row)
       blob = row.file.blob
       {
-        url: Api::V1::BlobUrl.call(row.file),
+        url: Api::V1::BlobUrl.proxy(row.file),
         filename: blob.filename.to_s,
         content_type: blob.content_type,
         byte_size: blob.byte_size

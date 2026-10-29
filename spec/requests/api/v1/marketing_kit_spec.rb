@@ -5,8 +5,20 @@ require "vips"
 require "zip"
 require "rqrcode"
 
+module MarketingKitOpenFailure
+  def open(...)
+    names = Thread.current[:marketing_kit_fail_open]
+    raise ArgumentError, "https://files.example/missing-object" if names&.include?(filename.to_s)
+
+    super
+  end
+end
+ActiveStorage::Blob.prepend(MarketingKitOpenFailure)
+
 RSpec.describe "Marketing creatives and microsite kits" do
   include ActiveJob::TestHelper
+
+  after { Thread.current[:marketing_kit_fail_open] = nil }
 
   let(:plan) { create(:plan) }
   let(:firm) { create(:firm, status: :active, name: "Sethi Realty", rera_number: "A51900000001") }
@@ -150,6 +162,11 @@ RSpec.describe "Marketing creatives and microsite kits" do
     file = response.parsed_body["file"]
     expect(file["content_type"]).to eq("image/jpeg")
     expect(file["filename"]).to include(firm.slug)
+    expect(file["url"]).to include("/rails/active_storage/blobs/proxy/")
+    get URI.parse(file["url"]).path, headers: { "Origin" => "http://localhost:3000" }
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("image/jpeg")
+    expect(response.headers["Access-Control-Allow-Origin"]).to eq("http://localhost:3000")
     saved = PersonalisedCreative.across_firms.find_by!(firm:, project_creative: creative)
     image = Vips::Image.new_from_file(ActiveStorage::Blob.service.path_for(saved.file.blob.key))
     expect(image.width).to eq(800)
@@ -229,7 +246,11 @@ RSpec.describe "Marketing creatives and microsite kits" do
     body = response.parsed_body["kit"]
     expect(body["status"]).to eq("ready"), response.body
     expect(body["filename"]).to end_with("-microsite-kit.zip")
-    expect(body["url"]).to be_present
+    expect(body["url"]).to include("/rails/active_storage/blobs/proxy/")
+    get URI.parse(body["url"]).path, headers: { "Origin" => "http://localhost:3000" }
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("application/zip")
+    expect(response.headers["Access-Control-Allow-Origin"]).to eq("http://localhost:3000")
     expect(body["byte_size"]).to be > 0
     expect(body["prepared_on"]).to eq(
       Time.current.in_time_zone("Asia/Kolkata").then { |time| "#{time.day} #{time.strftime("%b %Y")}" }
@@ -265,6 +286,7 @@ RSpec.describe "Marketing creatives and microsite kits" do
     post "/api/v1/projects/#{catalog.id}/microsite_kit", headers: headers
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body.dig("kit", "status")).to eq("ready")
+    expect(response.parsed_body.dig("kit", "url")).to include("/rails/active_storage/blobs/proxy/")
   end
 
   it "starts a fresh kit when one has been preparing for more than 10 minutes" do
@@ -295,6 +317,126 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(response.parsed_body.dig("kit", "message")).to eq("Couldn't Prepare the Kit.")
     expect(response.body).not_to include("secret boom")
     expect(response.body).not_to include("NoMethodError")
+  end
+
+  it "keeps the kit when one photo cannot be read" do
+    attach_photo("one.png", [ 220, 10, 10 ])
+    bad = attach_photo("two.png", [ 10, 220, 10 ])
+    attach_photo("three.png", [ 10, 10, 220 ])
+    lines = record_warnings
+    fail_open_for("two.png")
+
+    _kit, names, files = built_kit
+    expect(names).to include("assets/photo-01.jpg", "assets/photo-02.jpg", "assets/hero.jpg")
+    expect(names).not_to include("assets/photo-03.jpg")
+    expect(files["assets/hero.jpg"]).to eq(files["assets/photo-01.jpg"])
+    expect(jpeg_pixel(files["assets/photo-01.jpg"])[0]).to be > 180
+    expect(jpeg_pixel(files["assets/photo-02.jpg"])[2]).to be > 180
+    expect(skip_lines(lines)).to eq([ skip_line(bad) ])
+  end
+
+  it "builds a kit with no gallery when every photo fails" do
+    first = attach_photo("one.png", [ 220, 10, 10 ])
+    second = attach_photo("two.png", [ 10, 220, 10 ])
+    lines = record_warnings
+    fail_open_for("one.png", "two.png")
+
+    _kit, names, files = built_kit
+    html = files.fetch("index.html")
+    expect(html).not_to include("{{")
+    expect(html).not_to include('id="gallery"')
+    expect(names.grep(/photo-|hero/)).to eq([])
+    expect(names).to include("index.html", "privacy.html", "GUIDE.html", "copy.txt")
+    ordered = [ first, second ].sort_by { |attachment| [ attachment.created_at, attachment.id ] }
+    expect(skip_lines(lines)).to eq(ordered.map { |attachment| skip_line(attachment) })
+  end
+
+  it "keeps the other creatives when one cannot be personalised" do
+    other = ProjectCreative.create!(
+      project: catalog, external_id: "crt_back", title: "Rear elevation", kind: "image",
+      position: 2, registration_numbers: [], checksum: "pending"
+    )
+    other.file.attach(io: StringIO.new(png_bytes(400, 200)), filename: "back.png", content_type: "image/png")
+    other.update!(checksum: other.file.blob.checksum)
+    lines = record_warnings
+    allow(Marketing::PersonaliseCreative).to receive(:call).and_wrap_original do |method, **kwargs|
+      raise ArgumentError, "https://files.example/missing-object" if kwargs[:creative].id == other.id
+
+      method.call(**kwargs)
+    end
+
+    _kit, names, = built_kit
+    expect(names.grep(%r{\Acreatives/}).size).to eq(1)
+    expect(skip_lines(lines)).to eq([ skip_line(other.file.attachment) ])
+  end
+
+  it "leaves the logo out when it cannot be read" do
+    firm.logo.attach(io: StringIO.new(png_bytes(16, 16, color: [ 0, 0, 0 ])), filename: "logo.png", content_type: "image/png")
+    perform_enqueued_jobs
+    lines = record_warnings
+    fail_open_for("logo.png")
+
+    _kit, names, files = built_kit
+    html = files.fetch("index.html")
+    expect(names).not_to include("assets/logo.png")
+    expect(html).not_to include("assets/logo.png")
+    expect(html).not_to include('src=""')
+    expect(html).to include('href="data:,"')
+    expect(skip_lines(lines)).to eq([ skip_line(firm.logo.attachment) ])
+  end
+
+  def attach_photo(filename, color)
+    catalog.photos.attach(io: StringIO.new(png_bytes(40, 30, color:)), filename:, content_type: "image/png")
+    perform_enqueued_jobs
+    catalog.photos.attachments.detect { |attachment| attachment.blob.filename.to_s == filename }
+  end
+
+  def fail_open_for(*filenames)
+    Thread.current[:marketing_kit_fail_open] = filenames.map(&:to_s)
+  end
+
+  def record_warnings
+    lines = []
+    allow(Rails.logger).to receive(:warn).and_wrap_original do |method, *args, **kwargs|
+      lines << args.first.to_s
+      method.call(*args, **kwargs)
+    end
+    lines
+  end
+
+  def skip_lines(lines)
+    found = lines.grep(/\AMicrosite kit skipped /)
+    expect(found.join).not_to include("http")
+    expect(found.join).not_to include("files.example")
+    found
+  end
+
+  def skip_line(attachment)
+    "Microsite kit skipped #{catalog.code} attachment #{attachment.id}: ArgumentError"
+  end
+
+  def built_kit
+    headers = auth
+    post "/api/v1/projects/#{catalog.id}/microsite_kit", headers: headers
+    perform_enqueued_jobs(only: Marketing::BuildMicrositeKitJob)
+    get "/api/v1/projects/#{catalog.id}/microsite_kit", headers: headers
+    expect(response.parsed_body.dig("kit", "status")).to eq("ready")
+    kit = MicrositeKit.across_firms.find_by!(firm:, project: catalog)
+    file = Tempfile.new([ "kit", ".zip" ])
+    file.binmode
+    file.write(kit.file.download)
+    file.close
+    names = []
+    files = {}
+    Zip::File.open(file.path) do |zip|
+      names = zip.map(&:name)
+      names.each { |name| files[name] = zip.read(name) }
+    end
+    [ kit, names, files ]
+  end
+
+  def jpeg_pixel(bytes)
+    Vips::Image.new_from_buffer(bytes, "").getpoint(0, 0).map(&:round)
   end
 
   def stream_bodies(page)

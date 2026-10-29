@@ -12,6 +12,11 @@ module Marketing
     FORM_HANDLER = "YOUR-FORM-HANDLER-URL"
     TEMPLATE_ROOT = Rails.root.join("app/views/marketing/kit")
 
+    # One line, and never the exception text: that text can contain a storage URL.
+    def self.warn_skip(project_code, attachment_id, error)
+      Rails.logger.warn("Microsite kit skipped #{project_code} attachment #{attachment_id}: #{error.class}")
+    end
+
     def initialize(project, firm, dir)
       @project = project
       @firm = firm
@@ -174,13 +179,20 @@ module Marketing
     end
 
     def photo_rows
-      project.photos.attachments.sort_by { |attachment| [ attachment.created_at, attachment.id ] }.filter_map.with_index(1) { |attachment, index|
-        name = format("photo-%02d.jpg", index)
+      rows = []
+      ordered_photos.each do |attachment|
+        number = rows.size + 1
+        name = format("photo-%02d.jpg", number)
         dest = File.join(dir, "assets", name)
         next unless write_photo(attachment, dest)
 
-        { "src" => "assets/#{name}", "alt" => "#{project.name} photo #{index}" }
-      }
+        rows << { "src" => "assets/#{name}", "alt" => "#{project.name} photo #{number}" }
+      end
+      rows
+    end
+
+    def ordered_photos
+      project.photos.attachments.sort_by { |attachment| [ attachment.created_at, attachment.id ] }
     end
 
     def hero_path(photos)
@@ -200,20 +212,25 @@ module Marketing
         image.write_to_file(dest, Q: 82, strip: true)
       end
       true
-    rescue Vips::Error
+    rescue StandardError => error
+      FileUtils.rm_f(dest)
+      self.class.warn_skip(project.code, attachment.id, error)
       false
     end
 
     def write_logo
       return unless firm.logo.attached?
 
+      attachment_id = firm.logo.attachment&.id
       dest = File.join(dir, "assets", "logo.png")
       firm.logo.blob.open do |file|
         image = Vips::Image.new_from_file(file.path, access: :sequential)
         image.write_to_file(dest)
       end
       "assets/logo.png"
-    rescue Vips::Error
+    rescue StandardError => error
+      FileUtils.rm_f(dest) if dest
+      self.class.warn_skip(project.code, attachment_id, error)
       nil
     end
 
