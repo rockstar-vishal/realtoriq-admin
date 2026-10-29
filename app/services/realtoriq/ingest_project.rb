@@ -69,6 +69,9 @@ module Realtoriq
           was_archived = project&.archived? || false
           project ||= Project.new(source: "catalog", firm_id: nil, external_ref: code)
           project.assign_attributes(attributes(city, builder, budget, brokerage))
+          if payload.key?("rera_registrations")
+            project.rera_registrations = ReraRegistrations.normalise(payload["rera_registrations"], project_code: code)
+          end
           project.save!
           # A marketplace brochure is the LaunchIQ link, not a copied file.
           # An illegal URL is :omit and must not wipe a link that is already stored.
@@ -85,7 +88,7 @@ module Realtoriq
       if saved
         # Brochure is not copied. nil tells the job to leave any local file alone.
         SyncProjectAssetsJob.perform_later(
-          project.id, image_rows, nil, pushed_at.iso8601, brokerage_ladder_row
+          project.id, image_rows, nil, pushed_at.iso8601, brokerage_ladder_row, creative_rows
         )
         Result.new(ok?: true, status: :accepted, project:)
       else
@@ -525,6 +528,13 @@ module Realtoriq
 
     def image_rows
       Array(payload["images"]).filter_map { |row| file_payload(row) }
+    end
+
+    # nil leaves the creative set alone. A present key, even an empty array, replaces it.
+    def creative_rows
+      return unless payload.key?("creatives")
+
+      payload["creatives"].is_a?(Array) ? payload["creatives"] : []
     end
 
     # nil leaves an existing ladder alone (older events). A present key with

@@ -61,7 +61,8 @@ module Api
       def request_payload
         params.permit(
           :name, :mobile, :email, :listing, :enquiry_id, :budget, :city, :locality,
-          :configuration, :transaction_type
+          :configuration, :transaction_type, :message, :consent,
+          :gclid, :gbraid, :wbraid, :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content
         ).to_h
       end
     end

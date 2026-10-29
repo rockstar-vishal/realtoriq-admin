@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_29_143000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -234,7 +234,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["created_by_admin_id"], name: "index_configuration_aliases_on_created_by_admin_id"
     t.index ["key"], name: "index_configuration_aliases_on_key", unique: true
     t.index ["typology_id"], name: "index_configuration_aliases_on_typology_id"
-    t.check_constraint "source::text = ANY (ARRAY['merge'::character varying, 'review'::character varying, 'seed'::character varying]::text[])", name: "configuration_aliases_source_check"
+    t.check_constraint "source::text = ANY (ARRAY['merge'::character varying::text, 'review'::character varying::text, 'seed'::character varying::text])", name: "configuration_aliases_source_check"
   end
 
   create_table "contact_channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -311,7 +311,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["lead_source_id"], name: "index_facebook_lead_forms_on_lead_source_id"
     t.index ["project_id"], name: "index_facebook_lead_forms_on_project_id"
     t.index ["property_id"], name: "index_facebook_lead_forms_on_property_id"
-    t.check_constraint "category IS NULL OR (category::text = ANY (ARRAY['residential'::character varying, 'commercial'::character varying, 'land'::character varying]::text[]))", name: "facebook_lead_forms_category_check"
+    t.check_constraint "category IS NULL OR (category::text = ANY (ARRAY['residential'::character varying::text, 'commercial'::character varying::text, 'land'::character varying::text]))", name: "facebook_lead_forms_category_check"
     t.check_constraint "project_id IS NULL OR property_id IS NULL", name: "facebook_lead_forms_one_listing"
   end
 
@@ -725,6 +725,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.decimal "near_lng", precision: 10, scale: 7
     t.string "near_place_id"
     t.datetime "visit_planned_at"
+    t.jsonb "web_enquiry", default: {}, null: false
     t.index ["assigned_user_id"], name: "index_leads_on_assigned_user_id"
     t.index ["firm_id", "assigned_user_id"], name: "index_leads_on_firm_id_and_assigned_user_id"
     t.index ["firm_id", "booked_at", "created_at"], name: "index_leads_on_firm_id_and_booked_at", order: { booked_at: "DESC NULLS LAST", created_at: :desc }
@@ -739,9 +740,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["next_action_at"], name: "index_leads_on_next_action_at"
     t.index ["property_type_id"], name: "index_leads_on_property_type_id"
     t.check_constraint "area_max_sqft IS NULL OR area_min_sqft IS NULL OR area_max_sqft >= area_min_sqft", name: "leads_area_range_check"
-    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying, 'sqyd'::character varying, 'sqm'::character varying, 'guntha'::character varying, 'acre'::character varying, 'hectare'::character varying]::text[])", name: "leads_area_unit_check"
+    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying::text, 'sqyd'::character varying::text, 'sqm'::character varying::text, 'guntha'::character varying::text, 'acre'::character varying::text, 'hectare'::character varying::text])", name: "leads_area_unit_check"
     t.check_constraint "budget_max IS NULL OR budget_min IS NULL OR budget_max >= budget_min", name: "leads_budget_range_check"
-    t.check_constraint "category::text = ANY (ARRAY['residential'::character varying, 'commercial'::character varying, 'land'::character varying]::text[])", name: "leads_category_check"
+    t.check_constraint "category::text = ANY (ARRAY['residential'::character varying::text, 'commercial'::character varying::text, 'land'::character varying::text])", name: "leads_category_check"
     t.check_constraint "emi_annual_rate IS NULL OR emi_annual_rate >= 6::numeric AND emi_annual_rate <= 14::numeric", name: "leads_emi_annual_rate_check"
     t.check_constraint "emi_loan_amount IS NULL AND emi_annual_rate IS NULL AND emi_tenure_years IS NULL AND emi_saved_at IS NULL OR emi_loan_amount IS NOT NULL AND emi_annual_rate IS NOT NULL AND emi_tenure_years IS NOT NULL AND emi_saved_at IS NOT NULL", name: "leads_emi_all_or_nothing_check"
     t.check_constraint "emi_loan_amount IS NULL OR emi_loan_amount >= 500000 AND emi_loan_amount <= 50000000", name: "leads_emi_loan_amount_check"
@@ -824,6 +825,20 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["firm_id"], name: "index_match_digests_on_firm_id", unique: true
     t.index ["generated_at"], name: "index_match_digests_on_generated_at"
     t.index ["notification_pending"], name: "index_match_digests_on_notification_pending", where: "notification_pending"
+  end
+
+  create_table "microsite_kits", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "project_id", null: false
+    t.string "fingerprint", null: false
+    t.string "status", default: "preparing", null: false
+    t.text "error_message"
+    t.date "prepared_on"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "project_id", "created_at"], name: "index_microsite_kits_on_firm_id_and_project_id_and_created_at"
+    t.index ["firm_id"], name: "index_microsite_kits_on_firm_id"
+    t.index ["project_id"], name: "index_microsite_kits_on_project_id"
   end
 
   create_table "nearby_matchings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -942,6 +957,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["name"], name: "index_ops_alert_marks_on_name", unique: true
   end
 
+  create_table "personalised_creatives", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "firm_id", null: false
+    t.uuid "project_creative_id", null: false
+    t.string "fingerprint", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["firm_id", "project_creative_id", "fingerprint"], name: "index_personalised_creatives_on_firm_creative_fingerprint", unique: true
+    t.index ["firm_id"], name: "index_personalised_creatives_on_firm_id"
+    t.index ["project_creative_id"], name: "index_personalised_creatives_on_project_creative_id"
+  end
+
   create_table "plans", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "name", null: false
     t.string "code", null: false
@@ -957,6 +983,22 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["code"], name: "index_plans_on_code", unique: true
     t.check_constraint "\"interval\"::text = ANY (ARRAY['month'::character varying::text, 'year'::character varying::text])", name: "plans_interval_check"
     t.check_constraint "price >= 0", name: "plans_price_check"
+  end
+
+  create_table "project_creatives", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "project_id", null: false
+    t.string "external_id", null: false
+    t.string "title", null: false
+    t.string "kind", null: false
+    t.integer "position", default: 0, null: false
+    t.string "registration_numbers", default: [], null: false, array: true
+    t.string "checksum"
+    t.integer "page_count"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["project_id", "external_id"], name: "index_project_creatives_on_project_id_and_external_id", unique: true
+    t.index ["project_id", "position"], name: "index_project_creatives_on_project_id_and_position"
+    t.index ["project_id"], name: "index_project_creatives_on_project_id"
   end
 
   create_table "project_share_links", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -988,7 +1030,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index "project_id, typology_id, lower((COALESCE(label, ''::character varying))::text)", name: "index_project_typologies_on_project_typology_and_label", unique: true
     t.index ["project_id"], name: "index_project_typologies_on_project_id"
     t.index ["typology_id"], name: "index_project_typologies_on_typology_id"
-    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying, 'sqyd'::character varying, 'sqm'::character varying, 'guntha'::character varying, 'acre'::character varying, 'hectare'::character varying]::text[])", name: "project_typologies_area_unit_check"
+    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying::text, 'sqyd'::character varying::text, 'sqm'::character varying::text, 'guntha'::character varying::text, 'acre'::character varying::text, 'hectare'::character varying::text])", name: "project_typologies_area_unit_check"
   end
 
   create_table "projects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1025,6 +1067,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.string "slug"
     t.boolean "on_website", default: true, null: false
     t.boolean "pin_approximate", default: false, null: false
+    t.jsonb "rera_registrations", default: [], null: false
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_catalog_lower_name", unique: true, where: "((source)::text = 'catalog'::text)"
     t.index "firm_id, lower((name)::text)", name: "index_projects_on_firm_own_lower_name", unique: true, where: "((source)::text = 'own'::text)"
     t.index "firm_id, lower((portal_99acres_code)::text)", name: "index_projects_firm_portal_99acres_code", unique: true, where: "((portal_99acres_code IS NOT NULL) AND (firm_id IS NOT NULL))"
@@ -1102,7 +1145,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["listed_on_marketplace"], name: "index_properties_on_available_marketplace", where: "((listed_on_marketplace = true) AND ((status)::text = 'available'::text))"
     t.index ["locality_id"], name: "index_properties_on_locality_id"
     t.index ["typology_id"], name: "index_properties_on_typology_id"
-    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying, 'sqyd'::character varying, 'sqm'::character varying, 'guntha'::character varying, 'acre'::character varying, 'hectare'::character varying]::text[])", name: "properties_area_unit_check"
+    t.check_constraint "area_unit::text = ANY (ARRAY['sqft'::character varying::text, 'sqyd'::character varying::text, 'sqm'::character varying::text, 'guntha'::character varying::text, 'acre'::character varying::text, 'hectare'::character varying::text])", name: "properties_area_unit_check"
     t.check_constraint "code::text ~ '^H-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'::text", name: "properties_code_format"
     t.check_constraint "floor_band IS NULL OR (floor_band::text = ANY (ARRAY['lower'::character varying::text, 'middle'::character varying::text, 'higher'::character varying::text]))", name: "properties_floor_band_check"
     t.check_constraint "listing_for::text = ANY (ARRAY['sale'::character varying::text, 'rent'::character varying::text])", name: "properties_listing_for_check"
@@ -1185,6 +1228,26 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["user_id"], name: "index_push_subscriptions_on_user_id"
   end
 
+  create_table "solid_queue_failed_executions", force: :cascade do |t|
+    t.bigint "job_id", null: false
+    t.text "error"
+    t.datetime "created_at", null: false
+    t.index ["job_id"], name: "index_solid_queue_failed_executions_on_job_id", unique: true
+  end
+
+  create_table "solid_queue_jobs", force: :cascade do |t|
+    t.string "queue_name", null: false
+    t.string "class_name", null: false
+    t.text "arguments"
+    t.integer "priority", default: 0, null: false
+    t.string "active_job_id"
+    t.datetime "scheduled_at"
+    t.datetime "finished_at"
+    t.string "concurrency_key"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "subscriptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "firm_id", null: false
     t.uuid "plan_id", null: false
@@ -1257,7 +1320,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
     t.index ["category", "sort_order"], name: "index_typologies_on_category_and_sort_order"
     t.index ["code"], name: "index_typologies_on_code", unique: true
     t.index ["merged_into_id"], name: "index_typologies_on_merged_into_id"
-    t.check_constraint "category::text = ANY (ARRAY['residential'::character varying, 'commercial'::character varying, 'land'::character varying]::text[])", name: "typologies_category_check"
+    t.check_constraint "category::text = ANY (ARRAY['residential'::character varying::text, 'commercial'::character varying::text, 'land'::character varying::text])", name: "typologies_category_check"
   end
 
   create_table "user_managers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1396,6 +1459,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
   add_foreign_key "marketplace_enquiries", "leads"
   add_foreign_key "marketplace_enquiries", "project_share_links"
   add_foreign_key "match_digests", "firms"
+  add_foreign_key "microsite_kits", "firms"
+  add_foreign_key "microsite_kits", "projects"
   add_foreign_key "notifications", "firms"
   add_foreign_key "notifications", "users", on_delete: :cascade
   add_foreign_key "onboarding_applications", "admin_users", column: "reviewed_by_admin_id"
@@ -1404,6 +1469,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_28_160000) do
   add_foreign_key "onboarding_applications", "localities"
   add_foreign_key "one_time_codes", "contact_channels"
   add_foreign_key "one_time_codes", "users"
+  add_foreign_key "personalised_creatives", "firms"
+  add_foreign_key "personalised_creatives", "project_creatives"
+  add_foreign_key "project_creatives", "projects"
   add_foreign_key "project_share_links", "firms"
   add_foreign_key "project_share_links", "projects"
   add_foreign_key "project_share_links", "users"

@@ -92,17 +92,54 @@ RSpec.describe "API v1 inbound leads" do
     expect(leads.find_by(mobile: "+919876543210").lead_projects.map(&:project_id)).to eq([ project.id ])
   end
 
-  it "does not match another firm's project or a marketplace project" do
+  it "does not match another firm's project" do
     other = create(:project, name: "Other Firm", city:, locality:)
     create(:project_typology, project: other, typology:)
-    catalog = create(:project, :catalog, firm: nil, name: "Catalog One", city:, external_ref: "launchiq-inbound")
 
     post_inbound("99acres", "projects", buyer(listing: other.code))
     expect(response).to have_http_status(:unprocessable_content)
-
-    post_inbound("99acres", "projects", buyer(listing: catalog.code, mobile: "9876543211"))
-    expect(response).to have_http_status(:unprocessable_content)
     expect(leads.count).to eq(0)
+  end
+
+  it "creates a lead from a marketplace P- code or LaunchIQ code and stores the web enquiry" do
+    catalog = Current.set(firm_scope_bypassed: true) do
+      create(:project, :catalog, firm: nil, name: "Catalog One", city:, locality:, external_ref: "PR4F2A9C",
+        starting_budget: 15_500_000)
+    end
+    create(:project_typology, project: catalog, typology:)
+
+    post_inbound("99acres", "projects", buyer(
+      listing: catalog.code, message: "Looking this weekend", gclid: "click-1", utm_source: "google", consent: "yes", ignored: "no"
+    ))
+    expect(response).to have_http_status(:ok)
+    lead = leads.find_by!(mobile: "+919876543210")
+    expect(lead.lead_projects.map(&:project_id)).to eq([ catalog.id ])
+    expect(lead.notes).to eq("Looking this weekend")
+    expect(lead.budget_max).to eq(15_500_000)
+    expect(lead.web_enquiry["gclid"]).to eq("click-1")
+    expect(lead.web_enquiry["utm_source"]).to eq("google")
+    expect(lead.web_enquiry["consent_at"]).to be_present
+    expect(lead.web_enquiry).not_to have_key("ignored")
+    Current.firm = firm
+    expect(Api::V1::LeadSerializer.detail(lead.reload)[:web_enquiry]["gclid"]).to eq("click-1")
+
+    post_inbound("general", "projects", buyer(listing: "pr4f2a9c", mobile: "9876543211", message: "Second visit"))
+    expect(response).to have_http_status(:ok)
+    other = leads.find_by!(mobile: "+919876543211")
+    expect(other.lead_projects.map(&:project_id)).to eq([ catalog.id ])
+    expect(other.lead_source.name).to eq("Website")
+
+    post_inbound("99acres", "projects", buyer(listing: catalog.code, message: "Please call after six", gclid: "click-2"))
+    expect(response.parsed_body["status"]).to eq("already_in_pipeline")
+    expect(leads.where(mobile: "+919876543210").count).to eq(1)
+    expect(lead.reload.notes).to eq("Looking this weekend")
+    expect(lead.web_enquiry["gclid"]).to eq("click-2")
+    expect(lead.web_enquiry["utm_source"]).to eq("google")
+    expect(lead.lead_followups.last.comment).to include("Please call after six")
+
+    catalog.update!(status: "archived")
+    post_inbound("99acres", "projects", buyer(listing: catalog.code, mobile: "9876543212"))
+    expect(response.parsed_body.dig("error", "message")).to eq("That project is archived.")
   end
 
   it "marks a project Ready from a Ready label, a past month, or a near possession month" do

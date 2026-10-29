@@ -54,6 +54,7 @@ module Api
             dead_at: lead.dead_at,
             booked_at: lead.booked_at,
             notes: lead.notes,
+            web_enquiry: lead.web_enquiry || {},
             mapped_projects: lead.lead_projects.map { |mapping| mapped_project(lead, mapping) },
             mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },

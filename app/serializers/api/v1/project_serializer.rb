@@ -62,7 +62,10 @@ module Api
             rm_contact: project.rm_contact,
             shareable: shareable(project),
             portal_codes: project.portal_codes_payload,
-            updated_at: project.updated_at
+            updated_at: project.updated_at,
+            rera_registrations: Marketing::Registrations.for(project),
+            creatives: creative_payloads(project),
+            marketing: Marketing::Eligibility.payload(Current.firm)
           )
         end
 
@@ -177,6 +180,38 @@ module Api
         end
 
         def photo_urls(project) = photo_attachments(project).map { |a| BlobUrl.call(a) }
+
+        def creative_payloads(project)
+          source = Marketing::CatalogProject.for(project)
+          return [] if source.nil?
+
+          source.project_creatives.order(:position, :created_at).map { |creative| creative_payload(creative) }
+        end
+
+        def creative_payload(creative)
+          {
+            id: creative.id,
+            title: creative.title,
+            kind: creative.kind,
+            page_count: creative.page_count,
+            registration_numbers: creative.registration_numbers,
+            thumb_url: creative_thumb(creative),
+            width: creative.file.attached? ? BlobUrl.dimension(creative.file, "width") : nil,
+            height: creative.file.attached? ? BlobUrl.dimension(creative.file, "height") : nil
+          }
+        end
+
+        def creative_thumb(creative)
+          return unless creative.file.attached?
+
+          if creative.image? && creative.file.blob.variable?
+            BlobUrl.variant(creative.file, :thumb)
+          elsif creative.pdf? && creative.file.blob.previewable?
+            Rails.application.routes.url_helpers.rails_representation_url(
+              creative.file.blob.preview(resize_to_limit: [ 480, 480 ]), **BlobUrl.url_options
+            )
+          end
+        end
       end
     end
   end

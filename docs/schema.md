@@ -294,6 +294,10 @@ destroys invoices and collections, so that check is what keeps money records.
   stored as NULL. Unique per firm, case-insensitively, and only when a code is
   present. Catalog projects are excluded. Written by `PATCH …/portal_codes`,
   never by the main project or property form.
+- **`projects.rera_registrations`** is a jsonb list of `{ number, label, maharera_url }`, default `[]`. LaunchIQ replaces the list only when the key is present. An empty list on the API falls back to splitting `rera_number`.
+- **`project_creatives`** belong to the catalog project, not to a firm. `external_id` is unique per project. `kind` is `image` or `pdf`. `registration_numbers` is a text array. The file is an Active Storage attachment. A firm's personalised copy is `personalised_creatives` (`firm_id`, `project_creative_id`, `fingerprint`, file). One fingerprint per firm and creative.
+- **`microsite_kits`** is one firm's zip for one catalog project (`firm_id`, `project_id`, `fingerprint`, `status` of `preparing`, `ready` or `failed`, `error_message`, `prepared_on`, file).
+- **`leads.web_enquiry`** is jsonb, default `{}`. Website enquiries store click ids, UTM fields and `consent_at` here. A later enquiry replaces the keys it sends.
 - **`inbound_credentials`** is one row per firm. `token` is encrypted.
   `token_digest` is the SHA256 used to look the firm up. Rotating replaces
   both and writes `inbound_credential.rotate` on `audit_events` without the

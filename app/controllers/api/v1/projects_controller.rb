@@ -35,7 +35,7 @@ module Api
 
       before_action :set_project, only: %i[
         show update add_photos remove_photo visitors share_link lead_matches marketplace_leads mapped_customers
-        portal_codes
+        portal_codes personalised_creative create_microsite_kit show_microsite_kit
       ]
       before_action :require_super_admin, only: %i[create update add_photos remove_photo portal_codes]
       before_action :reject_catalog_mutation, only: %i[update add_photos remove_photo portal_codes]
@@ -81,6 +81,56 @@ module Api
 
       def show
         render json: { project: ProjectSerializer.detail(@project) }, status: :ok
+      end
+
+      def personalised_creative
+        source = Marketing::CatalogProject.for(@project)
+        creative = source&.project_creatives&.find_by(id: params[:creative_id])
+        return render_error("not_found", "Not found", status: :not_found) if creative.nil?
+
+        reason = Marketing::Eligibility.reason(current_firm)
+        if reason
+          return render_error(reason, Marketing::Eligibility::MESSAGES.fetch(reason), status: :unprocessable_content)
+        end
+
+        result = Marketing::PersonaliseCreative.call(creative:, firm: current_firm)
+        render json: { file: result.payload }, status: :ok
+      end
+
+      def create_microsite_kit
+        catalog = Marketing::CatalogProject.for(@project)
+        return render_error("not_found", "Not found", status: :not_found) if catalog.nil?
+
+        reason = Marketing::Eligibility.reason(current_firm)
+        if reason
+          return render_error(reason, Marketing::Eligibility::MESSAGES.fetch(reason), status: :unprocessable_content)
+        end
+
+        fingerprint = Marketing::KitFingerprint.call(firm: current_firm, project: catalog)
+        ready = MicrositeKit.where(project: catalog, fingerprint:, status: "ready").order(created_at: :desc).first
+        if ready&.file&.attached?
+          return render json: { kit: kit_payload(ready) }, status: :ok
+        end
+
+        expire_stale_preparing!(catalog, fingerprint)
+        preparing = MicrositeKit.where(project: catalog, fingerprint:, status: "preparing").order(created_at: :desc).first
+        if preparing
+          return render json: { kit: { status: "preparing" } }, status: :accepted
+        end
+
+        kit = MicrositeKit.create!(project: catalog, firm: current_firm, fingerprint:, status: "preparing")
+        Marketing::BuildMicrositeKitJob.perform_later(kit.id)
+        render json: { kit: { status: "preparing" } }, status: :accepted
+      end
+
+      def show_microsite_kit
+        catalog = Marketing::CatalogProject.for(@project)
+        return render_error("not_found", "Not found", status: :not_found) if catalog.nil?
+
+        kit = MicrositeKit.where(project: catalog).order(created_at: :desc).first
+        return render_error("not_found", "Not found", status: :not_found) if kit.nil?
+
+        render json: { kit: kit_payload(kit) }, status: :ok
       end
 
       def visitors
@@ -234,6 +284,30 @@ module Api
       end
 
       private
+
+      def expire_stale_preparing!(catalog, fingerprint)
+        MicrositeKit.where(project: catalog, fingerprint:, status: "preparing")
+          .where("created_at < ?", MicrositeKit::STALE_AFTER.ago)
+          .find_each do |kit|
+            kit.update!(status: "failed", error_message: "The build did not finish.")
+          end
+      end
+
+      def kit_payload(kit)
+        body = { status: kit.status }
+        if kit.ready? && kit.file.attached?
+          date = kit.prepared_on
+          body.merge!(
+            url: BlobUrl.call(kit.file),
+            filename: kit.file.filename.to_s,
+            byte_size: kit.file.byte_size,
+            prepared_on: date && "#{date.day} #{date.strftime("%b %Y")}"
+          )
+        elsif kit.failed?
+          body[:message] = MicrositeKit::FAILED_MESSAGE
+        end
+        body
+      end
 
       def set_project
         @project = base_scope.find_by(id: params[:id])

@@ -6,6 +6,7 @@ Rails.application.routes.draw do
   # by HMAC, not by a broker JWT. The URL is whatever is stored as
   # realtoriq.webhook_url on the turbo side.
   post "turbo/events", to: "turbo/events#create"
+  get "turbo/share_links/:token", to: "turbo/share_links#show"
 
   # Meta calls the webhook and the callback. No broker JWT.
   # /facebook/start is the installed app's handoff. The ticket is the only
@@ -234,6 +235,9 @@ Rails.application.routes.draw do
           get :marketplace_leads
           get :mapped_customers
           post :share_link
+          post "creatives/:creative_id/personalised", action: :personalised_creative
+          post "microsite_kit", action: :create_microsite_kit
+          get "microsite_kit", action: :show_microsite_kit
           post :lead_matches
           patch :portal_codes
           # Photos live on the detail screen, not the create form.

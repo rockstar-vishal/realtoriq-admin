@@ -3061,6 +3061,62 @@
           }
         },
         {
+          "name": "Personalised creative",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/creatives/{{creative_id}}/personalised",
+              "host": [ "{{api_base}}" ],
+              "path": [ "projects", "{{project_id}}", "creatives", "{{creative_id}}", "personalised" ]
+            },
+            "description": "Footer under a marketplace creative, using this firm's name, logo, verified phone and RERA number. 200 { file: { url, filename, content_type, byte_size } }. url is permanent. 422 firm_rera_missing or firm_phone_missing. 404 when the creative is not on this project."
+          }
+        },
+        {
+          "name": "Prepare a microsite kit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/microsite_kit",
+              "host": [ "{{api_base}}" ],
+              "path": [ "projects", "{{project_id}}", "microsite_kit" ]
+            },
+            "description": "202 { kit: { status: preparing } }. 200 with url, filename, byte_size and prepared_on when that kit already exists. Same 422 reasons as a personalised creative. Marketplace projects only."
+          }
+        },
+        {
+          "name": "Microsite kit status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_base}}/projects/{{project_id}}/microsite_kit",
+              "host": [ "{{api_base}}" ],
+              "path": [ "projects", "{{project_id}}", "microsite_kit" ]
+            },
+            "description": "Latest kit for this firm and project: preparing, ready (url, filename, byte_size, prepared_on) or failed. message is Couldn't Prepare the Kit. 404 when none exists."
+          }
+        },
+        {
+          "name": "Broker strip for a share link",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [ { "key": "token", "value": "{{inbound_token}}", "type": "string" } ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/turbo/share_links/{{share_token}}",
+              "host": [ "{{base_url}}" ],
+              "path": [ "turbo", "share_links", "{{share_token}}" ]
+            },
+            "description": "LaunchIQ calls this with realtoriq.inbound_token, not a broker JWT. 200 { firm: { name, mobile, whatsapp, rera_number, logo_url }, project_code }. 401 without the token. 404 for an unknown token or a firm that is not active. 429 after 600 calls a minute from one address."
+          }
+        },
+        {
           "name": "Update a project",
           "request": {
             "method": "PATCH",

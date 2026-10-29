@@ -771,9 +771,11 @@ List-card fields (also on detail, which extends this shape):
 | Unqualified | `unqualified` — boolean, on the list card and on detail. `true` leaves the lead out of matching. Dead status does not. Reviving the lead does not clear it. Only a manager or the super admin can change it |
 
 The **detail** adds `alt_mobile`, `source_detail`,
-`dead_reason`, `dead_at`, `booked_at`, `notes`, `mapped_projects[]`,
+`dead_reason`, `dead_at`, `booked_at`, `notes`, `web_enquiry`, `mapped_projects[]`,
 `mapped_properties[]`, `activities[]` (latest 20), `status_history[]` and
-`near_place`. There is no `first_visit_at`. `near_place` is
+`near_place`. There is no `first_visit_at`. `web_enquiry` is the ad click and
+UTM fields stored from a website enquiry, or `{}`. Nothing else in the app
+shows them. `near_place` is
 `{ label, address, lat, lng, google_place_id }` or `null`. It is not on the
 list card.
 
@@ -1619,6 +1621,62 @@ does nothing else. `pushed_at` more than 10 minutes from now is `422` with
 super admin receives the lead. A firm that is not `active` is refused. A lapsed
 subscription is not.
 
+### `POST /projects/:id/creatives/:creative_id/personalised`
+
+Any signed-in user. The creative must be on this marketplace project, or on
+the catalog row a booking copy points at. Anything else is `404`.
+
+`200` is `{ file: { url, filename, content_type, byte_size } }`. `url` is a
+permanent blob URL, the same kind as a photo. The file is the original
+creative with a white footer added underneath. The footer carries this firm's
+name, logo, verified phone and RERA number, and the project's registration
+numbers. A second call with the same details returns the stored file.
+
+`422 firm_rera_missing` — "It's printed on every creative and kit you share, as MahaRERA requires. Ask your RealtorIQ RM to add it."
+`422 firm_phone_missing` — "Creatives carry your firm's verified mobile or WhatsApp number."
+
+### `POST /projects/:id/microsite_kit` and `GET /projects/:id/microsite_kit`
+
+Marketplace projects only, including a firm's booking copy. `404` otherwise.
+The same `422` reasons as a personalised creative.
+
+`POST` returns `202 { kit: { status: "preparing" } }` and builds the zip in
+the background. If a kit with the same firm, project and details is already
+ready, `POST` returns `200 { kit: { status: "ready", url, filename, byte_size, prepared_on } }`.
+`prepared_on` is the India date, for example `29 Oct 2026`. `url` is permanent.
+
+`GET` is the latest kit for this firm and project: `preparing`, `ready` (the
+same fields as the `200`), or `failed` with `message`. `message` is
+"Couldn't Prepare the Kit." A kit left `preparing` for more than 10 minutes
+is marked failed, and the next `POST` starts a new one. No kit yet is `404`.
+
+The zip is `{project}-microsite-kit.zip`. It contains `index.html`,
+`privacy.html`, `GUIDE.html`, `copy.txt`, resized photos, the firm logo, a
+QR for each registration that has a MahaRERA link, the brochure when it can
+be fetched, and every creative already personalised. It does not contain
+brokerage, the RM, or another firm's details.
+
+### Project detail `rera_registrations`, `creatives`, `marketing`
+
+Detail adds three fields. List does not.
+
+`rera_registrations` is `[{ number, label, maharera_url }]`. On a marketplace
+project and on a firm's booking copy, these are the catalog row's
+registrations. An empty list is the project's `rera_number` split on commas,
+with `label` and `maharera_url` null. An own project that is not a copy uses
+its own `rera_number` the same way.
+
+`creatives` is `[{ id, title, kind, page_count, registration_numbers, thumb_url, width, height }]`.
+`kind` is `image` or `pdf`. `thumb_url` is a 480px image. A PDF uses a
+first-page preview when `pdftoppm` or `mutool` is installed, and is null
+otherwise. An own project that is not a copy
+has `creatives: []`. A booking copy shows the catalog row's creatives.
+
+`marketing` is `{ can_share, blocked_reason }`. `blocked_reason` is null,
+`firm_rera_missing` when the caller's firm has no RERA number, or
+`firm_phone_missing` when it has neither a verified mobile nor a verified
+WhatsApp. `can_share` is true only when both are present.
+
 Detail adds `rm_name` and `rm_contact` for marketplace rows. They are not in
 `shareable`. `brochure_url` on a marketplace project is
 `{turbo_public_origin}/realtoriq/brochures/{external_ref}`. LaunchIQ serves
@@ -1847,9 +1905,32 @@ Optional on an upsert: `promo_text` (no length
 limit; a blank value clears it), `brokerage_percent` (starting brokerage,
 greater than 0 and at most 100; omitted leaves the stored percent alone, blank
 clears it), and `brokerage_ladder: { url, checksum, filename }` (copied;
-omitted leaves the image alone). Detail shows all three on a
+omitted leaves the image alone). Optional `rera_registrations` replaces the
+whole list. Each entry is `{ number, label, maharera_url }`. The number is
+stored uppercased, a blank number is dropped, and `label` is at most 40
+characters. `maharera_url` is kept only for
+`https://maharerait.maharashtra.gov.in/project/view/{digits}` or the same path
+under `/public/`, with any query. It is stored without `/public` and without
+the query. Any other URL is stored as null. Omitting the key leaves the list
+alone. Optional `creatives` replaces the set: `{ id, title, position, url,
+checksum, filename, content_type, registration_numbers }`. `id` is unique per
+project. Images are jpeg, png or webp. A PDF may be at most 5 pages. A file
+that fails is skipped. Omitting `creatives` leaves the set alone. An older
+`pushed_at` changes neither. Detail shows all three on a
 marketplace project. `shareable` still omits the percent and the ladder. The
 builder is `developer_name`, not `company_code`. Each `unit_types` entry is stored as its own configuration row: `label`, `typology_name`, `typology_category` (`residential`, `commercial` or `land`), `typology_slug`, `price_min` (whole rupees), `area_min` and `area_unit` (`sqft` or `sqm`). A home or office sent in sqm is stored in sq ft, converted with 10.7639. A plot keeps the typed sqm.
+
+### `GET /turbo/share_links/:token`
+
+Not a broker call. `Authorization: Bearer` is `realtoriq.inbound_token`. A
+missing or wrong token is `401 { "error": "Unauthorized" }`. An unknown token,
+or a firm that is not active, is `404 { "error": "Not found" }`. More than
+600 calls a minute from one address is `429 { "error": "Too many requests" }`.
+
+`200` is `{ firm: { name, mobile, whatsapp, rera_number, logo_url }, project_code }`.
+`mobile` and `whatsapp` are the firm's verified numbers in E.164, or null.
+`logo_url` is a 192px logo, or null. `project_code` is the catalog row's
+LaunchIQ code.
 
 ### `shareable`
 
@@ -2437,7 +2518,10 @@ The path sets the lead source: `portal_99acres`, `portal_magicbricks`,
 | `mobile` | **required.** A 10-digit Indian mobile. `9876543210`, `+91 98765 43210` and `09876543210` are the same number |
 | `name` | optional |
 | `email` | optional. A value that is not an email address is ignored |
-| `listing` | The saved portal code, the `P-` or `H-` code, or — for a project — the exact project name. Case and extra spaces are ignored |
+| `listing` | The saved portal code, the `P-` or `H-` code, or — for a project — the exact project name. Case and extra spaces are ignored. On a projects URL, a marketplace `P-` code or LaunchIQ `PR` code is accepted after this firm's own projects. An archived catalog row is "That project is archived." |
+| `message` | optional, at most 500 characters. On a new project lead it is stored as `notes`. On an existing lead it is added to the follow-up note |
+| `gclid`, `gbraid`, `wbraid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | optional, each at most 200 characters. Stored on `leads.web_enquiry`. A later enquiry replaces the keys it sends and leaves the rest. Returned on lead detail as `web_enquiry` |
+| `consent` | optional. The value `yes` stores `web_enquiry.consent_at`. Any other value is ignored |
 | `enquiry_id` | optional. The same id on the same portal is a no-op after it has been saved. A call that failed can be retried with the same id |
 | `budget` | Whole rupees, digits only (`12000000`), at most 15 digits. Used only when `listing` is omitted |
 | `city` | Exact city name. Required with `locality` when `listing` is omitted. Two cities with the same name are refused |

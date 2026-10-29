@@ -73,6 +73,7 @@ class Firm < ApplicationRecord
 
   has_one_attached :logo do |attachable|
     attachable.variant :thumb, resize_to_limit: [ 96, 96 ], preprocessed: true
+    attachable.variant :card, resize_to_limit: [ 192, 192 ]
   end
 
   validates :name, presence: true, length: { maximum: 160 }

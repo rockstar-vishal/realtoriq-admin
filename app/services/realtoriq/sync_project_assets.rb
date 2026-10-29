@@ -7,28 +7,31 @@ module Realtoriq
   # checksum is already attached is left alone, so a brief that already went
   # out keeps its brochure URL.
   class SyncProjectAssets
-    def self.call(project:, images:, brochure:, pushed_at: nil, brokerage_ladder: nil)
-      new(project:, images:, brochure:, pushed_at:, brokerage_ladder:).call
+    def self.call(project:, images:, brochure:, pushed_at: nil, brokerage_ladder: nil, creatives: nil)
+      new(project:, images:, brochure:, pushed_at:, brokerage_ladder:, creatives:).call
     end
 
-    def initialize(project:, images:, brochure:, pushed_at: nil, brokerage_ladder: nil)
+    def initialize(project:, images:, brochure:, pushed_at: nil, brokerage_ladder: nil, creatives: nil)
       @project = project
       @images = Array(images)
       @brochure = brochure
       @pushed_at = pushed_at
       @brokerage_ladder = brokerage_ladder
+      @creatives = creatives
     end
 
     def call
       brochure_blob = nil
       ladder_blob = nil
       image_blobs = []
+      creative_plan = nil
       applied = false
       return if stale?(Project.unscoped.find_by(id: project.id))
 
       brochure_blob = safe_upload { upload_brochure }
       ladder_blob = upload_ladder
       upload_images(image_blobs)
+      creative_plan = SyncProjectCreatives.prepare(project, creatives) unless creatives.nil?
       Project.unscoped.transaction do
         locked = Project.unscoped.lock.find_by(id: project.id)
         if locked.nil? || stale?(locked)
@@ -38,15 +41,17 @@ module Realtoriq
         apply_brochure(locked, brochure_blob)
         apply_ladder(locked, ladder_blob)
         apply_images(locked, image_blobs)
+        SyncProjectCreatives.apply(locked, creative_plan) unless creative_plan.nil?
         applied = true
       end
     ensure
       discard_unused(brochure_blob, ladder_blob, image_blobs) unless applied
+      creative_plan&.blobs&.each { |blob| blob.purge_later if blob.is_a?(ActiveStorage::Blob) } unless applied
     end
 
     private
 
-    attr_reader :project, :images, :brochure, :pushed_at, :brokerage_ladder
+    attr_reader :project, :images, :brochure, :pushed_at, :brokerage_ladder, :creatives
 
     # A retry of an older push must not put yesterday's photos over a newer set.
     # Checked again under a row lock, after the downloads, so a slow fetch cannot

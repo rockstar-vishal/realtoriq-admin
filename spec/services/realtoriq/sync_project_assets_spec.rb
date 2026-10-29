@@ -153,4 +153,93 @@ RSpec.describe Realtoriq::SyncProjectAssets do
       expect(project.photos.blobs.map(&:checksum)).to eq([ checksum(bytes) ])
     end
   end
+
+  def creative_row(id, bytes, content_type: "image/jpeg", title: "Front", position: 1, numbers: [])
+    {
+      "id" => id,
+      "title" => title,
+      "position" => position,
+      "url" => "https://launch.example/#{id}",
+      "checksum" => checksum(bytes),
+      "filename" => "#{id}.bin",
+      "content_type" => content_type,
+      "registration_numbers" => numbers
+    }
+  end
+
+  def pdf_bytes(pages)
+    Prawn::Document.new do |pdf|
+      pages.times do |index|
+        pdf.text "Page #{index}"
+        pdf.start_new_page unless index == pages - 1
+      end
+    end.render
+  end
+
+  it "adds creatives, replaces a changed checksum, and deletes one that left the payload" do
+    kept = "kept-creative"
+    changed = "changed-creative"
+    gone = "gone-creative"
+    allow(Realtoriq::RemoteFile).to receive(:fetch) { |url, **| url.split("/").last == "crt_gone" ? gone : kept }
+
+    Current.set(firm_scope_bypassed: true) do
+      described_class.call(
+        project:, images: [], brochure: nil,
+        creatives: [ creative_row("crt_keep", kept, numbers: [ "p1" ]), creative_row("crt_gone", gone) ]
+      )
+      expect(project.project_creatives.order(:external_id).pluck(:external_id)).to eq(%w[crt_gone crt_keep])
+      expect(project.project_creatives.find_by(external_id: "crt_keep").registration_numbers).to eq([ "P1" ])
+    end
+
+    allow(Realtoriq::RemoteFile).to receive(:fetch).and_return(changed)
+    Current.set(firm_scope_bypassed: true) do
+      described_class.call(
+        project:, images: [], brochure: nil,
+        creatives: [ creative_row("crt_keep", changed, title: "Renamed", position: 3) ]
+      )
+      project.reload
+      expect(project.project_creatives.pluck(:external_id)).to eq([ "crt_keep" ])
+      row = project.project_creatives.find_by!(external_id: "crt_keep")
+      expect(row.title).to eq("Renamed")
+      expect(row.position).to eq(3)
+      expect(row.file.blob.checksum).to eq(checksum(changed))
+    end
+  end
+
+  it "skips a pdf with more than five pages and still stores the other creative" do
+    image = "ok-image"
+    long = pdf_bytes(6)
+    allow(Realtoriq::RemoteFile).to receive(:fetch) { |url, **| url.include?("crt_long") ? long : image }
+
+    Current.set(firm_scope_bypassed: true) do
+      described_class.call(
+        project:, images: [], brochure: nil,
+        creatives: [
+          creative_row("crt_long", long, content_type: "application/pdf"),
+          creative_row("crt_ok", image)
+        ]
+      )
+      expect(project.project_creatives.pluck(:external_id)).to eq([ "crt_ok" ])
+    end
+  end
+
+  it "does not change creatives on an older push or when the key is omitted" do
+    kept = "kept-creative"
+    allow(Realtoriq::RemoteFile).to receive(:fetch).and_return(kept)
+    Current.set(firm_scope_bypassed: true) do
+      described_class.call(project:, images: [], brochure: nil, creatives: [ creative_row("crt_keep", kept) ])
+      project.update!(turbo_pushed_at: Time.current)
+    end
+
+    expect(Realtoriq::RemoteFile).not_to receive(:fetch)
+    described_class.call(
+      project:, images: [], brochure: nil, pushed_at: 1.hour.ago,
+      creatives: [ creative_row("crt_new", "new-creative") ]
+    )
+    described_class.call(project:, images: [], brochure: nil)
+
+    Current.set(firm_scope_bypassed: true) do
+      expect(project.project_creatives.pluck(:external_id)).to eq([ "crt_keep" ])
+    end
+  end
 end
