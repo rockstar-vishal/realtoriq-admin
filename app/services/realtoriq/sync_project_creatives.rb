@@ -9,8 +9,12 @@ module Realtoriq
   class SyncProjectCreatives
     MAX_PDF_PAGES = 5
     TYPES = (RemoteFile::IMAGE_TYPES + RemoteFile::BROCHURE_TYPES).freeze
-    Plan = Data.define(:external_id, :title, :position, :numbers, :checksum, :blob, :kind, :page_count, :failed)
+    Plan = Data.define(
+      :external_id, :title, :position, :numbers, :checksum, :blob, :kind, :page_count, :failed,
+      :valid_until, :valid_until_ok, :video_url, :video_provider
+    )
     Prepared = Data.define(:plans, :blobs)
+    Dated = Data.define(:date, :ok)
 
     def self.prepare(project, rows)
       new(project, rows).prepare
@@ -32,15 +36,58 @@ module Realtoriq
       record.title = plan.title
       record.position = plan.position
       record.registration_numbers = plan.numbers
-      if plan.blob
-        record.kind = plan.kind
-        record.page_count = plan.page_count
-        record.checksum = plan.checksum
-        record.file.attach(plan.blob)
+      record.valid_until = plan.valid_until if plan.valid_until_ok
+      if plan.kind == "video"
+        apply_video(record, plan)
+      elsif plan.blob
+        apply_file(record, plan)
       elsif record.new_record?
         return
       end
       record.save!
+    end
+
+    # A file that becomes a video drops the file and every firm's copy of it.
+    # A video that becomes a file is downloaded like any other new file.
+    def self.apply_video(record, plan)
+      unless record.video?
+        drop_personalised(record)
+        detach_file(record)
+      end
+      record.kind = "video"
+      record.video_url = plan.video_url
+      record.video_provider = plan.video_provider
+      record.checksum = nil
+      record.page_count = nil
+    end
+
+    def self.apply_file(record, plan)
+      if record.video?
+        drop_personalised(record)
+        record.video_url = nil
+        record.video_provider = nil
+      end
+      record.kind = plan.kind
+      record.page_count = plan.page_count
+      record.checksum = plan.checksum
+      record.file.attach(plan.blob)
+    end
+
+    def self.drop_personalised(record)
+      return unless record.persisted?
+
+      PersonalisedCreative.across_firms.where(project_creative_id: record.id).find_each do |copy|
+        copy.file.purge_later if copy.file.attached?
+        copy.destroy!
+      end
+    end
+
+    def self.detach_file(record)
+      return unless record.file.attached?
+
+      blob = record.file.blob
+      record.file.detach
+      blob.purge_later
     end
 
     def initialize(project, rows)
@@ -67,19 +114,28 @@ module Realtoriq
 
     def plan_for(row, blobs)
       existing = project.project_creatives.find_by(external_id: row["id"])
+      dating = valid_until_for(row)
       base = {
         external_id: row["id"],
         title: row["title"].to_s.strip.presence || "Creative",
         position: row["position"].to_i,
         numbers: Array(row["registration_numbers"]).map { |number| number.to_s.strip.upcase }.reject(&:blank?),
         checksum: row["checksum"].to_s,
-        blob: nil, kind: nil, page_count: nil, failed: false
+        blob: nil, kind: nil, page_count: nil, failed: false,
+        valid_until: dating.date, valid_until_ok: dating.ok, video_url: nil, video_provider: nil
       }
+      unless dating.ok
+        log(row["id"], "valid until was not a date")
+        return Plan.new(**base.merge(failed: true))
+      end
+
+      return video_plan(row, base) if video?(row)
+
       if row["url"].blank? || row["checksum"].blank?
         log(row["id"], "missing file")
         return Plan.new(**base.merge(failed: true))
       end
-      if existing && current_copy?(existing.file.blob, row["checksum"])
+      if existing&.file&.attached? && current_copy?(existing.file.blob, row["checksum"])
         return Plan.new(**base.merge(kind: existing.kind, page_count: existing.page_count))
       end
 
@@ -90,6 +146,35 @@ module Realtoriq
 
       blobs << downloaded[0]
       Plan.new(**base.merge(blob: downloaded[0], kind: downloaded[1], page_count: downloaded[2]))
+    end
+
+    def video?(row)
+      kind = row["kind"].to_s.strip.downcase
+      return true if kind == "video"
+      return false if %w[image pdf].include?(kind)
+
+      row["video_url"].present? && row["url"].blank?
+    end
+
+    def video_plan(row, base)
+      link = Marketing::VideoLink.parse(row["video_url"])
+      unless link
+        log(row["id"], "video link was rejected")
+        return Plan.new(**base.merge(failed: true))
+      end
+
+      Plan.new(**base.merge(kind: "video", checksum: nil, video_url: link.url, video_provider: link.provider))
+    end
+
+    # Blank or missing means no end date. A value that is not an ISO date
+    # fails the row, and the stored date is left alone.
+    def valid_until_for(row)
+      raw = row["valid_until"]
+      return Dated.new(nil, true) if raw.blank?
+
+      Dated.new(Date.iso8601(raw.to_s), true)
+    rescue ArgumentError
+      Dated.new(nil, false)
     end
 
     def fetch(row)
@@ -177,7 +262,7 @@ module Realtoriq
     end
 
     def log(external_id, reason)
-      Rails.logger.warn("Project creative skipped (#{project.external_ref} #{external_id}): #{reason}")
+      Rails.logger.warn("Project creative skipped (#{project.code} #{external_id}): #{reason}")
     end
   end
 end

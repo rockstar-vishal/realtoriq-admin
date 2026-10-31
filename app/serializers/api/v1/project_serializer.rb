@@ -185,22 +185,34 @@ module Api
           source = Marketing::CatalogProject.for(project)
           return [] if source.nil?
 
-          source.project_creatives.includes(file_attachment: :blob).order(:position, :created_at).map { |creative|
-            creative_payload(creative)
+          source.project_creatives.active.includes(file_attachment: :blob).order(:position, :created_at).map { |creative|
+            creative_payload(creative, source)
           }
         end
 
-        def creative_payload(creative)
-          {
+        def creative_payload(creative, project)
+          payload = {
             id: creative.id,
             title: creative.title,
             kind: creative.kind,
             page_count: creative.page_count,
             registration_numbers: creative.registration_numbers,
+            valid_until: creative.valid_until&.iso8601,
             thumb_url: creative_thumb(creative),
             width: creative.file.attached? ? BlobUrl.dimension(creative.file, "width") : nil,
             height: creative.file.attached? ? BlobUrl.dimension(creative.file, "height") : nil
           }
+          return payload unless creative.video?
+
+          link = Marketing::VideoLink.parse(creative.video_url)
+          payload.merge(
+            video_url: creative.video_url,
+            video_provider: creative.video_provider,
+            thumb_url: Marketing::VideoLink.thumb_url(link&.youtube_id),
+            width: nil,
+            height: nil,
+            share_text: Marketing::VideoShareText.call(creative:, project:, firm: Current.firm)
+          )
         end
 
         def creative_thumb(creative)

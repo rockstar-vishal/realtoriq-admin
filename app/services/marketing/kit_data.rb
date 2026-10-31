@@ -32,6 +32,7 @@ module Marketing
       registrations = registration_rows
       photos = photo_rows
       configurations = configuration_rows
+      videos = video_rows
       {
         "accent" => ACCENT,
         "prepared_on" => prepared_on,
@@ -40,7 +41,7 @@ module Marketing
         "suggested_domain" => suggested_domain,
         "inbound_projects_url" => inbound_projects_url,
         "firm" => firm_hash,
-        "project" => project_hash(photos, configurations),
+        "project" => project_hash(photos, configurations, videos),
         "rera" => authority.merge(
           "registrations" => registrations,
           "numbers_text" => registrations.map { |row| row["number"] }.join(", ")
@@ -83,7 +84,7 @@ module Marketing
       }
     end
 
-    def project_hash(photos, configurations)
+    def project_hash(photos, configurations, videos)
       {
         "name" => project.name,
         "builder" => project.builder&.name,
@@ -102,8 +103,35 @@ module Marketing
         "photos" => photos,
         "has_photos" => photos.any?,
         "configurations" => configurations,
-        "has_configurations" => configurations.any?
+        "has_configurations" => configurations.any?,
+        "videos" => videos,
+        "has_videos" => videos.any?
       }
+    end
+
+    def video_rows
+      project.project_creatives.active.where(kind: "video").order(:position, :created_at).map { |creative|
+        link = VideoLink.parse(creative.video_url)
+        youtube_id = link&.youtube_id
+        {
+          "title" => creative.title,
+          "url" => creative.video_url,
+          "provider" => creative.video_provider,
+          "youtube_id" => youtube_id,
+          "youtube" => youtube_id.present?,
+          "thumb_url" => VideoLink.thumb_url(youtube_id),
+          "watch_on" => watch_on(creative.video_provider)
+        }
+      }
+    end
+
+    def watch_on(provider)
+      {
+        "instagram" => "Watch on Instagram",
+        "facebook" => "Watch on Facebook",
+        "google_drive" => "Watch on Google Drive",
+        "youtube" => "Watch on YouTube"
+      }.fetch(provider, "Watch")
     end
 
     def possession_text

@@ -88,7 +88,8 @@ module Marketing
     end
 
     def write_creatives(dir, project, firm)
-      project.project_creatives.order(:position, :created_at).each do |creative|
+      project.project_creatives.active.order(:position, :created_at).each do |creative|
+        next if creative.video?
         next unless creative.file.attached?
 
         write_creative(dir, project, firm, creative)

@@ -267,6 +267,7 @@ RSpec.describe "Marketing creatives and microsite kits" do
       html = zip.read("index.html")
       copy = zip.read("copy.txt")
       expect(html).not_to include("{{")
+      expect(html).not_to include('id="videos"')
       expect(html).to include(firm.name, "P51800000001", "P51800000002")
       expect(copy).to include("Marketed by #{firm.name}")
       packed = names.map { |name| zip.read(name) }.join("\n")
@@ -404,6 +405,135 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(html).not_to include('src=""')
     expect(html).to include('href="data:,"')
     expect(skip_lines(lines)).to eq([ skip_line(firm.logo.attachment) ])
+  end
+
+  it "shows a creative through its last day in IST and hides it the next" do
+    creative.update!(valid_until: Date.new(2026, 10, 31))
+    zone = Time.find_zone!("Asia/Kolkata")
+
+    travel_to(zone.local(2026, 10, 31, 23, 30)) do
+      get "/api/v1/projects/#{catalog.id}", headers: auth
+      row = response.parsed_body.dig("project", "creatives").find { |item| item["id"] == creative.id }
+      expect(row["valid_until"]).to eq("2026-10-31")
+    end
+
+    travel_to(zone.local(2026, 11, 1, 0, 30)) do
+      get "/api/v1/projects/#{catalog.id}", headers: auth
+      ids = response.parsed_body.dig("project", "creatives").map { |item| item["id"] }
+      expect(ids).not_to include(creative.id)
+    end
+  end
+
+  it "returns a video with share text, and omits that text when the firm is blocked" do
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_walk", title: "Project Walkthrough", kind: "video",
+      position: 2, registration_numbers: [ "P51800000005" ], valid_until: Date.new(2026, 12, 31),
+      video_url: "https://youtu.be/dQw4w9WgXcQ", video_provider: "youtube"
+    )
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_reel", title: "Site reel", kind: "video",
+      position: 3, registration_numbers: [], video_url: "https://www.instagram.com/reel/CxAb12/",
+      video_provider: "instagram"
+    )
+    headers = auth
+    get "/api/v1/projects/#{catalog.id}", headers: headers
+    rows = response.parsed_body.dig("project", "creatives")
+    image = rows.find { |item| item["id"] == creative.id }
+    film = rows.find { |item| item["title"] == "Project Walkthrough" }
+    reel = rows.find { |item| item["title"] == "Site reel" }
+
+    expect(image).to include("kind" => "image", "valid_until" => nil)
+    expect(image).not_to have_key("video_url")
+    expect(image).not_to have_key("share_text")
+    expect(film).to include(
+      "kind" => "video",
+      "video_url" => "https://youtu.be/dQw4w9WgXcQ",
+      "video_provider" => "youtube",
+      "thumb_url" => "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "width" => nil,
+      "height" => nil,
+      "valid_until" => "2026-12-31",
+      "registration_numbers" => [ "P51800000005" ],
+      "share_text" => <<~TEXT.chomp
+        Harbour One: Project Walkthrough
+        Watch: https://youtu.be/dQw4w9WgXcQ
+        Sethi Realty · Call +91 98201 55001 · WhatsApp +91 98111 22233
+        MahaRERA Agent Reg. No. A51900000001
+        Project Reg. No. P51800000005
+      TEXT
+    )
+    expect(reel).to include(
+      "kind" => "video", "video_provider" => "instagram", "thumb_url" => nil, "width" => nil, "height" => nil
+    )
+    expect(reel["share_text"]).to include("Harbour One: Site reel")
+    expect(reel["share_text"]).not_to include("Project Reg. No.")
+
+    firm.update!(rera_number: nil)
+    get "/api/v1/projects/#{catalog.id}", headers: headers
+    blocked = response.parsed_body.dig("project", "creatives")
+    expect(blocked.map { |item| item["share_text"] }.compact).to eq([])
+    expect(blocked.map { |item| item["title"] }).to include("Project Walkthrough", "Site reel")
+  end
+
+  it "refuses an expired creative before eligibility, and refuses to personalise a video" do
+    creative.update!(valid_until: ProjectCreative.today_ist - 1)
+    firm.update!(rera_number: nil)
+    post "/api/v1/projects/#{catalog.id}/creatives/#{creative.id}/personalised", headers: auth
+    expect(response).to have_http_status(:gone)
+    expect(response.parsed_body["error"]).to eq("code" => "creative_expired", "message" => "This creative has expired.")
+
+    film = ProjectCreative.create!(
+      project: catalog, external_id: "crt_walk", title: "Project Walkthrough", kind: "video",
+      position: 2, registration_numbers: [], video_url: "https://youtu.be/dQw4w9WgXcQ", video_provider: "youtube"
+    )
+    firm.update!(rera_number: "A51900000001")
+    post "/api/v1/projects/#{catalog.id}/creatives/#{film.id}/personalised", headers: auth
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body["error"]).to eq("code" => "not_personalisable", "message" => "Videos are shared as links.")
+
+    film.update!(valid_until: ProjectCreative.today_ist - 1)
+    post "/api/v1/projects/#{catalog.id}/creatives/#{film.id}/personalised", headers: auth
+    expect(response).to have_http_status(:gone)
+  end
+
+  it "leaves an expired creative out of the kit and changes the fingerprint when one expires" do
+    creative.update!(valid_until: ProjectCreative.today_ist)
+    before = Marketing::KitFingerprint.call(firm:, project: catalog)
+    pushed_at = catalog.turbo_pushed_at
+    travel_to(1.day.from_now) do
+      expect(Marketing::KitFingerprint.call(firm:, project: catalog)).not_to eq(before)
+      expect(catalog.reload.turbo_pushed_at).to eq(pushed_at)
+    end
+    creative.update!(valid_until: nil)
+
+    expired = ProjectCreative.create!(
+      project: catalog, external_id: "crt_old", title: "Gone creative", kind: "image",
+      position: 4, registration_numbers: [], checksum: "pending", valid_until: ProjectCreative.today_ist - 1
+    )
+    expired.file.attach(io: StringIO.new(png_bytes(40, 40)), filename: "gone-creative.png", content_type: "image/png")
+    expired.update!(checksum: expired.file.blob.checksum)
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_walk", title: "Project Walkthrough", kind: "video",
+      position: 2, registration_numbers: [ "P51800000005" ],
+      video_url: "https://youtu.be/dQw4w9WgXcQ", video_provider: "youtube"
+    )
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_reel", title: "Site reel", kind: "video",
+      position: 3, registration_numbers: [],
+      video_url: "https://www.instagram.com/reel/CxAb12/", video_provider: "instagram"
+    )
+
+    _kit, names, files = built_kit
+    html = files.fetch("index.html")
+    expect(html).to include('id="videos"')
+    expect(html).to include('data-youtube-id="dQw4w9WgXcQ"')
+    expect(html).to include("youtube-nocookie.com/embed/")
+    expect(html).to include("Watch on Instagram")
+    expect(html).to include("https://www.instagram.com/reel/CxAb12/")
+    expect(html).not_to include("Gone creative")
+    expect(names.grep(%r{\Acreatives/}).size).to eq(1)
+    expect(names.join("\n")).not_to include("gone-creative")
+    expect(files.fetch("GUIDE.html")).to include("Videos are links and play from the provider.")
   end
 
   def attach_photo(filename, color)

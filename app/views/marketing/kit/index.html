@@ -100,6 +100,17 @@
   .about dd { margin: 0; font-weight: 600; }
   .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .gallery img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: var(--soft); }
+  .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .video-card { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: #fff; }
+  .video-play { position: relative; display: block; width: 100%; padding: 0; border: 0; background: #18181b; cursor: pointer; }
+  .video-play img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+  .video-play .play { position: absolute; left: 50%; top: 50%; width: 68px; height: 48px; margin: -24px 0 0 -34px; border-radius: 12px; background: var(--accent); }
+  .video-play .play::after { content: ""; position: absolute; left: 28px; top: 14px; border-style: solid; border-width: 10px 0 10px 16px; border-color: transparent transparent transparent #fff; }
+  .video-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #18181b; }
+  .video-card p { margin: 12px 14px 14px; font-weight: 600; }
+  .video-link { display: block; padding: 22px 16px; text-decoration: none; }
+  .video-link strong { display: block; margin: 0 0 8px; font-size: 16px; }
+  .video-link span { color: var(--accent); font-weight: 600; }
   .location p { margin: 0 0 12px; font-size: 16px; color: var(--ink-2); }
 
   /* Enquiry */
@@ -239,6 +250,36 @@
   </section>
   {{/project.has_photos}}
 
+  {{#project.has_videos}}
+  <section aria-labelledby="videos">
+    <div class="wrap">
+      <h2 id="videos">Videos</h2>
+      <div class="videos">
+        {{#project.videos}}
+        {{#youtube}}
+        <article class="video-card">
+          <button type="button" class="video-play" data-youtube-id="{{youtube_id}}" data-title="{{title}}">
+            <img src="{{thumb_url}}" alt="">
+            <span class="play" aria-hidden="true"></span>
+            <span class="sr-only">Play {{title}}</span>
+          </button>
+          <p>{{title}}</p>
+        </article>
+        {{/youtube}}
+        {{^youtube}}
+        <article class="video-card">
+          <a class="video-link" href="{{url}}" target="_blank" rel="noopener">
+            <strong>{{title}}</strong>
+            <span>{{watch_on}}</span>
+          </a>
+        </article>
+        {{/youtube}}
+        {{/project.videos}}
+      </div>
+    </div>
+  </section>
+  {{/project.has_videos}}
+
   <section class="location" aria-labelledby="location">
     <div class="wrap">
       <h2 id="location">Location</h2>
@@ -349,7 +390,22 @@
     if (link) window.riqConversion(link.getAttribute('data-conversion'));
   });
 
-  // 3. The enquiry form posts JSON to your own server, which forwards it to RealtorIQ.
+  // 3. A YouTube card swaps its thumbnail for the player. Other videos are plain links.
+  document.querySelectorAll(".video-play").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = button.getAttribute("data-youtube-id");
+      if (!id) return;
+      var frame = document.createElement("iframe");
+      frame.className = "video-frame";
+      frame.title = button.getAttribute("data-title") || "Video";
+      frame.allow = "autoplay; encrypted-media; picture-in-picture";
+      frame.setAttribute("allowfullscreen", "");
+      frame.src = "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(id) + "?autoplay=1";
+      button.replaceWith(frame);
+    });
+  });
+
+  // 4. The enquiry form posts JSON to your own server, which forwards it to RealtorIQ.
   var error = document.getElementById('form-error');
   form.addEventListener('submit', function (event) {
     event.preventDefault();

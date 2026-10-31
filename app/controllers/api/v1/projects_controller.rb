@@ -87,6 +87,12 @@ module Api
         source = Marketing::CatalogProject.for(@project)
         creative = source&.project_creatives&.find_by(id: params[:creative_id])
         return render_error("not_found", "Not found", status: :not_found) if creative.nil?
+        unless creative.active?
+          return render_error("creative_expired", "This creative has expired.", status: :gone)
+        end
+        if creative.video?
+          return render_error("not_personalisable", "Videos are shared as links.", status: :unprocessable_content)
+        end
 
         reason = Marketing::Eligibility.reason(current_firm)
         if reason
