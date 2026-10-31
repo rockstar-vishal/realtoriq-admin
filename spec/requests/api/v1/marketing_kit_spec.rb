@@ -435,12 +435,19 @@ RSpec.describe "Marketing creatives and microsite kits" do
       position: 3, registration_numbers: [], video_url: "https://www.instagram.com/reel/CxAb12/",
       video_provider: "instagram"
     )
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_drive", title: "Drive film", kind: "video",
+      position: 4, registration_numbers: [],
+      video_url: "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view",
+      video_provider: "google_drive"
+    )
     headers = auth
     get "/api/v1/projects/#{catalog.id}", headers: headers
     rows = response.parsed_body.dig("project", "creatives")
     image = rows.find { |item| item["id"] == creative.id }
     film = rows.find { |item| item["title"] == "Project Walkthrough" }
     reel = rows.find { |item| item["title"] == "Site reel" }
+    drive = rows.find { |item| item["title"] == "Drive film" }
 
     expect(image).to include("kind" => "image", "valid_until" => nil)
     expect(image).not_to have_key("video_url")
@@ -465,6 +472,15 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(reel).to include(
       "kind" => "video", "video_provider" => "instagram", "thumb_url" => nil, "width" => nil, "height" => nil
     )
+    expect(drive).to include(
+      "kind" => "video",
+      "video_url" => "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view",
+      "video_provider" => "google_drive",
+      "width" => nil,
+      "height" => nil
+    )
+    expect(drive["thumb_url"]).to start_with("https://drive.google.com/thumbnail?id=")
+    expect(drive["thumb_url"]).to eq("https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnOp&sz=w640")
     expect(reel["share_text"]).to include("Harbour One: Site reel")
     expect(reel["share_text"]).not_to include("Project Reg. No.")
 
@@ -496,6 +512,12 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(response).to have_http_status(:gone)
   end
 
+  it "changes the kit fingerprint when the template version changes" do
+    before = Marketing::KitFingerprint.call(firm:, project: catalog)
+    stub_const("Marketing::BuildMicrositeKit::TEMPLATE_VERSION", 3)
+    expect(Marketing::KitFingerprint.call(firm:, project: catalog)).not_to eq(before)
+  end
+
   it "leaves an expired creative out of the kit and changes the fingerprint when one expires" do
     creative.update!(valid_until: ProjectCreative.today_ist)
     before = Marketing::KitFingerprint.call(firm:, project: catalog)
@@ -522,6 +544,12 @@ RSpec.describe "Marketing creatives and microsite kits" do
       position: 3, registration_numbers: [],
       video_url: "https://www.instagram.com/reel/CxAb12/", video_provider: "instagram"
     )
+    ProjectCreative.create!(
+      project: catalog, external_id: "crt_drive", title: "Drive film", kind: "video",
+      position: 5, registration_numbers: [],
+      video_url: "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view",
+      video_provider: "google_drive"
+    )
 
     _kit, names, files = built_kit
     html = files.fetch("index.html")
@@ -530,6 +558,12 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(html).to include("youtube-nocookie.com/embed/")
     expect(html).to include("Watch on Instagram")
     expect(html).to include("https://www.instagram.com/reel/CxAb12/")
+    expect(html).to include(
+      '<img src="https://drive.google.com/thumbnail?id=1AbCdEfGhIjKlMnOp&amp;sz=w640" alt="" loading="lazy" onerror="this.remove()">'
+    )
+    reel = html[/href="https:\/\/www\.instagram\.com\/reel\/CxAb12\/".*?<\/a>/m]
+    expect(reel).to be_present
+    expect(reel).not_to include("<img")
     expect(html).not_to include("Gone creative")
     expect(names.grep(%r{\Acreatives/}).size).to eq(1)
     expect(names.join("\n")).not_to include("gone-creative")

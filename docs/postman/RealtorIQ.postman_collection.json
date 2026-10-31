@@ -2944,7 +2944,7 @@
                 "{{project_id}}"
               ]
             },
-            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object.\n\n`creatives` lists active creatives only. Each has `valid_until` (ISO date or null). A video has `kind: video`, `video_url`, `video_provider`, `share_text`, and a YouTube `thumb_url`. `share_text` is null when the firm cannot share. An expired creative is absent. Personalising an expired creative is 410 creative_expired. Personalising a video is 422 not_personalisable."
+            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object.\n\n`creatives` lists active creatives only. Each has `valid_until` (ISO date or null). A video has `kind: video`, `video_url`, `video_provider`, `share_text`, and `thumb_url`. YouTube and Google Drive have a thumbnail. Instagram and Facebook have `thumb_url` null. `share_text` is null when the firm cannot share. An expired creative is absent. Personalising an expired creative is 410 creative_expired. Personalising a video is 422 not_personalisable."
           },
           "event": [
             {
