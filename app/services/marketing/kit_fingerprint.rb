@@ -7,6 +7,7 @@ module Marketing
       checksums = project.project_creatives.order(:external_id).pluck(:checksum)
       Digest::SHA256.hexdigest([
         PersonaliseCreative::VERSION,
+        BuildMicrositeKit::TEMPLATE_VERSION,
         firm.name.to_s,
         PersonaliseCreative.logo_checksum(firm),
         contacts.mobile.to_s,

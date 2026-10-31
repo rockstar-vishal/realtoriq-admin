@@ -208,7 +208,7 @@ module Api
           payload.merge(
             video_url: creative.video_url,
             video_provider: creative.video_provider,
-            thumb_url: Marketing::VideoLink.thumb_url(link&.youtube_id),
+            thumb_url: link&.thumb_url,
             width: nil,
             height: nil,
             share_text: Marketing::VideoShareText.call(creative:, project:, firm: Current.firm)

@@ -4,7 +4,14 @@ module Marketing
   # A creative video is a link, not a file. The host decides the provider.
   # LaunchIQ's own provider value is only a hint and is not trusted here.
   class VideoLink
-    Result = Data.define(:url, :provider, :youtube_id)
+    Result = Data.define(:url, :provider, :youtube_id, :drive_id) do
+      def thumb_url
+        return VideoLink.thumb_url(youtube_id) if youtube_id.present?
+        return if drive_id.blank?
+
+        "https://drive.google.com/thumbnail?id=#{drive_id}&sz=w640"
+      end
+    end
     YOUTUBE_ID = /\A[\w-]{11}\z/
     DRIVE_ID = /\A[\w-]{8,}\z/
 
@@ -29,7 +36,7 @@ module Marketing
       found = match(uri, bare_host(uri.host))
       return if found.nil?
 
-      Result.new(url: @value, provider: found[0], youtube_id: found[1])
+      Result.new(url: @value, provider: found[0], youtube_id: found[1], drive_id: found[2])
     end
 
     private
@@ -96,7 +103,7 @@ module Marketing
     def drive(uri)
       id = uri.path[%r{\A/file/d/([^/?#]+)}, 1]
       id = query(uri, "id") if id.blank? && uri.path.match?(%r{\A/open/?\z})
-      [ "google_drive", nil ] if id&.match?(DRIVE_ID)
+      [ "google_drive", nil, id ] if id&.match?(DRIVE_ID)
     end
 
     def path_segment(path)

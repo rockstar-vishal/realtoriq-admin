@@ -1662,8 +1662,9 @@ QR for each registration that has a MahaRERA link, the brochure when it can
 be fetched, and every active image or PDF creative already personalised.
 An expired creative is left out. A video is not a file in `creatives/`.
 When the project has an active video, `index.html` has a Videos section:
-YouTube plays from `youtube-nocookie.com` after a click, and Instagram,
-Facebook and Google Drive are a link that opens the provider.
+YouTube plays from `youtube-nocookie.com` after a click. Google Drive is a
+link that opens the file and shows its thumbnail above the title. Instagram
+and Facebook are a link that opens the provider.
 `GUIDE.html` says videos are links and play from the provider.
 It does not contain brokerage, the RM, or another firm's details.
 
@@ -1685,8 +1686,9 @@ India date and hidden the next day. `kind` is `image`, `pdf` or `video`.
 when `pdftoppm` or `mutool` is installed, and is null otherwise.
 A video also has `video_url`, `video_provider` (`youtube`, `instagram`,
 `facebook` or `google_drive`), `width` and `height` null, and `share_text`.
-`thumb_url` for YouTube is `https://i.ytimg.com/vi/{id}/hqdefault.jpg`, and
-null for the other providers. `share_text` is the broker's lines for WhatsApp,
+`thumb_url` for YouTube is `https://i.ytimg.com/vi/{id}/hqdefault.jpg`.
+Google Drive is `https://drive.google.com/thumbnail?id={file_id}&sz=w640`.
+Instagram and Facebook are null. `share_text` is the broker's lines for WhatsApp,
 built from the same firm details as the footer, and is null when `marketing`
 says the firm cannot share. The Project Reg. line is omitted when the creative
 has no registration numbers. An own project that is not a copy

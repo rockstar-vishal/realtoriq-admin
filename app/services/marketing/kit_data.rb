@@ -119,7 +119,7 @@ module Marketing
           "provider" => creative.video_provider,
           "youtube_id" => youtube_id,
           "youtube" => youtube_id.present?,
-          "thumb_url" => VideoLink.thumb_url(youtube_id),
+          "thumb_url" => link&.thumb_url,
           "watch_on" => watch_on(creative.video_provider)
         }
       }
