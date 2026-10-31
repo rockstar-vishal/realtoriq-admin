@@ -1633,6 +1633,8 @@ creative with a white footer added underneath. The footer carries this firm's
 name, logo, verified phone and RERA number, and the project's registration
 numbers. A second call with the same details returns the stored file.
 
+`410 creative_expired` — "This creative has expired." Checked before the firm is eligible.
+`422 not_personalisable` — "Videos are shared as links."
 `422 firm_rera_missing` — "It's printed on every creative and kit you share, as MahaRERA requires. Ask your RealtorIQ RM to add it."
 `422 firm_phone_missing` — "Creatives carry your firm's verified mobile or WhatsApp number."
 
@@ -1657,8 +1659,13 @@ is marked failed, and the next `POST` starts a new one. No kit yet is `404`.
 The zip is `{project}-microsite-kit.zip`. It contains `index.html`,
 `privacy.html`, `GUIDE.html`, `copy.txt`, resized photos, the firm logo, a
 QR for each registration that has a MahaRERA link, the brochure when it can
-be fetched, and every creative already personalised. It does not contain
-brokerage, the RM, or another firm's details.
+be fetched, and every active image or PDF creative already personalised.
+An expired creative is left out. A video is not a file in `creatives/`.
+When the project has an active video, `index.html` has a Videos section:
+YouTube plays from `youtube-nocookie.com` after a click, and Instagram,
+Facebook and Google Drive are a link that opens the provider.
+`GUIDE.html` says videos are links and play from the provider.
+It does not contain brokerage, the RM, or another firm's details.
 
 ### Project detail `rera_registrations`, `creatives`, `marketing`
 
@@ -1670,10 +1677,19 @@ registrations. An empty list is the project's `rera_number` split on commas,
 with `label` and `maharera_url` null. An own project that is not a copy uses
 its own `rera_number` the same way.
 
-`creatives` is `[{ id, title, kind, page_count, registration_numbers, thumb_url, width, height }]`.
-`kind` is `image` or `pdf`. `thumb_url` is a 480px image. A PDF uses a
-first-page preview when `pdftoppm` or `mutool` is installed, and is null
-otherwise. An own project that is not a copy
+`creatives` is the active creatives only. An expired creative is omitted.
+Each one is `{ id, title, kind, page_count, registration_numbers, valid_until, thumb_url, width, height }`.
+`valid_until` is an ISO date or null. The creative is available through that
+India date and hidden the next day. `kind` is `image`, `pdf` or `video`.
+`thumb_url` for an image is a 480px image. A PDF uses a first-page preview
+when `pdftoppm` or `mutool` is installed, and is null otherwise.
+A video also has `video_url`, `video_provider` (`youtube`, `instagram`,
+`facebook` or `google_drive`), `width` and `height` null, and `share_text`.
+`thumb_url` for YouTube is `https://i.ytimg.com/vi/{id}/hqdefault.jpg`, and
+null for the other providers. `share_text` is the broker's lines for WhatsApp,
+built from the same firm details as the footer, and is null when `marketing`
+says the firm cannot share. The Project Reg. line is omitted when the creative
+has no registration numbers. An own project that is not a copy
 has `creatives: []`. A booking copy shows the catalog row's creatives.
 
 `marketing` is `{ can_share, blocked_reason }`. `blocked_reason` is null,
@@ -1916,10 +1932,18 @@ characters. `maharera_url` is kept only for
 `https://maharerait.maharashtra.gov.in/project/view/{digits}` or the same path
 under `/public/`, with any query. It is stored without `/public` and without
 the query. Any other URL is stored as null. Omitting the key leaves the list
-alone. Optional `creatives` replaces the set: `{ id, title, position, url,
-checksum, filename, content_type, registration_numbers }`. `id` is unique per
-project. Images are jpeg, png or webp. A PDF may be at most 5 pages. A file
-that fails is skipped. Omitting `creatives` leaves the set alone. An older
+alone. Optional `creatives` replaces the set. Each creative is `{ id, title, position, kind, valid_until, registration_numbers }` plus either the file keys `{ url, checksum, filename, content_type }` or `{ video_url, video_provider, tags }`.
+`id` is unique per project. `valid_until` is `YYYY-MM-DD` or null. Omitting
+`valid_until` stores null, so a payload from before this field still applies.
+`kind` `video` stores the link and does not download a file. `tags` is ignored.
+The link must be `https` on YouTube (`watch`, `youtu.be`, `shorts`, `embed`,
+`live`), Instagram (`reel`, `reels`, `p`, `tv`), Facebook (video, reel, watch,
+share, or `fb.watch`) or Google Drive (`file/d/{id}` or `open?id=`). `www.` and
+`m.` are ignored. The provider is taken from the host. A rejected link skips
+that creative and the rest of the push still applies. Images are jpeg, png or
+webp. A PDF may be at most 5 pages. A file that fails is skipped. Changing an
+image or PDF into a video drops its file and personalised copies. Changing a
+video into a file downloads the file. Omitting `creatives` leaves the set alone. An older
 `pushed_at` changes neither. Detail shows all three on a
 marketplace project. `shareable` still omits the percent and the ladder. The
 builder is `developer_name`, not `company_code`. Each `unit_types` entry is stored as its own configuration row: `label`, `typology_name`, `typology_category` (`residential`, `commercial` or `land`), `typology_slug`, `price_min` (whole rupees), `area_min` and `area_unit` (`sqft` or `sqm`). A home or office sent in sqm is stored in sq ft, converted with 10.7639. A plot keeps the typed sqm.

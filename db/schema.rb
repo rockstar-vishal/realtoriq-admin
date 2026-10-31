@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_29_143000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_31_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -996,6 +996,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_143000) do
     t.integer "page_count"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.date "valid_until"
+    t.string "video_url", limit: 2048
+    t.string "video_provider"
     t.index ["project_id", "external_id"], name: "index_project_creatives_on_project_id_and_external_id", unique: true
     t.index ["project_id", "position"], name: "index_project_creatives_on_project_id_and_position"
     t.index ["project_id"], name: "index_project_creatives_on_project_id"

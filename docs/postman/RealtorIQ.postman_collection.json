@@ -2944,7 +2944,7 @@
                 "{{project_id}}"
               ]
             },
-            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object."
+            "description": "Detail adds the typology table with a rate per sqft each, the brochure, photo urls, and a **`shareable`** subset.\n\n`shareable` deliberately omits `brokerage_percent` — what the broker earns is not the client's business. Build share messages from `shareable` rather than the top-level object.\n\n`creatives` lists active creatives only. Each has `valid_until` (ISO date or null). A video has `kind: video`, `video_url`, `video_provider`, `share_text`, and a YouTube `thumb_url`. `share_text` is null when the firm cannot share. An expired creative is absent. Personalising an expired creative is 410 creative_expired. Personalising a video is 422 not_personalisable."
           },
           "event": [
             {
@@ -3070,7 +3070,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "projects", "{{project_id}}", "creatives", "{{creative_id}}", "personalised" ]
             },
-            "description": "Footer under a marketplace creative, using this firm's name, logo, verified phone and RERA number. 200 { file: { url, filename, content_type, byte_size } }. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). 422 firm_rera_missing or firm_phone_missing. 404 when the creative is not on this project."
+            "description": "Footer under a marketplace creative, using this firm's name, logo, verified phone and RERA number. 200 { file: { url, filename, content_type, byte_size } }. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). 410 creative_expired when the creative's valid_until has passed (checked before eligibility). 422 not_personalisable for a video (Videos are shared as links). 422 firm_rera_missing or firm_phone_missing. 404 when the creative is not on this project."
           }
         },
         {
@@ -3083,7 +3083,7 @@
               "host": [ "{{api_base}}" ],
               "path": [ "projects", "{{project_id}}", "microsite_kit" ]
             },
-            "description": "202 { kit: { status: preparing } }. 200 with url, download_url, filename, byte_size and prepared_on when that kit already exists. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). download_url redirects to storage with disposition=attachment. Same 422 reasons as a personalised creative. Marketplace projects only."
+            "description": "202 { kit: { status: preparing } }. 200 with url, download_url, filename, byte_size and prepared_on when that kit already exists. url is a permanent proxy URL (/rails/active_storage/blobs/proxy/). download_url redirects to storage with disposition=attachment. Same 422 reasons as a personalised creative. Marketplace projects only. The zip leaves out expired creatives. Active videos are a Videos section, not files."
           }
         },
         {
@@ -5276,6 +5276,7 @@
               }
             ],
             "url": "{{base_url}}/turbo/events",
+            "description": "Optional creatives replaces the set. A creative may include valid_until (YYYY-MM-DD or null; omitted means null) and either file keys or kind video with video_url. tags is ignored. The provider is derived from the host. A rejected link skips that creative. An image or PDF that becomes a video drops its file.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"event\": \"upsert\",\n  \"pushed_at\": \"2026-09-28T12:00:00Z\",\n  \"project_code\": \"PR4F2A9C\",\n  \"project_name\": \"Harbour One\",\n  \"developer_name\": \"Lodha\",\n  \"company_code\": \"CL00A1B2C3\",\n  \"city\": \"Mumbai\",\n  \"locality\": \"Worli\",\n  \"rera_number\": \"P51800000001\",\n  \"possession_on\": \"2027-12-31\",\n  \"rm_name\": \"Asha Rao\",\n  \"rm_contact\": \"9876543210\",\n  \"unit_types\": [{ \"label\": \"2 BHK\", \"typology_name\": \"2BHK\", \"typology_category\": \"residential\", \"typology_slug\": \"2-bhk\", \"price_min\": 15000000, \"area_min\": 650, \"area_unit\": \"sqft\" }],\n  \"images\": [{ \"url\": \"https://launch.example/photo.jpg\", \"checksum\": \"abc\", \"filename\": \"photo.jpg\" }],\n  \"brochure\": { \"url\": \"https://launch.example/brochure.pdf\", \"checksum\": \"def\", \"filename\": \"brochure.pdf\" }\n}"

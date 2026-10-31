@@ -14,8 +14,18 @@ module Marketing
         firm.rera_number.to_s,
         contacts.authority(project),
         project.turbo_pushed_at&.utc&.iso8601,
-        checksums.join(",")
+        checksums.join(","),
+        active_key(project)
       ].join("\n"))
+    end
+
+    # Active creative ids and each Valid Until date, read when the kit is
+    # requested. A creative that expires overnight changes the fingerprint
+    # even when LaunchIQ has not pushed again.
+    def self.active_key(project)
+      project.project_creatives.active.order(:id).pluck(:id, :valid_until).map { |id, date|
+        "#{id}:#{date&.iso8601}"
+      }.join(",")
     end
   end
 end
