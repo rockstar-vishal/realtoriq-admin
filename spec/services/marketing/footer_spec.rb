@@ -138,18 +138,20 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
     expect(band).to be <= (1350 * 0.18)
   end
 
-  it "sets square type from 3.6% and 2.8% of the width" do
+  it "sets square type from 4%, 3% and 2.4% of the width" do
     layout = Marketing::FooterLayout.call(
       width: 1080, height: 1080, firm:, project:, numbers:, logo_size: nil,
       measurer: ->(*) { 10 }
     )
     name = layout.lines.find { |line| line.text == firm.name }
-    body = layout.lines.find { |line| line.text.include?("Call") }
-    expect(name.size).to be_within(1).of(39)
-    expect(body.size).to be_within(1).of(30)
+    body = layout.lines.find { |line| line.group == :call }
+    registration = layout.lines.find { |line| line.group == :registration }
+    expect(name.size).to eq(43)
+    expect(body.size).to eq(32)
+    expect(registration.size).to eq(26)
   end
 
-  it "keeps an A4 landscape page footer within 22% of the page" do
+  it "keeps an A4 landscape page footer within a quarter of the page" do
     bytes = Prawn::Document.new(page_size: "A4", page_layout: :landscape, margin: 36) do |pdf|
       pdf.text "ORIGINAL-BODY"
     end.render
@@ -161,27 +163,171 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
     rendered, = Marketing::FooterPdf.apply(file.path, firm:, project:, numbers:)
     after = box_values(CombinePDF.parse(rendered).pages.first[:MediaBox])
     original = before[3] - before[1]
-    expect((after[3] - after[1]) - original).to be <= (original * 0.22)
+    expect((after[3] - after[1]) - original).to be <= (original * 0.24)
   end
 
-  it "starts the text one pad after the drawn logo" do
+  it "keeps a small logo at its own size and starts the text 3% after it" do
     layout = Marketing::FooterLayout.call(
       width: 1400, height: 1400, firm:, project:, numbers:, logo_size: [ 64, 64 ],
       measurer: ->(*) { 20 }
     )
     expect(layout.drawn_width).to eq(64)
     expect(layout.drawn_height).to eq(64)
-    expect(layout.text_x).to eq(layout.pad + layout.drawn_width + layout.pad)
+    expect(layout.text_x).to eq(layout.pad + layout.drawn_width + (1400 * 0.03).round)
   end
 
-  it "gives a wide wordmark twice the logo height" do
+  it "caps a wide wordmark at 3.5 times the logo height" do
     layout = Marketing::FooterLayout.call(
       width: 1400, height: 1400, firm:, project:, numbers:, logo_size: [ 600, 200 ],
       measurer: ->(*) { 20 }
     )
-    expect(layout.drawn_width).to be_within(2).of(236)
-    expect(layout.drawn_height).to be_within(2).of(79)
-    expect(layout.text_x).to eq(layout.pad + layout.drawn_width + layout.pad)
+    name = layout.lines.find { |line| line.group == :name }
+    cap = (name.size * 1.6).round
+    expect(layout.drawn_height).to be <= cap
+    expect(layout.drawn_width).to be <= (cap * 3.5).round
+    expect(layout.drawn_width).to be <= 600
+    expect(layout.drawn_height).to be <= 200
+    expect(layout.text_x).to eq(layout.pad + layout.drawn_width + (1400 * 0.03).round)
+  end
+
+  it "puts a short name and the call line on one row, with one registration line" do
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm("Aarav Realty"), project:, numbers: %w[P51800000001]
+    )
+    call = band.layout.lines.find { |line| line.group == :call }
+    regs = band.layout.lines.select { |line| line.group == :registration }
+    expect(call.align).to eq(:right)
+    expect(regs.size).to eq(1)
+    expect(regs.first.text).to include("MahaRERA Agent Reg. No.", "Project Reg. No. P51800000001")
+    expect(band.band_height).to be_between(165, 170)
+  end
+
+  it "stacks the call line under a long name" do
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350,
+      firm: contact_firm("Shree Siddhivinayak Property Consultants LLP"),
+      project:, numbers: %w[P51800000001]
+    )
+    call = band.layout.lines.find { |line| line.group == :call }
+    expect(call.align).to eq(:left)
+    expect(band.layout.lines.index(call)).to be > 0
+  end
+
+  it "splits several project numbers onto their own line" do
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm("Aarav Realty"), project:, numbers: Marketing::Samples::NUMBERS
+    )
+    regs = band.layout.lines.select { |line| line.group == :registration }
+    expect(regs.map(&:text)).to eq([
+      "MahaRERA Agent Reg. No. A51900000001",
+      "Project Reg. No. P51800000001, P51800000002"
+    ])
+  end
+
+  it "sizes a landscape footer from the unit, not the width" do
+    layout = Marketing::FooterLayout.call(
+      width: 1600, height: 900, firm:, project:, numbers:, logo_size: nil, measurer: ->(*) { 10 }
+    )
+    unit = [ 1600, (900 * 1.25).round ].min
+    expect(layout.lines.find { |line| line.group == :name }.size).to eq([ (unit * 0.04).round, (unit * 0.02).round ].max)
+    expect(layout.lines.find { |line| line.group == :call }.size).to eq([ (unit * 0.03).round, (unit * 0.02).round ].max)
+    expect(unit).to eq(1125)
+    expect(layout.lines.find { |line| line.group == :name }.size).to eq(45)
+  end
+
+  it "sizes a square logo to 1.6 times the name and stacks the call line beside it" do
+    layout = Marketing::FooterLayout.call(
+      width: 1080, height: 1350, firm: contact_firm("Aarav Realty"), project:, numbers: %w[P51800000001],
+      logo_size: [ 900, 900 ],
+      measurer: ->(text, size, weight) { Marketing::Fonts.render(text, size:, weight:).width }
+    )
+    name = layout.lines.find { |line| line.group == :name }
+    cap = (name.size * 1.6).round
+    expect(layout.drawn_height).to be <= cap
+    expect(layout.drawn_width).to be <= (cap * 3.5).round
+    expect(layout.drawn_height).to be_within(1).of(69)
+    expect(layout.drawn_width).to eq(layout.drawn_height)
+    call = layout.lines.find { |line| line.group == :call }
+    expect(call.align).to eq(:left)
+    expect(layout.text_x).to eq(layout.pad + layout.drawn_width + (1080 * 0.03).round)
+  end
+
+  it "starts the registrations at the left padding when there is a logo" do
+    logo = Tempfile.new([ "logo", ".png" ])
+    logo.binmode
+    logo.write(Vips::Image.black(80, 80).new_from_image([ 10, 20, 80 ]).copy(interpretation: :srgb).write_to_buffer(".png"))
+    logo.flush
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm("Aarav Realty"), project:, numbers: %w[P51800000001],
+      logo_path: logo.path
+    )
+    registration = band.placements.find { |placement| placement.text.include?("Agent Reg") }
+    name = band.placements.find { |placement| placement.text == "Aarav Realty" }
+    expect(registration.x).to be_within(1).of(band.layout.pad)
+    expect(name.x).to be_within(1).of(band.layout.text_x)
+    expect(name.x).to be > registration.x
+  end
+
+  it "sets a long name that fits at 3.4% on one line" do
+    name = "Shree Siddhivinayak Property Consultants LLP"
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm(name), project:, numbers: %w[P51800000001]
+    )
+    lines = band.layout.lines.select { |line| line.group == :name }
+    expect(lines.map(&:text)).to eq([ name ])
+    expect(lines.first.size).to eq((1080 * 0.034).round)
+    expect(band.layout.lines.find { |line| line.group == :call }.align).to eq(:left)
+  end
+
+  it "wraps a very long name at 3.4%" do
+    name = "Shree Siddhivinayak Property Consultants LLP and Partners Worldwide Holdings"
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm(name), project:, numbers: %w[P51800000001]
+    )
+    lines = band.layout.lines.select { |line| line.group == :name }
+    expect(lines.size).to be > 1
+    expect(lines.map(&:size).uniq).to eq([ (1080 * 0.034).round ])
+    expect(lines.map(&:text).join(" ")).to eq(name)
+  end
+
+  it "sets call-line labels in regular and numbers in semibold" do
+    shapes = {
+      [ "+919100000001", "+919100000001" ] => [
+        [ "Call / WhatsApp ", :regular, "3F3F46" ],
+        [ "+91 91000 00001", :semibold, "18181B" ]
+      ],
+      [ "+919100000001", "+919100000002" ] => [
+        [ "Call ", :regular, "3F3F46" ],
+        [ "+91 91000 00001", :semibold, "18181B" ],
+        [ " · WhatsApp ", :regular, "3F3F46" ],
+        [ "+91 91000 00002", :semibold, "18181B" ]
+      ],
+      [ "+919100000001", nil ] => [
+        [ "Call ", :regular, "3F3F46" ],
+        [ "+91 91000 00001", :semibold, "18181B" ]
+      ],
+      [ nil, "+919100000002" ] => [
+        [ "WhatsApp ", :regular, "3F3F46" ],
+        [ "+91 91000 00002", :semibold, "18181B" ]
+      ]
+    }
+    shapes.each do |(mobile, whatsapp), expected|
+      layout = Marketing::FooterLayout.call(
+        width: 1080, height: 1350, firm: contact_firm("Aarav Realty", mobile:, whatsapp:),
+        project:, numbers: %w[P51800000001], logo_size: nil, measurer: ->(*) { 10 }
+      )
+      call = layout.lines.find { |line| line.group == :call }
+      expect(call.runs.map { |run| [ run.text, run.weight, run.color ] }).to eq(expected)
+      expect(call.text).to eq(Marketing::FirmContacts.new(layout_firm(mobile:, whatsapp:)).call_line)
+    end
+  end
+
+  it "right-aligns the call line to the padding" do
+    band = Marketing::FooterImage.band(
+      width: 1080, height: 1350, firm: contact_firm("Aarav Realty"), project:, numbers: %w[P51800000001]
+    )
+    call = band.placements.find { |placement| placement.text.include?("Call / WhatsApp") }
+    expect(call.x).to be_within(1).of(1080 - band.layout.pad - call.width)
   end
 
   it "turns a phone-shot creative upright before the footer is added" do
@@ -214,6 +360,9 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
     out.close
     text = IO.popen([ "pdftotext", "-layout", out.path, "-" ], &:read)
     expect(text).to include("सेठी", "A51900000001", "P51800000001", "P51800000002", "ORIGINAL-BODY")
+    expect(text).to include("Call / WhatsApp +91 98201 55001")
+    expect(text).to include("MahaRERA Agent Reg. No. A51900000001")
+    expect(text).to include("Project Reg. No. P51800000001, P51800000002")
     pdf.pages.each_with_index do |page, index|
       expect(image_on_page?(page)).to be(true)
       original[index].each { |body| expect(stream_bodies(page)).to include(body) }
@@ -268,6 +417,17 @@ RSpec.describe "Marketing footer fonts and PDF bands" do
       above = image.getpoint(column, image.height - band_rows - 1)
       expect(above[0]).to be < 40
     end
+  end
+
+  def contact_firm(name, mobile: "+919100000001", whatsapp: "+919100000001")
+    layout_firm(mobile:, whatsapp:, name:)
+  end
+
+  def layout_firm(name: "Aarav Realty", mobile: "+919100000001", whatsapp: "+919100000001")
+    channels = []
+    channels << Marketing::Samples::Channel.new("mobile", mobile) if mobile
+    channels << Marketing::Samples::Channel.new("whatsapp", whatsapp) if whatsapp
+    Marketing::Samples::FirmCard.new(name, "A51900000001", channels)
   end
 
   def image_on_page?(page)
