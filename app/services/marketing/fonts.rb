@@ -43,6 +43,15 @@ module Marketing
       Vips::Image.text(markup(text, weight), font: description(weight, size), dpi: 72)
     end
 
+    # One image, so a mixed-weight line keeps a shared baseline and the width
+    # used for layout is the width that gets drawn.
+    def self.render_runs(runs, size:)
+      register!
+      require "vips"
+      body = runs.map { |run| colored_span(run) }.join
+      Vips::Image.text(body, font: description(:regular, size), dpi: 72, rgba: true)
+    end
+
     # fontfile adds a face for the rest of the process. Warm up all four so a
     # later render can name them without passing fontfile again.
     def self.register!
@@ -72,6 +81,11 @@ module Marketing
 
     def self.escape(text)
       text.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
+    end
+
+    def self.colored_span(run)
+      weight = WEIGHTS.fetch(run.weight)
+      %(<span font_family="#{INTER_FAMILY}" font_weight="#{weight}" foreground="##{run.color}">#{escape(run.text)}</span>)
     end
 
     def self.span(text, script, weight_value)
@@ -122,6 +136,6 @@ module Marketing
     def self.glue?(char)
       char.match?(/[[:space:]]/) || char.match?(/[[:digit:]]/) || char.match?(/[[:punct:]]/)
     end
-    private_class_method :escape, :span, :runs, :absorb_glue, :group, :devanagari?, :glue?
+    private_class_method :escape, :colored_span, :span, :runs, :absorb_glue, :group, :devanagari?, :glue?
   end
 end

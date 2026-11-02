@@ -111,7 +111,7 @@ module Marketing
         pdf.text_box(
           placement.text,
           at: [ x, top ],
-          width: [ width - x, size ].max,
+          width: [ placement.width / SCALE.to_f, width - x, size ].max,
           height: [ (placement.height / SCALE.to_f) + size, size * 2 ].max,
           size:,
           overflow: :expand,

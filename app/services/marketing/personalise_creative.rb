@@ -6,7 +6,7 @@ module Marketing
   # One firm's footer on a catalog creative. A repeated call with the same
   # details returns the file already stored.
   class PersonaliseCreative
-    VERSION = "mk2f-1"
+    VERSION = "mk8-1"
     Result = Data.define(:payload, :lines, :cached)
 
     def self.call(creative:, firm:)

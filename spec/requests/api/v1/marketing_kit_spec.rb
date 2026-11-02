@@ -512,6 +512,12 @@ RSpec.describe "Marketing creatives and microsite kits" do
     expect(response).to have_http_status(:gone)
   end
 
+  it "changes the kit fingerprint when the personalised creative version changes" do
+    before = Marketing::KitFingerprint.call(firm:, project: catalog)
+    stub_const("Marketing::PersonaliseCreative::VERSION", "mk8-other")
+    expect(Marketing::KitFingerprint.call(firm:, project: catalog)).not_to eq(before)
+  end
+
   it "changes the kit fingerprint when the template version changes" do
     before = Marketing::KitFingerprint.call(firm:, project: catalog)
     stub_const("Marketing::BuildMicrositeKit::TEMPLATE_VERSION", 3)

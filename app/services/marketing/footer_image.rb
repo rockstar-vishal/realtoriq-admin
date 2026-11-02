@@ -45,7 +45,8 @@ module Marketing
       Fonts.register!
       layout = FooterLayout.call(
         width:, height:, firm: @firm, project: @project, numbers: @numbers,
-        logo_size:, measurer: method(:measure), heights: method(:measured_height)
+        logo_size:, measurer: method(:measure), heights: method(:measured_height),
+        line_measurer: method(:measure_runs)
       )
       image, placements = paint(layout, scale)
       Band.new(
@@ -72,6 +73,10 @@ module Marketing
       text_mask(text, size, weight).width
     end
 
+    def measure_runs(runs, size)
+      Fonts.render_runs(runs, size:).width
+    end
+
     def measured_height(text, size, weight)
       text_mask(text, size, weight).height
     end
@@ -94,31 +99,86 @@ module Marketing
       box_h = (layout.logo_height * scale).round
       logo = logo.thumbnail_image(box_w, height: box_h, size: :down)
       logo = rgba(logo)
-      y = ((band.height - logo.height) / 2.0).round
+      text_top = (layout.pad_y * scale).round
+      row1 = (layout.row1_height * scale).round
+      y = text_top + ((row1 - logo.height) / 2.0).round
       y = [ y, [ (2 * scale).round, 1 ].max ].max
       y = [ y, band.height - logo.height ].min
       band.composite2(logo, :over, x: (layout.pad * scale).round, y:)
     end
 
     def place_lines(band, layout, scale)
-      rendered = layout.lines.map { |line| [ line, text_image(line, scale) ] }
-      gap = [ (4 * scale).round, 1 ].max
-      used = rendered.sum { |_, image| image.height + gap }
-      y = [ ((band.height - used) / 2.0).round, [ (6 * scale).round, 1 ].max ].max
       placements = []
-      rendered.each do |line, image|
-        x = (layout.text_x * scale).round
-        limit = band.width - image.width - [ (2 * scale).round, 1 ].max
-        x = [ x, limit ].min if image.width + x > band.width
-        x = [ x, 0 ].max
-        band = band.composite2(image, :over, x:, y:)
-        placements << Placement.new(
-          text: line.text, x:, y:, width: image.width, height: image.height,
-          size: (line.size * scale).round, weight: line.weight
-        )
-        y += image.height + gap
+      y = (layout.pad_y * scale).round
+      names = layout.lines.select { |line| line.group == :name }
+      call = layout.lines.find { |line| line.group == :call }
+      regs = layout.lines.select { |line| line.group == :registration }
+      contact = names + [ call ].compact
+      row1 = (layout.row1_height * scale).round
+      if call&.align == :right
+        band, = place_row(band, layout, contact, y, scale, placements, row_h: row1)
+      else
+        band = place_stack(band, layout, names, call, y, row1, scale, placements)
       end
+      y += row1
+      y += (layout.gap * scale).round if regs.any? && contact.any?
+      regs.each { |line| band, y = place_line(band, layout, line, y, scale, placements) }
       [ band, placements ]
+    end
+
+    def place_stack(band, layout, names, call, y0, row1, scale, placements)
+      gap = names.any? && call ? (layout.stack_gap * scale).round : 0
+      text_h = names.sum { |line| (line.box * scale).round } + gap + (call ? (call.box * scale).round : 0)
+      y = y0 + [ ((row1 - text_h) / 2.0).round, 0 ].max
+      names.each { |line| band, y = place_line(band, layout, line, y, scale, placements) }
+      y += gap
+      band, = place_line(band, layout, call, y, scale, placements) if call
+      band
+    end
+
+    def place_row(band, layout, lines, y, scale, placements, row_h:)
+      rendered = lines.map { |line| [ line, render_line(line, scale) ] }
+      row_h = [ row_h, rendered.map { |_, image| image.height }.max ].max
+      rendered.each do |line, image|
+        x = line_x(band, layout, line, image, scale)
+        glyph_y = y + ((row_h - image.height) / 2.0).round
+        band = band.composite2(image, :over, x:, y: glyph_y)
+        placements << placement_for(line, image, x, glyph_y, scale)
+      end
+      [ band, y + row_h ]
+    end
+
+    def place_line(band, layout, line, y, scale, placements)
+      image = render_line(line, scale)
+      box = [ (line.box * scale).round, image.height ].max
+      x = line_x(band, layout, line, image, scale)
+      glyph_y = y + ((box - image.height) / 2.0).round
+      band = band.composite2(image, :over, x:, y: glyph_y)
+      placements << placement_for(line, image, x, glyph_y, scale)
+      [ band, y + box ]
+    end
+
+    def line_x(band, layout, line, image, scale)
+      if line.align == :right
+        [ band.width - (layout.pad * scale).round - image.width, 0 ].max
+      else
+        origin = line.group == :registration ? layout.pad : layout.text_x
+        (origin * scale).round
+      end
+    end
+
+    def placement_for(line, image, x, y, scale)
+      Placement.new(
+        text: line.text, x:, y:, width: image.width, height: image.height,
+        size: (line.size * scale).round, weight: line.weight
+      )
+    end
+
+    def render_line(line, scale)
+      size = [ (line.size * scale).round, 1 ].max
+      return Fonts.render_runs(line.runs, size:) if line.runs.length > 1
+
+      text_image(line, scale)
     end
 
     def text_image(line, scale)
