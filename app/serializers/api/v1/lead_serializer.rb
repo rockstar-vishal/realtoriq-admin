@@ -47,6 +47,7 @@ module Api
         # The lead detail screen was never designed — this is inferred from the
         # list card and the new-lead form, and should be revisited when it is.
         def detail(lead, activities: [], status_history: [])
+          channels = listing_channels(lead)
           list(lead).merge(
             alt_mobile: lead.alt_mobile,
             source_detail: lead.source_detail,
@@ -56,7 +57,7 @@ module Api
             notes: lead.notes,
             web_enquiry: lead.web_enquiry || {},
             mapped_projects: lead.lead_projects.map { |mapping| mapped_project(lead, mapping) },
-            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping) },
+            mapped_properties: lead.lead_properties.map { |mapping| mapped_property(lead, mapping, channels) },
             activities: activities.map { |a| LeadActivitySerializer.call(a) },
             status_history: status_history.map { |change| history_entry(change) },
             visit_passes: lead.lead_visit_passes.sort_by { |pass| pass.created_at || Time.current }.reverse.map { |pass|
@@ -71,7 +72,7 @@ module Api
           lead.localities.includes(:city).load
           lead.lead_visit_passes.includes(:project).load
           lead.lead_projects.includes(project: %i[builder city locality]).load
-          lead.lead_properties.includes(property: %i[typology city locality]).load
+          lead.lead_properties.includes(property: %i[typology city locality firm]).load
 
           detail(
             lead,
@@ -160,11 +161,12 @@ module Api
           }
         end
 
-        def mapped_property(lead, mapping)
+        def mapped_property(lead, mapping, channels = {})
           property = mapping.property
           stats = lead.property_visit_stats[property.id.to_s] || EMPTY_SITE_STATS
           shared = property.firm_id != lead.firm_id
           card = shared ? Inventory::PropertyCard.for(property) : nil
+          firm_channels = shared ? channels[property.firm_id] || [] : []
           {
             id: mapping.id,
             visited: stats[:visit_count].positive?,
@@ -181,7 +183,9 @@ module Api
                           locality: card[:locality],
                           city: card[:city],
                           marketplace: true,
-                          listed_by: card[:firm_name]
+                          listed_by: card[:firm_name],
+                          listed_mobile: channel_value(firm_channels, "mobile"),
+                          listed_whatsapp: channel_value(firm_channels, "whatsapp")
                         }
                       else
                         {
@@ -194,6 +198,24 @@ module Api
                         }
                       end
           }
+        end
+
+        # The same lines as the marketplace property. Unscoped because the
+        # listing firm is not the tenant reading this lead.
+        def listing_channels(lead)
+          firm_ids = lead.lead_properties.filter_map { |mapping|
+            property = mapping.property
+            next if property.nil? || property.firm_id == lead.firm_id
+
+            property.firm_id
+          }.uniq
+          return {} if firm_ids.empty?
+
+          ContactChannel.unscoped.where(firm_id: firm_ids).group_by(&:firm_id)
+        end
+
+        def channel_value(channels, kind)
+          channels.find { |channel| channel.kind == kind }&.value
         end
 
         EMPTY_SITE_STATS = { visit_count: 0, last_visited_at: nil }.freeze

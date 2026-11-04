@@ -64,6 +64,8 @@ RSpec.describe "Shared property marketplace" do
     mapped = response.parsed_body.dig("lead", "mapped_properties", 0, "property")
     expect(mapped["marketplace"]).to be(true)
     expect(mapped["listed_by"]).to eq("Mehta Estates")
+    expect(mapped["listed_mobile"]).to eq(mobile.value)
+    expect(mapped["listed_whatsapp"]).to eq(whatsapp.value)
     expect(mapped).not_to have_key("building")
     expect(mapped).not_to have_key("building_name")
   end
