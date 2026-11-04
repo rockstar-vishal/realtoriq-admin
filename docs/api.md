@@ -799,6 +799,10 @@ Each mapped row also has `visited`, `visit_count`, and `last_visited_on`
 `building_name` when the listing belongs to this firm. A visit row carries the
 same price fields on `projects[]` and `properties[]`, and `building_name` on a
 property that belongs to this firm. Another firm's listing leaves that name out.
+It sets `marketplace` to true, `listed_by` to that firm's name, and
+`listed_mobile` and `listed_whatsapp` to that firm's phone lines, the same
+lines as `GET /properties/:id/marketplace`. Either phone is null when that
+line is missing. The building, address, and pin stay off the row.
 
 ### Other lead endpoints
 
@@ -901,6 +905,10 @@ catalog row is archived, the copy is listed. While anchor matching is off,
 both are listed. The catalog row has `source: "catalog"` and
 `marketplace: true`, with `listed_by` set to the builder. Another firm's shared
 property has `marketplace: true` and `listed_by` set to that firm's name.
+`listed_mobile` and `listed_whatsapp` are that firm's phone lines, the same
+lines as `GET /properties/:id/marketplace`. Either is null when the firm has
+no line of that kind. Own stock and catalog projects set both to null. There
+is no person name, and the building, address, and pin stay off the row.
 
 `bin/rails matches:anchor_disable` turns anchor matching off, rebuilds
 same-city neighbor pairs, and rewrites digests without a notification. It
@@ -971,6 +979,7 @@ chosen configuration is the only one scored.
 { "matches": [
   { "kind": "project", "id": "…", "name": "Aurum Vista", "source": "catalog",
     "marketplace": true, "listed_by": "Aurum Developers",
+    "listed_mobile": null, "listed_whatsapp": null,
     "city": "Thane", "locality": "Kolshet", "starting_budget": 14200000,
     "category": "residential", "area_sqft": 720, "area_unit": "sqft", "area_value": "720",
     "pre_leased": false,
@@ -989,6 +998,7 @@ chosen configuration is the only one scored.
 
 `kind` is `project` or `property`. A property row uses `name` (the listing
 title), `price`, and `listing_for` instead of `source` and `starting_budget`.
+A marketplace property row also carries `listed_mobile` and `listed_whatsapp`.
 `category` is the lead's category. `area` is the row that was scored: `kind`
 is `plot` for Plot & Land and `carpet` otherwise. `area_sqft`, `area_unit` and
 `area_value` repeat that area. `pre_leased` is true only for a pre-leased

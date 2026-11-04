@@ -109,6 +109,26 @@ RSpec.describe Inventory::MatchInventory do
     end
   end
 
+  it "gives a marketplace property the listing firm's phone lines and withholds them on own stock" do
+    lead = sale_lead(ready_type)
+    create(:contact_channel, :mobile, firm: other_firm, value: "+919800011122")
+    create(:contact_channel, :whatsapp, firm: other_firm, value: "+919800011133")
+    create(:contact_channel, :mobile, firm:, value: "+919800011144")
+    create(:contact_channel, :whatsapp, firm:, value: "+919800011155")
+    shared = create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: true,
+      city:, locality:)
+    own = create(:property, firm:, typology: two_bhk, price: 10_000_000, city:, locality:)
+
+    rows = described_class.new(lead:).call.index_by { |row| row[:id] }
+
+    expect(rows[shared.id][:listed_by]).to eq("Mehta Estates")
+    expect(rows[shared.id][:listed_mobile]).to eq("+919800011122")
+    expect(rows[shared.id][:listed_whatsapp]).to eq("+919800011133")
+    expect(rows[own.id][:listed_by]).to be_nil
+    expect(rows[own.id][:listed_mobile]).to be_nil
+    expect(rows[own.id][:listed_whatsapp]).to be_nil
+  end
+
   it "leaves a shared listing out when the owner has turned the switch off" do
     lead = sale_lead(ready_type)
     create(:property, firm: other_firm, typology: two_bhk, price: 10_000_000, listed_on_marketplace: false,

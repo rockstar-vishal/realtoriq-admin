@@ -125,7 +125,10 @@ module Inventory
     def property_rows
       return [] if Fit.possession_applies?(lead) && !lead.ready_possession?
 
-      (own_properties + shared_properties).filter_map { |property| serialize_property(property) }
+      own = own_properties
+      shared = shared_properties
+      channels = listing_channels(shared)
+      (own + shared).filter_map { |property| serialize_property(property, channels) }
     end
 
     def own_properties
@@ -196,6 +199,8 @@ module Inventory
         source: project.source,
         marketplace:,
         listed_by: marketplace ? project.builder&.name : nil,
+        listed_mobile: nil,
+        listed_whatsapp: nil,
         city: project.city&.name,
         locality: project.locality&.name,
         starting_budget: shown_starting_budget(project),
@@ -226,7 +231,7 @@ module Inventory
       project.starting_price_for(lead.category)
     end
 
-    def serialize_property(property)
+    def serialize_property(property, channels = {})
       return unless Fit.row_in_scope?(lead, property.typology)
 
       offers = [ MatchScore.offer_for_property(property) ]
@@ -242,6 +247,7 @@ module Inventory
       breakdown = ranked[:breakdown]
       shared = property.firm_id != Current.firm_id
       card = shared ? PropertyCard.for(property) : nil
+      firm_channels = shared ? channels[property.firm_id] || [] : []
       {
         kind: "property",
         id: property.id,
@@ -250,6 +256,8 @@ module Inventory
         listing_for: property.listing_for,
         marketplace: shared,
         listed_by: shared ? card[:firm_name] : nil,
+        listed_mobile: shared ? channel_value(firm_channels, "mobile") : nil,
+        listed_whatsapp: shared ? channel_value(firm_channels, "whatsapp") : nil,
         city: shared ? card[:city] : property.city&.name,
         locality: shared ? card[:locality] : property.locality&.name,
         price: property.price,
@@ -347,6 +355,19 @@ module Inventory
 
     def publish(row)
       row.except(:floor, :configuration_names, :sort)
+    end
+
+    # The same lines as the marketplace property card. One mobile and one
+    # WhatsApp per firm. Unscoped because these firms are not the tenant.
+    def listing_channels(properties)
+      firm_ids = properties.map(&:firm_id).uniq
+      return {} if firm_ids.empty?
+
+      ContactChannel.unscoped.where(firm_id: firm_ids).group_by(&:firm_id)
+    end
+
+    def channel_value(channels, kind)
+      channels.find { |channel| channel.kind == kind }&.value
     end
 
     def mapped_project_ids
