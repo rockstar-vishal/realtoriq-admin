@@ -660,7 +660,7 @@ Screen guide for the broker app: [`frontend/YASH.md`](../../frontend/YASH.md).
 
 | Filter | Notes |
 | --- | --- |
-| `q` | Name, mobile or email. ANDs with every other filter |
+| `q` | Name, mobile, email, the exact lead code (`L-0001`, also `l-0001` or `l - 0001`), or a bare lead number (`2291` is `L-2291` only, not `L-12291` or `L-22910`; `1` and `0001` are `L-0001`). `L-1` is not `L-0001`. A code hit is ordered before a phone that merely contains those digits. ANDs with every other filter |
 | `view` | `worklist` leaves out terminal statuses (Dead and Booked) and unqualified leads. Any other value is `422 invalid`. Combines with every other param |
 | `status` | A status `code`, **or `hot_negotiation`**. Repeat as `status[]=hot&status[]=negotiation`. Not `missed_followup` — that is its own boolean |
 | `visited` | `true` / `false` — at least one `lead_visits` row, or none |

@@ -520,7 +520,7 @@ RSpec.describe "Marketing creatives and microsite kits" do
 
   it "changes the kit fingerprint when the template version changes" do
     before = Marketing::KitFingerprint.call(firm:, project: catalog)
-    stub_const("Marketing::BuildMicrositeKit::TEMPLATE_VERSION", 3)
+    stub_const("Marketing::BuildMicrositeKit::TEMPLATE_VERSION", 99)
     expect(Marketing::KitFingerprint.call(firm:, project: catalog)).not_to eq(before)
   end
 
