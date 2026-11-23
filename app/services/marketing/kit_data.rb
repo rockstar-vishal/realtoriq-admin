@@ -90,7 +90,7 @@ module Marketing
         "builder" => project.builder&.name,
         "locality" => project.locality&.name,
         "city" => project.city&.name,
-        "address" => project.address.presence,
+        "address" => Inventory::StreetAddress.street_address(project.address),
         "code" => project.code,
         "configurations_text" => configurations.map { |row| row["name"] }.uniq.join(", ").presence,
         "category_text" => project.categories.map { |code| Typology::LABELS[code] }.compact.join(", ").presence,
@@ -168,9 +168,12 @@ module Marketing
     end
 
     def map_url
-      return if project.lat.blank? || project.lng.blank? || project.pin_approximate?
+      return if project.pin_approximate?
+      if project.lat.present? && project.lng.present?
+        return "https://www.google.com/maps?q=#{project.lat},#{project.lng}"
+      end
 
-      "https://www.google.com/maps?q=#{project.lat},#{project.lng}"
+      Inventory::StreetAddress.maps_link(project.address)
     end
 
     def suggested_domain

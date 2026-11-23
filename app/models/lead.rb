@@ -108,12 +108,60 @@ class Lead < ApplicationRecord
   }
 
   # — filtering —
+  #
+  # Name, mobile and email are contains-matches. A lead number is exact:
+  # "l - 0001" is the stored code L-0001, and "2291" is the lead numbered
+  # 2291, not L-12291 or L-22910. "L-1" is not L-0001. The number hit is
+  # ordered first so a phone that merely contains those digits does not bury
+  # it. A name search adds no order of its own.
   scope :search, ->(term) {
     next all if term.blank?
 
-    pattern = "%#{sanitize_sql_like(term.to_s.strip)}%"
-    where("leads.name ILIKE :q OR leads.mobile ILIKE :q OR leads.email ILIKE :q", q: pattern)
+    raw = term.to_s.strip
+    pattern = "%#{sanitize_sql_like(raw)}%"
+    clauses = [
+      "leads.name ILIKE :q",
+      "leads.mobile ILIKE :q",
+      "leads.email ILIKE :q"
+    ]
+    binds = { q: pattern }
+    scope = all
+    target = code_search_target(raw)
+
+    if target
+      kind, value = target
+      if kind == :exact
+        clauses << "leads.code = :code"
+        binds[:code] = value
+        rank = sanitize_sql_array([ "CASE WHEN leads.code = ? THEN 0 ELSE 1 END", value ])
+      else
+        clauses << "NULLIF(regexp_replace(leads.code, '\\D', '', 'g'), '')::bigint = :code_number"
+        binds[:code_number] = value
+        rank = sanitize_sql_array([
+          "CASE WHEN NULLIF(regexp_replace(leads.code, '\\D', '', 'g'), '')::bigint = ? THEN 0 ELSE 1 END",
+          value
+        ])
+      end
+      scope = scope.order(Arel.sql(rank))
+    end
+
+    scope.where(clauses.join(" OR "), binds)
   }
+
+  # Compact form of a lead-number query. Exact codes keep their stored
+  # spelling, including the leading zeros. A bare integer is the lead's
+  # number. Anything else (a phone with a plus, "lead 2291", "L-1") is not a
+  # code query. Eighteen digits is the longest value that always fits in bigint.
+  def self.code_search_target(raw)
+    compact = raw.to_s.strip.upcase.gsub(/[[:space:]]+/, "")
+    return if compact.blank?
+
+    if compact.match?(/\AL-\d+\z/)
+      [ :exact, compact ]
+    elsif compact.match?(/\A\d{1,18}\z/)
+      [ :number, Integer(compact, 10) ]
+    end
+  end
 
   # Matching ignores an unqualified lead and a booked lead. Dead stays eligible.
   scope :matchable, -> {

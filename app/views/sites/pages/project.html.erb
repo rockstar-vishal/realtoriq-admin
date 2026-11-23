@@ -6,7 +6,7 @@
   <% end %>
 <% end %>
 <% photos = Array(@listing[:photos]) %>
-<% pin = maps_href(@listing[:lat], @listing[:lng]) %>
+<% pin = maps_href(@listing[:lat], @listing[:lng]) || @listing[:map_url].presence %>
 
 <%= render "sites/pages/brand", compact: true %>
 

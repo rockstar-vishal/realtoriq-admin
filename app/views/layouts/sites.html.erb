@@ -68,7 +68,7 @@
       .hero-name { min-width: 0; }
       .firm-name { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; overflow-wrap: anywhere; }
       .hero-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; }
-      .rera-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.01em; }
+      .rera-pill { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 11px 5px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.01em; overflow-wrap: anywhere; }
       .rera-pill .icon, .place-line .icon { width: 16px; height: 16px; }
       .rera-plain { font-size: 0.82rem; color: var(--muted); }
       .place-line { display: inline-flex; align-items: center; gap: 5px; font-size: 0.9rem; color: var(--muted); }
@@ -144,9 +144,9 @@
       .card-price { font-size: 1.2rem; font-weight: 750; color: var(--ink); }
       .card-price .label, .listing-price .label { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-right: 4px; }
       .card-price .per { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
-      .card-title { font-size: 1.05rem; font-weight: 650; color: var(--ink); }
-      .card-meta { font-size: 0.9rem; color: var(--muted); }
-      .card-tags { font-size: 0.85rem; color: var(--text); margin-top: 2px; }
+      .card-title { font-size: 1.05rem; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
+      .card-meta { font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+      .card-tags { font-size: 0.85rem; color: var(--text); margin-top: 2px; overflow-wrap: anywhere; }
       /* Properties: a compact row on a phone, so seven homes stay scannable */
       @media (max-width: 719px) {
         .cards-properties .card.has-media { display: grid; grid-template-columns: 116px 1fr; }
@@ -200,8 +200,8 @@
       .gallery-note { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
       .detail { display: grid; gap: 20px; padding-top: 20px; }
       .eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
-      .listing-title { margin-top: 6px; font-size: 1.65rem; font-weight: 750; letter-spacing: -0.015em; }
-      .listing-meta { margin-top: 6px; color: var(--muted); }
+      .listing-title { margin-top: 6px; font-size: 1.65rem; font-weight: 750; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+      .listing-meta { margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
       .listing-price { margin-top: 14px; font-size: 1.6rem; font-weight: 750; color: var(--ink); }
       .listing-price .per { font-size: 1rem; font-weight: 600; color: var(--muted); }
       .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
@@ -209,11 +209,11 @@
       .fact dt { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
       .fact dd { margin-top: 2px; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
       .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-      .promo { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-ink); font-weight: 600; white-space: pre-line; }
+      .promo { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-ink); font-weight: 600; white-space: pre-line; overflow-wrap: anywhere; }
       .sub { margin-top: 26px; }
       .sub h2 { font-size: 1.1rem; font-weight: 750; margin-bottom: 10px; }
-      .place { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
-      .place p { flex: 1 1 220px; }
+      .place { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; min-width: 0; }
+      .place p { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
       .configs { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.95rem; }
       .configs th { text-align: left; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding: 10px 12px; white-space: nowrap; }
       .configs td { padding: 12px; border-top: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
@@ -221,7 +221,7 @@
       .configs-wrap { overflow-x: auto; border-radius: var(--radius-sm); }
       .detail-main, .detail-side { min-width: 0; }
       @media (max-width: 389px) { .configs th, .configs td { padding-left: 8px; padding-right: 8px; } }
-      .description { white-space: pre-line; line-height: 1.65; }
+      .description { white-space: pre-line; line-height: 1.65; overflow-wrap: anywhere; }
       .side-price { display: none; }
 
       /* Footer and the call bar */

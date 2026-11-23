@@ -18,6 +18,10 @@ RSpec.describe "API v1 leads" do
   let!(:match_city) { create(:city) }
   let!(:match_locality) { create(:locality, city: match_city, name: "Worli") }
 
+  def stamp_code(lead, code)
+    Lead.across_firms.where(id: lead.id).update_all(code:)
+  end
+
   def auth(user)
     post "/api/v1/auth/otp", params: { mobile: user.mobile }, as: :json
     request_id = response.parsed_body["request_id"]
@@ -299,6 +303,104 @@ RSpec.describe "API v1 leads" do
       get "/api/v1/leads", params: { q: "Findable" }, headers: auth(manager)
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ target.id ])
+    end
+
+    it "finds a lead by its exact code, ignoring case and spaces" do
+      target = create(:lead, firm:, lead_status: new_status, name: "Coded", mobile: "+919800000011")
+      create(:lead, firm:, lead_status: new_status, name: "Other", mobile: "+919800000012")
+      stamp_code(target, "L-0001")
+
+      headers = auth(manager)
+      [ "L-0001", "l-0001", "l - 0001" ].each do |query|
+        get "/api/v1/leads", params: { q: query }, headers: headers
+
+        expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id ])
+      end
+    end
+
+    it "finds a bare lead number and ranks it ahead of a phone that contains those digits" do
+      numbered = create(:lead, firm:, lead_status: new_status, name: "Numbered",
+        mobile: "+919800000222", next_action_at: 5.days.from_now)
+      phone = create(:lead, firm:, lead_status: new_status, name: "Phone Hit",
+        mobile: "+919822910000", next_action_at: nil)
+      high = create(:lead, firm:, lead_status: new_status, name: "Higher", mobile: "+919800001111")
+      low = create(:lead, firm:, lead_status: new_status, name: "Lower", mobile: "+919800002222")
+      stamp_code(numbered, "L-2291")
+      stamp_code(high, "L-12291")
+      stamp_code(low, "L-22910")
+
+      headers = auth(manager)
+      get "/api/v1/leads", params: { q: "2291" }, headers: headers
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ numbered.id, phone.id ])
+
+      get "/api/v1/leads", params: { q: "12291" }, headers: headers
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ high.id ])
+
+      get "/api/v1/leads", params: { q: "22910" }, headers: headers
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ low.id ])
+    end
+
+    it "treats 1 and 0001 as L-0001 and leaves L-1 unmatched" do
+      target = create(:lead, firm:, lead_status: new_status, name: "First", mobile: "+919800000002")
+      create(:lead, firm:, lead_status: new_status, name: "Second", mobile: "+919800000003")
+      stamp_code(target, "L-0001")
+
+      headers = auth(manager)
+      [ "1", "0001" ].each do |query|
+        get "/api/v1/leads", params: { q: query }, headers: headers
+
+        expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id ])
+      end
+
+      get "/api/v1/leads", params: { q: "L-1" }, headers: headers
+
+      expect(response.parsed_body["leads"]).to eq([])
+    end
+
+    it "keeps a name search in next-action order" do
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Later",
+        mobile: "+919800000501", next_action_at: 3.days.from_now)
+      create(:lead, firm:, lead_status: new_status, name: "Alpha Soon",
+        mobile: "+919800000502", next_action_at: nil)
+
+      get "/api/v1/leads", params: { q: "Alpha" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["name"] }).to eq([ "Alpha Soon", "Alpha Later" ])
+    end
+
+    it "drops a code hit that fails the status or category filter" do
+      hot = create(:lead_status, :hot)
+      target = create(:lead, firm:, lead_status: hot, name: "Filtered",
+        mobile: "+919800000601", category: "residential")
+      stamp_code(target, "L-0601")
+
+      headers = auth(manager)
+      get "/api/v1/leads", params: { q: "L-0601", status: "new" }, headers: headers
+
+      expect(response.parsed_body["leads"]).to eq([])
+
+      get "/api/v1/leads", params: { q: "L-0601", category: "commercial" }, headers: headers
+
+      expect(response.parsed_body["leads"]).to eq([])
+
+      get "/api/v1/leads", params: { q: "L-0601", status: "hot", category: "residential" }, headers: headers
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id ])
+    end
+
+    it "does not find another firm's lead by the same code" do
+      other_firm = create(:firm, status: :active)
+      theirs = create(:lead, firm: other_firm, lead_status: new_status, name: "Theirs", mobile: "+919800000777")
+      ours = create(:lead, firm:, lead_status: new_status, name: "Ours", mobile: "+919800000778")
+      expect(Lead.across_firms.find(theirs.id).code).to eq("L-0001")
+      expect(Lead.across_firms.find(ours.id).code).to eq("L-0001")
+
+      get "/api/v1/leads", params: { q: "L-0001" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ ours.id ])
     end
 
     it "filters to overdue followups through missed_followup, not status" do
@@ -595,6 +697,18 @@ RSpec.describe "API v1 leads" do
 
       expect(response.parsed_body["leads"].map { |l| l["id"] }).to eq([ agents_lead.id ])
       expect(response.parsed_body.dig("counts", "new")).to eq(1)
+    end
+
+    it "does not let an agent find another agent's lead by code" do
+      stamp_code(someone_elses, "L-0042")
+
+      get "/api/v1/leads", params: { q: "L-0042" }, headers: auth(agent)
+
+      expect(response.parsed_body["leads"]).to eq([])
+
+      get "/api/v1/leads", params: { q: "L-0042" }, headers: auth(manager)
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ someone_elses.id ])
     end
 
     it "keeps an agent's worklist and counts to their own leads" do

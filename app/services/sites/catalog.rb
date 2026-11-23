@@ -49,7 +49,8 @@ module Sites
 
       project_card(record, nil).merge(
         photos: photo_urls(record),
-        address: record.address,
+        address: Inventory::StreetAddress.street_address(record.address),
+        map_url: stored_map_url(record),
         rera_number: record.rera_number,
         promo_text: record.promo_live? ? record.promo_text : nil,
         brochure_url: brochure_url(record),
@@ -137,6 +138,14 @@ module Sites
         starting_carpet_sqft: row.starting_carpet_sqft,
         area_text: area_text(row.area_value, row.area_unit, row.starting_carpet_sqft)
       }
+    end
+
+    # Coordinates win. A maps link with no pin is still the "Open in maps" target.
+    def stored_map_url(record)
+      return if record.pin_approximate?
+      return if record.lat.present? && record.lng.present?
+
+      Inventory::StreetAddress.maps_link(record.address)
     end
 
     def area_label(property)

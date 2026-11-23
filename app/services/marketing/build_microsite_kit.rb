@@ -6,7 +6,7 @@ require "zip"
 module Marketing
   class BuildMicrositeKit
     # Bumped when a kit template changes, so a ready kit is rebuilt on the next request.
-    TEMPLATE_VERSION = 2
+    TEMPLATE_VERSION = 3
 
     def self.call(kit)
       new(kit).call
