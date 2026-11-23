@@ -322,7 +322,7 @@ RSpec.describe "API v1 leads" do
       numbered = create(:lead, firm:, lead_status: new_status, name: "Numbered",
         mobile: "+919800000222", next_action_at: 5.days.from_now)
       phone = create(:lead, firm:, lead_status: new_status, name: "Phone Hit",
-        mobile: "+919822910000", next_action_at: nil)
+        mobile: "+919822912222", next_action_at: nil)
       high = create(:lead, firm:, lead_status: new_status, name: "Higher", mobile: "+919800001111")
       low = create(:lead, firm:, lead_status: new_status, name: "Lower", mobile: "+919800002222")
       stamp_code(numbered, "L-2291")
@@ -345,15 +345,18 @@ RSpec.describe "API v1 leads" do
 
     it "treats 1 and 0001 as L-0001 and leaves L-1 unmatched" do
       target = create(:lead, firm:, lead_status: new_status, name: "First", mobile: "+919800000002")
-      create(:lead, firm:, lead_status: new_status, name: "Second", mobile: "+919800000003")
+      other = create(:lead, firm:, lead_status: new_status, name: "Second", mobile: "+919800000003")
       stamp_code(target, "L-0001")
 
       headers = auth(manager)
-      [ "1", "0001" ].each do |query|
-        get "/api/v1/leads", params: { q: query }, headers: headers
+      # "1" is also inside every +91 mobile, so the code hit has to come first.
+      get "/api/v1/leads", params: { q: "1" }, headers: headers
 
-        expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id ])
-      end
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id, other.id ])
+
+      get "/api/v1/leads", params: { q: "0001" }, headers: headers
+
+      expect(response.parsed_body["leads"].map { |lead| lead["id"] }).to eq([ target.id ])
 
       get "/api/v1/leads", params: { q: "L-1" }, headers: headers
 
